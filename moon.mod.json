@@ -1,0 +1,9 @@
+{
+  "name": "iflow-bot/Ion",
+  "version": "0.1.0",
+  "readme": "PLAN.md",
+  "repository": "",
+  "license": "MIT",
+  "keywords": ["networking", "http", "https", "tls"],
+  "description": "A MoonBit networking client with three-layer architecture"
+}

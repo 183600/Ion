@@ -1,0 +1,11 @@
+[project]
+name = "Ion"
+version = "0.1.0"
+authors = ["iflow-bot"]
+
+[dependencies]
+
+[dev-dependencies]
+
+[build]
+target = "wasm32-wasi"
