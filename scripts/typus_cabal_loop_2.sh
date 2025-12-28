@@ -12,7 +12,7 @@ set -euo pipefail
 # 0) 基本参数（可用环境变量覆盖）
 ############################
 RUN_HOURS="${RUN_HOURS:-5}"
-WORK_BRANCH="${WORK_BRANCH:-master}"
+WORK_BRANCH="${WORK_BRANCH:-main}"
 GIT_REMOTE="${GIT_REMOTE:-origin}"
 
 GIT_USER_NAME="${GIT_USER_NAME:-iflow-bot}"
