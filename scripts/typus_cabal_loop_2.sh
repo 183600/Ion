@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 将标准输出和标准错误重定向到 /dev/null，实现静默运行
-exec >/dev/null 2>&1
+# 静默运行：不打印到终端，但默认写入日志文件，便于排查 5 小时后的提交/推送是否成功
+# 如仍想彻底丢弃日志：export LOG_FILE=/dev/null
+LOG_FILE="${LOG_FILE:-/tmp/iflow-cabal-autoloop.log}"
+exec >>"$LOG_FILE" 2>&1
 
 ###############################################################################
 # iflow-cabal-autoloop.sh (no-watchdog)
@@ -14,6 +16,16 @@ exec >/dev/null 2>&1
 # 修复点（在原有修复点基础上新增/调整）：
 # A) derive_github_repo：修复 GitHub remote URL 正则，兼容 https/ssh/scp 风格
 # B) ps_children_of：移除不可靠的 `ps ... -ppid` 分支，改为失败即回退到通用枚举过滤
+#
+# 重要修复（本次新增）：
+# C) 在 set -e 模式下，push_if_ahead / ensure_branch / ensure_gitee_remote 等函数内部
+#    若 git push/checkout/remote add 失败，会导致脚本直接退出，破坏 retry/|| true 语义。
+#    现已将关键 git 操作改为“失败 return”，避免意外终止外层重试流程。
+#
+# 新增：每运行 RUN_HOURS（默认 5 小时）后
+# - 自动把未提交变更做一次 autosave commit（可通过 AUTO_COMMIT_ON_TIMEOUT=0 关闭）
+# - 同时 push 到 GitHub(origin) 与 Gitee(gitee)
+# - push 失败会自动重试（默认一直重试，确保“提交并推送成功后再进入下一轮”）
 ###############################################################################
 
 ############################
@@ -23,11 +35,29 @@ RUN_HOURS="${RUN_HOURS:-5}"
 WORK_BRANCH="${WORK_BRANCH:-master}"
 GIT_REMOTE="${GIT_REMOTE:-origin}"
 
+# Gitee 推送支持：
+# - 默认认为远端名叫 gitee
+# - 若本地没有该 remote：
+#     - 优先使用 GITEE_REMOTE_URL 添加
+#     - 否则尝试从 GitHub 的 owner/repo 推断：https://gitee.com/owner/repo.git
+GITEE_REMOTE="${GITEE_REMOTE:-gitee}"
+GITEE_REMOTE_URL="${GITEE_REMOTE_URL:-}"
+
+# 推送的远端列表（空格分隔）。默认：GitHub + Gitee
+PUSH_REMOTES="${PUSH_REMOTES:-$GIT_REMOTE $GITEE_REMOTE}"
+
+# 推送失败重试策略（确保“推送完成后再进入下一轮”）
+PUSH_RETRY_INTERVAL="${PUSH_RETRY_INTERVAL:-60}"  # 秒
+PUSH_RETRY_FOREVER="${PUSH_RETRY_FOREVER:-1}"     # 1=一直重试；0=失败就放过（不推荐）
+
 GIT_USER_NAME="${GIT_USER_NAME:-iflow-bot}"
 GIT_USER_EMAIL="${GIT_USER_EMAIL:-iflow-bot@users.noreply.github.com}"
 
 # 是否启用“自动 bump + GitHub Release”
 ENABLE_RELEASE="${ENABLE_RELEASE:-0}"   # 0/1
+
+# timeout 结束时是否把未提交变更自动提交（WIP autosave）
+AUTO_COMMIT_ON_TIMEOUT="${AUTO_COMMIT_ON_TIMEOUT:-1}"  # 0/1
 
 ############################
 # 1) iFlow -> NVIDIA Integrate 配置（OpenAI-compatible）
@@ -170,53 +200,159 @@ ensure_moon() {
 ensure_branch() {
   log "Ensuring branch: $WORK_BRANCH"
 
-  git fetch "$GIT_REMOTE" --prune || true
+  git fetch "$GIT_REMOTE" --prune >/dev/null 2>&1 || true
 
   if git show-ref --verify --quiet "refs/remotes/${GIT_REMOTE}/${WORK_BRANCH}"; then
     # 远端存在该分支
     if git show-ref --verify --quiet "refs/heads/${WORK_BRANCH}"; then
-      git checkout "$WORK_BRANCH"
+      git checkout "$WORK_BRANCH" || { log "WARN: git checkout ${WORK_BRANCH} failed."; return 1; }
       git merge --ff-only "${GIT_REMOTE}/${WORK_BRANCH}" || {
         log "WARN: cannot fast-forward ${WORK_BRANCH} to ${GIT_REMOTE}/${WORK_BRANCH}. Manual intervention may be needed."
       }
     else
       # 本地没有该分支：从远端分支创建，避免从错误 HEAD 分叉
-      git checkout -b "$WORK_BRANCH" "${GIT_REMOTE}/${WORK_BRANCH}"
+      git checkout -b "$WORK_BRANCH" "${GIT_REMOTE}/${WORK_BRANCH}" || {
+        log "WARN: git checkout -b ${WORK_BRANCH} from ${GIT_REMOTE}/${WORK_BRANCH} failed."
+        return 1
+      }
     fi
     git branch --set-upstream-to="${GIT_REMOTE}/${WORK_BRANCH}" "$WORK_BRANCH" >/dev/null 2>&1 || true
   else
     # 远端不存在该分支：本地确保存在即可
     if git show-ref --verify --quiet "refs/heads/${WORK_BRANCH}"; then
-      git checkout "$WORK_BRANCH"
+      git checkout "$WORK_BRANCH" || { log "WARN: git checkout ${WORK_BRANCH} failed."; return 1; }
     else
-      git checkout -b "$WORK_BRANCH"
+      git checkout -b "$WORK_BRANCH" || { log "WARN: git checkout -b ${WORK_BRANCH} failed."; return 1; }
     fi
   fi
 }
 
-push_if_ahead() {
-  git fetch "$GIT_REMOTE" --prune || true
+push_if_ahead() {  # push_if_ahead [remote]
+  # 注意：在 set -e 模式下，函数内部的 git push 失败可能导致脚本直接退出。
+  # 这里用 “|| return 1 / if ! ...; then ...” 确保失败只向上返回状态码，方便外层重试。
+  local remote="${1:-$GIT_REMOTE}"
+
+  git fetch "$remote" --prune >/dev/null 2>&1 || true
 
   # 远端分支不存在：直接推送
-  if ! git show-ref --verify --quiet "refs/remotes/${GIT_REMOTE}/${WORK_BRANCH}"; then
-    log "Remote branch ${GIT_REMOTE}/${WORK_BRANCH} missing; pushing HEAD:${WORK_BRANCH}..."
-    git push "$GIT_REMOTE" "HEAD:${WORK_BRANCH}"
+  if ! git show-ref --verify --quiet "refs/remotes/${remote}/${WORK_BRANCH}"; then
+    log "Remote branch ${remote}/${WORK_BRANCH} missing; pushing HEAD:${WORK_BRANCH}..."
+    git push "$remote" "HEAD:${WORK_BRANCH}" || return 1
     return 0
   fi
 
   local ahead
-  ahead="$(git rev-list --count "${GIT_REMOTE}/${WORK_BRANCH}..HEAD" 2>/dev/null || echo 0)"
+  ahead="$(git rev-list --count "${remote}/${WORK_BRANCH}..HEAD" 2>/dev/null || echo 0)"
   # 防御：确保是整数
   if [[ ! "$ahead" =~ ^[0-9]+$ ]]; then
     ahead="0"
   fi
 
   if [[ "$ahead" -gt 0 ]]; then
-    log "Pushing ${ahead} commit(s) to ${GIT_REMOTE}/${WORK_BRANCH}..."
-    git push "$GIT_REMOTE" "HEAD:${WORK_BRANCH}"
+    log "Pushing ${ahead} commit(s) to ${remote}/${WORK_BRANCH}..."
+    git push "$remote" "HEAD:${WORK_BRANCH}" || return 1
   else
-    log "No commits ahead of remote. Skip push."
+    log "No commits ahead of ${remote}/${WORK_BRANCH}. Skip push."
   fi
+}
+
+remote_exists() {
+  local r="$1"
+  git remote get-url "$r" >/dev/null 2>&1
+}
+
+infer_gitee_url_from_github() {
+  local gh_repo
+  gh_repo="$(derive_github_repo 2>/dev/null || true)"
+  [[ -n "${gh_repo:-}" ]] || return 1
+  printf 'https://gitee.com/%s.git\n' "$gh_repo"
+}
+
+ensure_gitee_remote() {
+  # 若已存在，直接返回
+  if remote_exists "$GITEE_REMOTE"; then
+    return 0
+  fi
+
+  local url="${GITEE_REMOTE_URL:-}"
+  if [[ -z "${url:-}" ]]; then
+    url="$(infer_gitee_url_from_github || true)"
+  fi
+
+  if [[ -z "${url:-}" ]]; then
+    log "WARN: ${GITEE_REMOTE} remote missing and cannot infer url. Skip Gitee push."
+    return 1
+  fi
+
+  log "Adding gitee remote: ${GITEE_REMOTE} -> ${url}"
+  git remote add "$GITEE_REMOTE" "$url" || {
+    log "WARN: failed to add remote ${GITEE_REMOTE}."
+    return 1
+  }
+}
+
+commit_worktree_if_dirty() {
+  # 自动把未提交内容保存成一次提交（用于 5 小时窗口结束时“确保提交”）
+  local msg="$1"
+
+  if git diff --quiet && git diff --cached --quiet; then
+    return 0
+  fi
+
+  git add -A
+
+  if git diff --cached --quiet; then
+    return 0
+  fi
+
+  git commit -m "$msg" || true
+}
+
+push_all_remotes() {
+  # 返回值：仅当“主远端(GIT_REMOTE) push 失败”才返回非 0；Gitee 失败不影响返回值
+  local primary_status=0
+
+  # 尝试保证 gitee remote 存在（失败就跳过）
+  ensure_gitee_remote || true
+
+  local r
+  for r in $PUSH_REMOTES; do
+    remote_exists "$r" || { log "WARN: remote not found: $r, skip."; continue; }
+
+    if [[ "$r" == "$GIT_REMOTE" ]]; then
+      push_if_ahead "$r" || primary_status=1
+      git push "$r" --tags >/dev/null 2>&1 || true
+    else
+      push_if_ahead "$r" || true
+      git push "$r" --tags >/dev/null 2>&1 || true
+    fi
+  done
+
+  return "$primary_status"
+}
+
+push_all_remotes_with_retry() {
+  # 确保“主远端(GIT_REMOTE)”推送成功才返回 0
+  # 默认一直重试（PUSH_RETRY_FOREVER=1），从而保证“提交并推送完成后再进入下一轮”
+  local attempt=0
+
+  while true; do
+    attempt=$(( attempt + 1 ))
+
+    if push_all_remotes; then
+      log "Push ok."
+      return 0
+    fi
+
+    log "WARN: push to primary remote failed (attempt=${attempt})."
+
+    if [[ "$PUSH_RETRY_FOREVER" != "1" ]]; then
+      log "WARN: PUSH_RETRY_FOREVER!=1, giving up retry."
+      return 1
+    fi
+
+    sleep "$PUSH_RETRY_INTERVAL"
+  done
 }
 
 ############################
@@ -370,7 +506,10 @@ attempt_bump_and_release() {
   fi
 
   git commit -m "chore(release): v${new_ver}" || { log "WARN: commit failed, skip."; return 0; }
-  push_if_ahead || { log "WARN: push failed, skip release creation."; return 0; }
+  push_if_ahead "$GIT_REMOTE" || { log "WARN: push failed, skip release creation."; return 0; }
+
+  # 同步推送到其它远端（如 gitee），失败不影响 release 流程
+  push_all_remotes || true
 
   tag="v${new_ver}"
   command -v gh >/dev/null 2>&1 || { log "WARN: gh missing, cannot create release."; return 0; }
@@ -456,7 +595,7 @@ run_inner_loop_forever() {
       fi
     else
       log "Fixing via iflow..."
-      run_cmd iflow "如果PLAN.md里的特性都实现了(如果没有没有都实现就实现这些特性，给项目命名为Ion，项目直接放在当前目录，不要放在当前目录/Ion)就解决moon test显示的所有问题（除了warning），除非测试用例本身有编译错误，否则只修改测试用例以外的代码，debug时可通过加日志和打断点，尽量不要消耗大量CPU/内存资源 think:high" --yolo || true
+      run_cmd iflow "如果PLAN.md里的特性都实现了(如果没有没有都实现就实现这些特性，给项目命名为Ion)就解决moon test显示的所有问题（除了warning），除非测试用例本身有编译错误，否则只修改测试用例以外的代码，debug时可通过加日志和打断点，尽量不要消耗大量CPU/内存资源 think:high" --yolo || true
     fi
 
     log "Looping..."
@@ -487,6 +626,7 @@ outer_main() {
   log "IFLOW_BASE_URL=$IFLOW_BASE_URL"
   log "IFLOW_MODEL_NAME=$IFLOW_MODEL_NAME"
   log "IFLOW_selectedAuthType=$IFLOW_selectedAuthType"
+  log "LOG_FILE=$LOG_FILE"
 
   local tbin
   tbin="$(timeout_bin)"
@@ -500,14 +640,25 @@ outer_main() {
     log "Run loop for ${RUN_HOURS} hour(s)..."
 
     # 用 setsid 把 inner 放到独立 session/进程组，便于 timeout/TERM 时一并回收子进程
+    # 加 --kill-after 防止 TERM 后仍残留（例如子进程忽略 TERM）
     if command -v setsid >/dev/null 2>&1; then
-      "$tbin" --signal=TERM $(( RUN_HOURS * 3600 )) setsid bash "$script" __inner__ || true
+      "$tbin" --signal=TERM --kill-after=60s $(( RUN_HOURS * 3600 )) setsid bash "$script" __inner__ || true
     else
       # 没有 setsid 也能跑，但 inner 已避免 kill 0 误伤；清理力度会弱一点
-      "$tbin" --signal=TERM $(( RUN_HOURS * 3600 )) bash "$script" __inner__ || true
+      "$tbin" --signal=TERM --kill-after=60s $(( RUN_HOURS * 3600 )) bash "$script" __inner__ || true
     fi
 
-    push_if_ahead || true
+    # timeout 结束后：确保把当前进度“提交+推送”到 GitHub/Gitee，然后再进入下一轮
+    # 这里的 ensure_branch 允许失败（网络/冲突等），不要让脚本直接崩掉
+    ensure_branch || true
+
+    if [[ "$AUTO_COMMIT_ON_TIMEOUT" == "1" ]]; then
+      commit_worktree_if_dirty "chore: autosave after ${RUN_HOURS}h ($(date '+%F %T'))"
+    fi
+
+    # 默认：一直重试直到主远端(GIT_REMOTE)推送成功
+    push_all_remotes_with_retry
+
     ensure_branch || true
   done
 }
