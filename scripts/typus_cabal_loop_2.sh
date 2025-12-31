@@ -26,6 +26,10 @@ exec >>"$LOG_FILE" 2>&1
 # - 自动把未提交变更做一次 autosave commit（可通过 AUTO_COMMIT_ON_TIMEOUT=0 关闭）
 # - 同时 push 到 GitHub(origin) 与 Gitee(gitee)
 # - push 失败会自动重试（默认一直重试，确保“提交并推送成功后再进入下一轮”）
+#
+# 新增功能：支持通过环境变量设置远端 URL
+# - GITHUB_REMOTE_URL: 强制设置 GitHub (origin) 的仓库地址
+# - GITEE_REMOTE_URL: 强制设置 Gitee (gitee) 的仓库地址
 ###############################################################################
 
 ############################
@@ -35,10 +39,15 @@ RUN_HOURS="${RUN_HOURS:-5}"
 WORK_BRANCH="${WORK_BRANCH:-master}"
 GIT_REMOTE="${GIT_REMOTE:-origin}"
 
+# GitHub 远端 URL 配置
+# - 若设置，脚本将确保 $GIT_REMOTE 指向该地址
+# - 若未设置，脚本使用当前 $GIT_REMOTE 已有的配置
+GITHUB_REMOTE_URL="${GITHUB_REMOTE_URL:-}"
+
 # Gitee 推送支持：
 # - 默认认为远端名叫 gitee
-# - 若本地没有该 remote：
-#     - 优先使用 GITEE_REMOTE_URL 添加
+# - 若本地没有该 remote 或 URL 不匹配环境变量：
+#     - 优先使用 GITEE_REMOTE_URL 添加/更新
 #     - 否则尝试从 GitHub 的 owner/repo 推断：https://gitee.com/owner/repo.git
 GITEE_REMOTE="${GITEE_REMOTE:-gitee}"
 GITEE_REMOTE_URL="${GITEE_REMOTE_URL:-}"
@@ -197,6 +206,64 @@ ensure_moon() {
 ############################
 # 4) git 分支就位 & 同步（修复版）
 ############################
+ensure_github_remote() {
+  # 确保 GitHub 远端配置正确
+  local url="${GITHUB_REMOTE_URL:-}"
+
+  # 如果未指定环境变量，且远端已存在，则信任现有配置
+  if [[ -z "${url:-}" ]]; then
+    remote_exists "$GIT_REMOTE" || { log "ERROR: $GIT_REMOTE remote missing and GITHUB_REMOTE_URL not set."; return 1; }
+    return 0
+  fi
+
+  # 如果指定了环境变量，强制设置/更新
+  if remote_exists "$GIT_REMOTE"; then
+    local current_url
+    current_url="$(git remote get-url "$GIT_REMOTE" 2>/dev/null || true)"
+    if [[ "$current_url" != "$url" ]]; then
+      log "Updating GitHub remote URL: ${GIT_REMOTE} -> ${url}"
+      git remote set-url "$GIT_REMOTE" "$url" || { log "WARN: failed to update GitHub remote."; return 1; }
+    fi
+  else
+    log "Adding GitHub remote: ${GIT_REMOTE} -> ${url}"
+    git remote add "$GIT_REMOTE" "$url" || { log "WARN: failed to add GitHub remote."; return 1; }
+  fi
+}
+
+ensure_gitee_remote() {
+  # 确保 Gitee 远端配置正确
+  local url="${GITEE_REMOTE_URL:-}"
+
+  # 1. 如果未设置环境变量
+  if [[ -z "${url:-}" ]]; then
+    # 如果 remote 已存在，就不动它（信任现有配置）
+    if remote_exists "$GITEE_REMOTE"; then
+      return 0
+    fi
+    # 如果 remote 不存在，尝试从 GitHub 推断
+    url="$(infer_gitee_url_from_github || true)"
+  fi
+
+  # 如果 URL 仍为空（无法推断且未设置），则无法处理 Gitee
+  if [[ -z "${url:-}" ]]; then
+    log "WARN: ${GITEE_REMOTE} remote missing and cannot infer url. Skip Gitee push."
+    return 1
+  fi
+
+  # 2. 此时我们有了 url，确保 remote 指向它
+  if remote_exists "$GITEE_REMOTE"; then
+    local current_url
+    current_url="$(git remote get-url "$GITEE_REMOTE" 2>/dev/null || true)"
+    if [[ "$current_url" != "$url" ]]; then
+      log "Updating Gitee remote URL: ${GITEE_REMOTE} -> ${url}"
+      git remote set-url "$GITEE_REMOTE" "$url" || { log "WARN: failed to update Gitee remote."; return 1; }
+    fi
+  else
+    log "Adding Gitee remote: ${GITEE_REMOTE} -> ${url}"
+    git remote add "$GITEE_REMOTE" "$url" || { log "WARN: failed to add Gitee remote."; return 1; }
+  fi
+}
+
 ensure_branch() {
   log "Ensuring branch: $WORK_BRANCH"
 
@@ -266,29 +333,6 @@ infer_gitee_url_from_github() {
   gh_repo="$(derive_github_repo 2>/dev/null || true)"
   [[ -n "${gh_repo:-}" ]] || return 1
   printf 'https://gitee.com/%s.git\n' "$gh_repo"
-}
-
-ensure_gitee_remote() {
-  # 若已存在，直接返回
-  if remote_exists "$GITEE_REMOTE"; then
-    return 0
-  fi
-
-  local url="${GITEE_REMOTE_URL:-}"
-  if [[ -z "${url:-}" ]]; then
-    url="$(infer_gitee_url_from_github || true)"
-  fi
-
-  if [[ -z "${url:-}" ]]; then
-    log "WARN: ${GITEE_REMOTE} remote missing and cannot infer url. Skip Gitee push."
-    return 1
-  fi
-
-  log "Adding gitee remote: ${GITEE_REMOTE} -> ${url}"
-  git remote add "$GITEE_REMOTE" "$url" || {
-    log "WARN: failed to add remote ${GITEE_REMOTE}."
-    return 1
-  }
 }
 
 commit_worktree_if_dirty() {
@@ -618,6 +662,11 @@ outer_main() {
   [[ "$RUN_HOURS" =~ ^[0-9]+$ ]] || { log "ERROR: RUN_HOURS must be an integer (got: $RUN_HOURS)"; exit 1; }
 
   ensure_git
+
+  # 初始化远端配置（在 fetch/checkout 之前）
+  ensure_github_remote || log "WARN: Failed to ensure GitHub remote config."
+  ensure_gitee_remote || log "WARN: Failed to ensure Gitee remote config."
+
   ensure_branch
 
   ensure_node_and_iflow
