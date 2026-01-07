@@ -209,7 +209,7 @@ ensure_moon() {
 ensure_github_remote() {
   # 确保 GitHub 远端配置正确
   local url="${GITHUB_REMOTE_URL:-}"
-  
+
   # 如果未指定环境变量，且远端已存在，则信任现有配置
   if [[ -z "${url:-}" ]]; then
     remote_exists "$GIT_REMOTE" || { log "ERROR: $GIT_REMOTE remote missing and GITHUB_REMOTE_URL not set."; return 1; }
@@ -591,6 +591,12 @@ run_inner_loop_forever() {
   trap terminate_inner INT TERM
 
   while true; do
+    # 检查 MoonBit 必要配置文件
+    if [[ ! -f "moon.mod.json" ]]; then
+      log "MoonBit config missing. Fixing via iflow..."
+      run_cmd iflow "如果PLAN.md里的特性都实现了(如果没有没有都实现就实现这些特性，给项目命名为Feather)就解决moon test显示的所有问题（除了warning），除非测试用例本身有编译错误，否则只修改测试用例以外的代码，debug时可通过加日志和打断点，尽量不要消耗大量CPU/内存资源 think:high" --yolo || true
+    fi
+
     log "Running: moon test"
     : > "$MOON_TEST_LOG"
 
@@ -662,11 +668,11 @@ outer_main() {
   [[ "$RUN_HOURS" =~ ^[0-9]+$ ]] || { log "ERROR: RUN_HOURS must be an integer (got: $RUN_HOURS)"; exit 1; }
 
   ensure_git
-  
+
   # 初始化远端配置（在 fetch/checkout 之前）
   ensure_github_remote || log "WARN: Failed to ensure GitHub remote config."
   ensure_gitee_remote || log "WARN: Failed to ensure Gitee remote config."
-  
+
   ensure_branch
 
   ensure_node_and_iflow
