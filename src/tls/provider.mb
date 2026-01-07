@@ -1,0 +1,12 @@
+/// TLS provider implementations
+/// 
+/// This module provides concrete TLS provider implementations.
+/// In a production environment, these would use FFI to bind to OpenSSL, BoringSSL, or rustls.
+
+pub fn default_provider() -> TlsProvider {
+  MockTlsProvider::new()
+}
+
+pub fn mock_provider() -> MockTlsProvider {
+  MockTlsProvider::new()
+}

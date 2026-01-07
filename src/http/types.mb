@@ -1,0 +1,144 @@
+/// HTTP types and constants
+
+pub enum HttpMethod {
+  GET
+  POST
+  PUT
+  DELETE
+  HEAD
+  OPTIONS
+  PATCH
+}
+
+pub fn HttpMethod::to_string(self : HttpMethod) -> String {
+  match self {
+    GET => "GET"
+    POST => "POST"
+    PUT => "PUT"
+    DELETE => "DELETE"
+    HEAD => "HEAD"
+    OPTIONS => "OPTIONS"
+    PATCH => "PATCH"
+  }
+}
+
+pub struct HttpHeaders {
+  map : Map[String, String]
+}
+
+pub fn HttpHeaders::new() -> HttpHeaders {
+  { map: Map::new() }
+}
+
+pub fn HttpHeaders::set(self : HttpHeaders, key : String, value : String) -> Unit {
+  self.map[key] = value
+}
+
+pub fn HttpHeaders::get(self : HttpHeaders, key : String) -> Option[String] {
+  self.map.get(key)
+}
+
+pub fn HttpHeaders::remove(self : HttpHeaders, key : String) -> Unit {
+  self.map.remove(key)
+}
+
+pub fn HttpHeaders::iter(self : HttpHeaders) -> Iter[(String, String)] {
+  self.map.iter()
+}
+
+pub fn HttpHeaders::to_string(self : HttpHeaders) -> String {
+  let mut result = """
+  for (k, v) in self.map {
+    result = result + k + ": " + v + "\r\n"
+  }
+  result
+}
+
+pub struct Request {
+  method : HttpMethod
+  url : String
+  headers : HttpHeaders
+  body : Option[Bytes]
+  timeout_ms : Int
+}
+
+pub fn Request::new(method : HttpMethod, url : String) -> Request {
+  {
+    method,
+    url,
+    headers: HttpHeaders::new(),
+    body: None,
+    timeout_ms: 30000
+  }
+}
+
+pub fn Request::get(url : String) -> Request {
+  Request::new(GET, url)
+}
+
+pub fn Request::post(url : String, body : Bytes) -> Request {
+  let req = Request::new(POST, url)
+  req.body = Some(body)
+  req
+}
+
+pub fn Request::set_header(self : Request, key : String, value : String) -> Request {
+  self.headers.set(key, value)
+  self
+}
+
+pub fn Request::set_timeout(self : Request, timeout_ms : Int) -> Request {
+  self.timeout_ms = timeout_ms
+  self
+}
+
+pub struct Response {
+  status : Int
+  headers : HttpHeaders
+  body_stream : Stream
+}
+
+pub fn Response::new(status : Int, body_stream : Stream) -> Response {
+  {
+    status,
+    headers: HttpHeaders::new(),
+    body_stream
+  }
+}
+
+pub fn Response::status(self : Response) -> Int {
+  self.status
+}
+
+pub fn Response::header(self : Response, key : String) -> Option[String] {
+  self.headers.get(key)
+}
+
+pub fn Response::read_body(self : Response, buf : Bytes) -> Result[Int, NetError] {
+  self.body_stream.read(buf)
+}
+
+pub fn Response::close(self : Response) -> Result[Unit, NetError] {
+  self.body_stream.close()
+}
+
+/// HTTP error types
+pub enum HttpError {
+  InvalidUrl(String)
+  RequestFailed(String)
+  Timeout
+  TooManyRedirects
+  InvalidResponse(String)
+  NetworkError(NetError)
+}
+
+pub fn to_string(self : HttpError) -> String {
+  match self {
+    InvalidUrl(msg) => "InvalidUrl: " + msg
+    RequestFailed(msg) => "RequestFailed: " + msg
+    Timeout => "Timeout"
+    TooManyRedirects => "TooManyRedirects"
+    InvalidResponse(msg) => "InvalidResponse: " + msg
+    NetworkError(err) => "NetworkError: " + err.to_string()
+  }
+}
