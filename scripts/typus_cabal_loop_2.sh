@@ -22,6 +22,7 @@ exec >>"$LOG_FILE" 2>&1
 # - 移除 NVIDIA OpenAI 接口配置，改用 Anthropic 原生 API Key (ANTHROPIC_API_KEY)
 # - 移除 IFLOW 相关逻辑，替换为 `claude --non-interactive` 命令调用
 # - 支持通过 CLAUDE_CMD 变量切换命令（默认为 claude，若使用 ccr 包装器可修改为 ccr）
+# - ✅ 新增：支持 Claude Code Router (ccr)，自动管理服务和配置
 ###############################################################################
 
 ############################
@@ -33,8 +34,32 @@ GIT_REMOTE="${GIT_REMOTE:-origin}"
 
 # Claude Code 配置
 # - CLAUDE_CMD: 默认使用官方 claude 命令。
-# - 如果你使用 ccr (Claude Code Runner) 等工具，可设置为 "ccr"
+# - 如果你使用 ccr (Claude Code Router) 等工具，可设置为 "ccr"
 CLAUDE_CMD="${CLAUDE_CMD:-claude}"
+
+############################
+# 0.5) Claude Code Router 配置
+############################
+# 是否启用 Router 模式（0=禁用，1=启用）
+# 如果 CLAUDE_CMD=ccr，则自动启用
+USE_CLAUDE_CODE_ROUTER="${USE_CLAUDE_CODE_ROUTER:-0}"
+
+# Router 监听地址
+CCR_HOST="${CCR_HOST:-127.0.0.1}"
+CCR_PORT="${CCR_PORT:-3456}"
+
+# Router 配置目录
+CCR_CONFIG_DIR="${HOME}/.claude-code-router"
+CCR_CONFIG_FILE="${CCR_CONFIG_DIR}/config.json"
+
+# Router 日志文件
+CCR_LOG_FILE="${CCR_LOG_FILE:-/tmp/claude-code-router.log}"
+
+# Router 所需的 OpenAI 兼容 API 配置
+# 可以从 ANTHROPIC_API_KEY 继承，也可以单独设置
+OPENAI_API_KEY="${OPENAI_API_KEY:-${ANTHROPIC_API_KEY:-}}"
+OPENAI_BASE_URL="${OPENAI_BASE_URL:-https://api.deepseek.com}"
+OPENAI_MODEL="${OPENAI_MODEL:-deepseek-chat}"
 
 # GitHub 远端 URL 配置
 GITHUB_REMOTE_URL="${GITHUB_REMOTE_URL:-}"
@@ -65,8 +90,8 @@ AUTO_COMMIT_ON_TIMEOUT="${AUTO_COMMIT_ON_TIMEOUT:-1}"  # 0/1
 # Claude CLI 默认读取 ANTHROPIC_API_KEY
 : "${ANTHROPIC_API_KEY:?Missing ANTHROPIC_API_KEY. Please export ANTHROPIC_API_KEY before running.}"
 
-# 可选：设置 Anthropic Base URL (通常不需要，除非使用代理)
-# export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-}"
+# 如果使用 Router，ANTHROPIC_API_KEY 可以是任意值（dummy key）
+# 实际的 API key 在 Router 配置中
 
 ############################
 # 2) 工具函数：日志/依赖/timeout 兼容
@@ -147,6 +172,159 @@ try_kill_process_group_if_safe() {
 }
 
 ############################
+# 2.6) Claude Code Router 管理函数
+############################
+ensure_claude_code_router_config() {
+  [[ "$USE_CLAUDE_CODE_ROUTER" == "1" ]] || return 0
+  
+  # 确保 API key 已设置
+  if [[ -z "${OPENAI_API_KEY:-}" ]]; then
+    log "ERROR: OPENAI_API_KEY (or ANTHROPIC_API_KEY) is required for Claude Code Router"
+    log "Please set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable"
+    exit 1
+  fi
+  
+  # 创建配置目录
+  if [[ ! -d "$CCR_CONFIG_DIR" ]]; then
+    log "Creating Claude Code Router config directory: $CCR_CONFIG_DIR"
+    mkdir -p "$CCR_CONFIG_DIR"
+  fi
+  
+  # 如果配置文件不存在或强制重新生成，创建配置
+  if [[ ! -f "$CCR_CONFIG_FILE" ]] || [[ "${CCR_FORCE_RECONFIG:-0}" == "1" ]]; then
+    log "Creating Claude Code Router config: $CCR_CONFIG_FILE"
+    
+    # 解析提供商名称和模型
+    local provider_name="default"
+    local model_name="${OPENAI_MODEL}"
+    
+    # 检查是否为 openrouter
+    if [[ "$OPENAI_BASE_URL" == *"openrouter"* ]]; then
+      provider_name="openrouter"
+      # 从 URL 中提取模型
+      if [[ "$OPENAI_MODEL" == */* ]]; then
+        model_name="${OPENAI_MODEL}"
+      else
+        model_name="anthropic/${OPENAI_MODEL}"
+      fi
+    fi
+    
+    # 处理 transformer 配置
+    local transformer="[\"${provider_name}\"]"
+    if [[ "$provider_name" == "openrouter" ]]; then
+      transformer="[\"openrouter\"]"
+    fi
+    
+    # 创建配置
+    cat > "$CCR_CONFIG_FILE" <<EOF
+{
+  "Providers": [
+    {
+      "name": "${provider_name}",
+      "api_base_url": "${OPENAI_BASE_URL}/chat/completions",
+      "api_key": "${OPENAI_API_KEY}",
+      "models": ["${model_name}"],
+      "transformer": {
+        "use": ${transformer}
+      }
+    }
+  ],
+  "Router": {
+    "default": "${provider_name},${model_name}"
+  },
+  "LOG": true,
+  "HOST": "${CCR_HOST}",
+  "PORT": ${CCR_PORT}
+}
+EOF
+
+    log "Config created with provider: ${provider_name}, model: ${model_name}"
+  else
+    log "Using existing Claude Code Router config: $CCR_CONFIG_FILE"
+  fi
+}
+
+start_claude_code_router() {
+  [[ "$USE_CLAUDE_CODE_ROUTER" == "1" ]] || return 0
+  
+  # 检查服务是否已在运行
+  if curl -s "http://${CCR_HOST}:${CCR_PORT}/health" >/dev/null 2>&1; then
+    log "Claude Code Router is already running on ${CCR_HOST}:${CCR_PORT}"
+    return 0
+  fi
+  
+  # 检查端口是否被其他进程占用
+  if command -v lsof >/dev/null 2>&1 && lsof -i :${CCR_PORT} >/dev/null 2>&1; then
+    log "WARN: Port ${CCR_PORT} is in use by another process"
+    return 1
+  fi
+  
+  log "Starting Claude Code Router on ${CCR_HOST}:${CCR_PORT}..."
+  
+  # 确保配置存在
+  ensure_claude_code_router_config
+  
+  # 启动服务
+  nohup ccr start >> "$CCR_LOG_FILE" 2>&1 &
+  local router_pid=$!
+  
+  # 等待服务启动
+  local wait_time=0
+  local max_wait=30
+  
+  while [[ $wait_time -lt $max_wait ]]; do
+    if curl -s "http://${CCR_HOST}:${CCR_PORT}/health" >/dev/null 2>&1; then
+      log "Claude Code Router started successfully (PID: $router_pid)"
+      return 0
+    fi
+    
+    # 检查进程是否还在运行
+    if ! kill -0 $router_pid 2>/dev/null; then
+      log "ERROR: Claude Code Router process died unexpectedly"
+      log "Last 50 lines of router log:"
+      tail -n 50 "$CCR_LOG_FILE" 2>/dev/null || log "No log file found"
+      return 1
+    fi
+    
+    sleep 1
+    wait_time=$((wait_time + 1))
+  done
+  
+  log "ERROR: Claude Code Router failed to start after ${max_wait} seconds"
+  kill $router_pid 2>/dev/null || true
+  log "Last 50 lines of router log:"
+  tail -n 50 "$CCR_LOG_FILE" 2>/dev/null || log "No log file found"
+  return 1
+}
+
+stop_claude_code_router() {
+  local pid="${1:-}"
+  
+  log "Stopping Claude Code Router..."
+  
+  # 尝试使用 ccr stop 命令
+  ccr stop >/dev/null 2>&1 || true
+  
+  # 如果提供了 PID，尝试杀死进程
+  if [[ -n "$pid" ]]; then
+    if kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null || true
+      sleep 1
+      
+      # 强制杀死
+      if kill -0 "$pid" 2>/dev/null; then
+        kill -9 "$pid" 2>/dev/null || true
+      fi
+    fi
+  fi
+  
+  # 清理可能残留的进程
+  pkill -f "claude-code-router" 2>/dev/null || true
+  
+  log "Claude Code Router stopped"
+}
+
+############################
 # 3) 依赖准备：git / node / claude / moon
 ############################
 ensure_git() {
@@ -157,12 +335,32 @@ ensure_git() {
 }
 
 ensure_claude() {
-  # 如果用户指定了 ccr，这里只检查命令是否存在，不尝试通过 npm 安装 ccr
+  # 如果使用 ccr，确保 router 已安装并配置
   if [[ "$CLAUDE_CMD" == "ccr" ]]; then
+    # 检查 ccr 命令
     if ! command -v ccr >/dev/null 2>&1; then
-      log "ERROR: CLAUDE_CMD is set to 'ccr' but command not found. Please install ccr manually."
-      exit 1
+      log "Installing Claude Code Router..."
+      npm i -g @musistudio/claude-code-router@latest
     fi
+    
+    # 启用 router 模式
+    USE_CLAUDE_CODE_ROUTER=1
+    
+    # 确保 API key 可用
+    if [[ -z "${OPENAI_API_KEY:-}" ]]; then
+      if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+        OPENAI_API_KEY="${ANTHROPIC_API_KEY}"
+        log "Using ANTHROPIC_API_KEY as OPENAI_API_KEY for router"
+      else
+        log "ERROR: OPENAI_API_KEY is required for Claude Code Router"
+        exit 1
+      fi
+    fi
+    
+    # 生成配置并启动服务
+    ensure_claude_code_router_config
+    start_claude_code_router || exit 1
+    
     return 0
   fi
 
@@ -453,7 +651,7 @@ attempt_bump_and_release() {
   local old_ver new_ver tag repo
   old_ver="$(extract_moon_version || true)"
   log "INFO: current version: ${old_ver:-<unknown>}"
-  
+
   # 使用 claude 替代 iflow
   # 提示词：修改 moon.mod.json 版本号
   log "INFO: bump patch version in moon.mod.json via ${CLAUDE_CMD}..."
@@ -499,6 +697,15 @@ attempt_bump_and_release() {
 # 7) 内层循环（Claude Code）
 ############################
 run_inner_loop_forever() {
+  # 设置指向 router 的环境变量
+  if [[ "$USE_CLAUDE_CODE_ROUTER" == "1" ]]; then
+    export ANTHROPIC_BASE_URL="http://${CCR_HOST}:${CCR_PORT}"
+    # API key 可以是任意值，因为实际 key 在 router 配置中
+    export ANTHROPIC_API_KEY="claude-code-router"
+    export ANTHROPIC_AUTH_TOKEN="claude-code-router"
+    log "Using Claude Code Router at ${ANTHROPIC_BASE_URL}"
+  fi
+  
   terminate_inner() {
     echo
     log "terminated."
@@ -594,11 +801,43 @@ outer_main() {
 
   ensure_branch
 
-  ensure_claude
+  # 如果使用 ccr 命令，自动启用 router 模式
+  if [[ "$CLAUDE_CMD" == "ccr" ]]; then
+    USE_CLAUDE_CODE_ROUTER=1
+  fi
+  
+  # 如果使用 router，确保配置并启动
+  if [[ "$USE_CLAUDE_CODE_ROUTER" == "1" ]]; then
+    # 确保 API key 可用
+    if [[ -z "${OPENAI_API_KEY:-}" ]]; then
+      if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+        OPENAI_API_KEY="${ANTHROPIC_API_KEY}"
+        log "Using ANTHROPIC_API_KEY as OPENAI_API_KEY for router"
+      else
+        log "ERROR: OPENAI_API_KEY (or ANTHROPIC_API_KEY) is required for Claude Code Router"
+        exit 1
+      fi
+    fi
+    
+    # 安装和启动 router
+    ensure_claude
+  else
+    # 原始逻辑
+    ensure_claude
+    # 检查 ANTHROPIC_API_KEY
+    : "${ANTHROPIC_API_KEY:?Missing ANTHROPIC_API_KEY. Please export ANTHROPIC_API_KEY before running.}"
+  fi
+  
   ensure_moon
 
   log "CLAUDE_CMD=$CLAUDE_CMD"
   log "LOG_FILE=$LOG_FILE"
+  
+  if [[ "$USE_CLAUDE_CODE_ROUTER" == "1" ]]; then
+    log "Claude Code Router enabled: http://${CCR_HOST}:${CCR_PORT}"
+    log "Router config: $CCR_CONFIG_FILE"
+    log "Router log: $CCR_LOG_FILE"
+  fi
 
   local tbin
   tbin="$(timeout_bin)"
@@ -606,6 +845,21 @@ outer_main() {
   local script
   script="${BASH_SOURCE[0]}"
   script="$(cd -- "$(dirname -- "$script")" && pwd)/$(basename -- "$script")"
+
+  # 设置退出时的清理
+  cleanup_on_exit() {
+    log "Cleaning up..."
+    
+    # 停止 router 服务
+    if [[ "$USE_CLAUDE_CODE_ROUTER" == "1" ]]; then
+      stop_claude_code_router
+    fi
+    
+    # 清理临时文件
+    kill_descendants "$$" || true
+    try_kill_process_group_if_safe || true
+  }
+  trap cleanup_on_exit EXIT INT TERM
 
   while true; do
     log "Run loop for ${RUN_HOURS} hour(s)..."
