@@ -7,11 +7,16 @@ LOG_FILE="${LOG_FILE:-/tmp/claude-cabal-autoloop.log}"
 exec >>"$LOG_FILE" 2>&1
 
 ###############################################################################
-# claude-cabal-autoloop.sh (no-watchdog)
+# claude-cabal-autoloop.sh (Direct Push Mode)
 # - 单文件融合版：等价于 claude-cabal-loop.yml + scripts/typus_cabal_loop.sh
 # - 非 GitHub Actions 环境运行
 # - 使用 Claude Code CLI (@anthropic-ai/claude-code)
 # - 已移除 watchdog/heartbeat 机制
+#
+# 工作模式变更：
+# - 移除了 Pull Request (PR) 创建逻辑。
+# - 直接在 WORK_BRANCH (默认 master) 上进行提交和推送。
+# - 下一轮循环开始前会自动拉取最新代码，确保基于最新的代码继续工作。
 #
 # 修复点（继承自原 iflow 版本）：
 # A) derive_github_repo：修复 GitHub remote URL 正则，兼容 https/ssh/scp 风格
@@ -176,28 +181,28 @@ try_kill_process_group_if_safe() {
 ############################
 ensure_claude_code_router_config() {
   [[ "$USE_CLAUDE_CODE_ROUTER" == "1" ]] || return 0
-  
+
   # 确保 API key 已设置
   if [[ -z "${OPENAI_API_KEY:-}" ]]; then
     log "ERROR: OPENAI_API_KEY (or ANTHROPIC_API_KEY) is required for Claude Code Router"
     log "Please set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable"
     exit 1
   fi
-  
+
   # 创建配置目录
   if [[ ! -d "$CCR_CONFIG_DIR" ]]; then
     log "Creating Claude Code Router config directory: $CCR_CONFIG_DIR"
     mkdir -p "$CCR_CONFIG_DIR"
   fi
-  
+
   # 如果配置文件不存在或强制重新生成，创建配置
   if [[ ! -f "$CCR_CONFIG_FILE" ]] || [[ "${CCR_FORCE_RECONFIG:-0}" == "1" ]]; then
     log "Creating Claude Code Router config: $CCR_CONFIG_FILE"
-    
+
     # 解析提供商名称和模型
     local provider_name="default"
     local model_name="${OPENAI_MODEL}"
-    
+
     # 检查是否为 openrouter
     if [[ "$OPENAI_BASE_URL" == *"openrouter"* ]]; then
       provider_name="openrouter"
@@ -208,13 +213,13 @@ ensure_claude_code_router_config() {
         model_name="anthropic/${OPENAI_MODEL}"
       fi
     fi
-    
+
     # 处理 transformer 配置
     local transformer="[\"${provider_name}\"]"
     if [[ "$provider_name" == "openrouter" ]]; then
       transformer="[\"openrouter\"]"
     fi
-    
+
     # 创建配置
     cat > "$CCR_CONFIG_FILE" <<EOF
 {
@@ -246,38 +251,38 @@ EOF
 
 start_claude_code_router() {
   [[ "$USE_CLAUDE_CODE_ROUTER" == "1" ]] || return 0
-  
+
   # 检查服务是否已在运行
   if curl -s "http://${CCR_HOST}:${CCR_PORT}/health" >/dev/null 2>&1; then
     log "Claude Code Router is already running on ${CCR_HOST}:${CCR_PORT}"
     return 0
   fi
-  
+
   # 检查端口是否被其他进程占用
   if command -v lsof >/dev/null 2>&1 && lsof -i :${CCR_PORT} >/dev/null 2>&1; then
     log "WARN: Port ${CCR_PORT} is in use by another process"
     return 1
   fi
-  
+
   log "Starting Claude Code Router on ${CCR_HOST}:${CCR_PORT}..."
-  
+
   # 确保配置存在
   ensure_claude_code_router_config
-  
+
   # 启动服务
   nohup ccr start >> "$CCR_LOG_FILE" 2>&1 &
   local router_pid=$!
-  
+
   # 等待服务启动
   local wait_time=0
   local max_wait=30
-  
+
   while [[ $wait_time -lt $max_wait ]]; do
     if curl -s "http://${CCR_HOST}:${CCR_PORT}/health" >/dev/null 2>&1; then
       log "Claude Code Router started successfully (PID: $router_pid)"
       return 0
     fi
-    
+
     # 检查进程是否还在运行
     if ! kill -0 $router_pid 2>/dev/null; then
       log "ERROR: Claude Code Router process died unexpectedly"
@@ -285,11 +290,11 @@ start_claude_code_router() {
       tail -n 50 "$CCR_LOG_FILE" 2>/dev/null || log "No log file found"
       return 1
     fi
-    
+
     sleep 1
     wait_time=$((wait_time + 1))
   done
-  
+
   log "ERROR: Claude Code Router failed to start after ${max_wait} seconds"
   kill $router_pid 2>/dev/null || true
   log "Last 50 lines of router log:"
@@ -299,28 +304,28 @@ start_claude_code_router() {
 
 stop_claude_code_router() {
   local pid="${1:-}"
-  
+
   log "Stopping Claude Code Router..."
-  
+
   # 尝试使用 ccr stop 命令
   ccr stop >/dev/null 2>&1 || true
-  
+
   # 如果提供了 PID，尝试杀死进程
   if [[ -n "$pid" ]]; then
     if kill -0 "$pid" 2>/dev/null; then
       kill "$pid" 2>/dev/null || true
       sleep 1
-      
+
       # 强制杀死
       if kill -0 "$pid" 2>/dev/null; then
         kill -9 "$pid" 2>/dev/null || true
       fi
     fi
   fi
-  
+
   # 清理可能残留的进程
   pkill -f "claude-code-router" 2>/dev/null || true
-  
+
   log "Claude Code Router stopped"
 }
 
@@ -342,10 +347,10 @@ ensure_claude() {
       log "Installing Claude Code Router..."
       npm i -g @musistudio/claude-code-router@latest
     fi
-    
+
     # 启用 router 模式
     USE_CLAUDE_CODE_ROUTER=1
-    
+
     # 确保 API key 可用
     if [[ -z "${OPENAI_API_KEY:-}" ]]; then
       if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
@@ -356,11 +361,11 @@ ensure_claude() {
         exit 1
       fi
     fi
-    
+
     # 生成配置并启动服务
     ensure_claude_code_router_config
     start_claude_code_router || exit 1
-    
+
     return 0
   fi
 
@@ -388,7 +393,7 @@ ensure_moon() {
 }
 
 ############################
-# 4) git 分支就位 & 同步
+# 4) git 分支就位 & 同步 (直接推送模式)
 ############################
 ensure_github_remote() {
   local url="${GITHUB_REMOTE_URL:-}"
@@ -435,15 +440,25 @@ ensure_gitee_remote() {
 }
 
 ensure_branch() {
-  log "Ensuring branch: $WORK_BRANCH"
+  log "Ensuring branch: $WORK_BRANCH (Direct Push Mode)"
   git fetch "$GIT_REMOTE" --prune >/dev/null 2>&1 || true
 
   if git show-ref --verify --quiet "refs/remotes/${GIT_REMOTE}/${WORK_BRANCH}"; then
     if git show-ref --verify --quiet "refs/heads/${WORK_BRANCH}"; then
       git checkout "$WORK_BRANCH" || { log "WARN: git checkout ${WORK_BRANCH} failed."; return 1; }
-      git merge --ff-only "${GIT_REMOTE}/${WORK_BRANCH}" || {
-        log "WARN: cannot fast-forward ${WORK_BRANCH} to ${GIT_REMOTE}/${WORK_BRANCH}. Manual intervention may be needed."
-      }
+      
+      # 在直接推送模式下，如果远程有更新，我们需要将本地修改 rebase 到远程之上
+      # 这样可以确保我们的提交是线性的，并且基于最新的代码
+      log "Syncing with ${GIT_REMOTE}/${WORK_BRANCH}..."
+      if ! git pull --rebase "${GIT_REMOTE}" "${WORK_BRANCH}" 2>/dev/null; then
+         log "WARN: Rebase failed. Trying merge..."
+         if ! git merge "${GIT_REMOTE}/${WORK_BRANCH}" 2>/dev/null; then
+            log "ERROR: Cannot fast-forward or merge ${WORK_BRANCH}. Manual intervention needed."
+            # 尝试放弃本地更改以恢复自动运行（可选，视需求而定，这里选择保守策略：中断）
+            # git reset --hard "${GIT_REMOTE}/${WORK_BRANCH}" || true
+            return 1
+         fi
+      fi
     else
       git checkout -b "$WORK_BRANCH" "${GIT_REMOTE}/${WORK_BRANCH}" || {
         log "WARN: git checkout -b ${WORK_BRANCH} from ${GIT_REMOTE}/${WORK_BRANCH} failed."
@@ -474,7 +489,7 @@ push_if_ahead() {
     ahead="0"
   fi
   if [[ "$ahead" -gt 0 ]]; then
-    log "Pushing ${ahead} commit(s) to ${remote}/${WORK_BRANCH}..."
+    log "Pushing ${ahead} commit(s) to ${remote}/${WORK_BRANCH} (Direct Push)..."
     git push "$remote" "HEAD:${WORK_BRANCH}" || return 1
   else
     log "No commits ahead of ${remote}/${WORK_BRANCH}. Skip push."
@@ -637,7 +652,7 @@ latest_release_age_ok() {
 }
 
 ############################
-# 6) bump + release
+# 6) bump + release (直接推送模式)
 ############################
 attempt_bump_and_release() {
   if [[ "$ENABLE_RELEASE" != "1" ]]; then
@@ -673,6 +688,7 @@ attempt_bump_and_release() {
   fi
 
   git commit -m "chore(release): v${new_ver}" || { log "WARN: commit failed, skip."; return 0; }
+  # 直接推送到当前分支，而不是 PR
   push_if_ahead "$GIT_REMOTE" || { log "WARN: push failed, skip release creation."; return 0; }
   push_all_remotes || true
 
@@ -705,7 +721,7 @@ run_inner_loop_forever() {
     export ANTHROPIC_AUTH_TOKEN="claude-code-router"
     log "Using Claude Code Router at ${ANTHROPIC_BASE_URL}"
   fi
-  
+
   terminate_inner() {
     echo
     log "terminated."
@@ -799,13 +815,14 @@ outer_main() {
   ensure_github_remote || log "WARN: Failed to ensure GitHub remote config."
   ensure_gitee_remote || log "WARN: Failed to ensure Gitee remote config."
 
+  # 初始确保分支
   ensure_branch
 
   # 如果使用 ccr 命令，自动启用 router 模式
   if [[ "$CLAUDE_CMD" == "ccr" ]]; then
     USE_CLAUDE_CODE_ROUTER=1
   fi
-  
+
   # 如果使用 router，确保配置并启动
   if [[ "$USE_CLAUDE_CODE_ROUTER" == "1" ]]; then
     # 确保 API key 可用
@@ -818,7 +835,7 @@ outer_main() {
         exit 1
       fi
     fi
-    
+
     # 安装和启动 router
     ensure_claude
   else
@@ -827,12 +844,12 @@ outer_main() {
     # 检查 ANTHROPIC_API_KEY
     : "${ANTHROPIC_API_KEY:?Missing ANTHROPIC_API_KEY. Please export ANTHROPIC_API_KEY before running.}"
   fi
-  
+
   ensure_moon
 
   log "CLAUDE_CMD=$CLAUDE_CMD"
   log "LOG_FILE=$LOG_FILE"
-  
+
   if [[ "$USE_CLAUDE_CODE_ROUTER" == "1" ]]; then
     log "Claude Code Router enabled: http://${CCR_HOST}:${CCR_PORT}"
     log "Router config: $CCR_CONFIG_FILE"
@@ -849,12 +866,12 @@ outer_main() {
   # 设置退出时的清理
   cleanup_on_exit() {
     log "Cleaning up..."
-    
+
     # 停止 router 服务
     if [[ "$USE_CLAUDE_CODE_ROUTER" == "1" ]]; then
       stop_claude_code_router
     fi
-    
+
     # 清理临时文件
     kill_descendants "$$" || true
     try_kill_process_group_if_safe || true
@@ -870,6 +887,8 @@ outer_main() {
       "$tbin" --signal=TERM --kill-after=60s $(( RUN_HOURS * 3600 )) bash "$script" __inner__ || true
     fi
 
+    # 每轮结束后，先同步最新代码，再提交剩余工作，再推送
+    # 这样确保下一轮是从最新的代码开始
     ensure_branch || true
 
     if [[ "$AUTO_COMMIT_ON_TIMEOUT" == "1" ]]; then
@@ -878,6 +897,7 @@ outer_main() {
 
     push_all_remotes_with_retry
 
+    # 再次确保分支是最新的，准备进入下一轮
     ensure_branch || true
   done
 }
