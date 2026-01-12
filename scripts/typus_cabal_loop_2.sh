@@ -2,8 +2,16 @@
 set -euo pipefail
 
 # 静默运行：不打印到终端，但默认写入日志文件，便于排查 5 小时后的提交/推送是否成功
+# 修复：默认日志路径改为 $HOME 目录，避免 /tmp 权限冲突
 # 如仍想彻底丢弃日志：export LOG_FILE=/dev/null
-LOG_FILE="${LOG_FILE:-/tmp/claude-cabal-autoloop.log}"
+LOG_FILE="${LOG_FILE:-${HOME}/.claude-cabal-autoloop.log}"
+
+# 尝试创建/触碰日志文件，检查写入权限。如果失败，则回退到 /dev/null
+if ! touch "$LOG_FILE" 2>/dev/null || [[ ! -w "$LOG_FILE" ]]; then
+  echo "Warning: Cannot write to log file '$LOG_FILE'. Falling back to /dev/null." >&2
+  LOG_FILE="/dev/null"
+fi
+
 exec >>"$LOG_FILE" 2>&1
 
 ###############################################################################
@@ -28,6 +36,7 @@ exec >>"$LOG_FILE" 2>&1
 # - 移除 IFLOW 相关逻辑，替换为 `claude --non-interactive` 命令调用
 # - 支持通过 CLAUDE_CMD 变量切换命令（默认为 claude，若使用 ccr 包装器可修改为 ccr）
 # - ✅ 新增：支持 Claude Code Router (ccr)，自动管理服务和配置
+# - ✅ 新增：修复日志文件默认路径，避免 /tmp 权限错误
 ###############################################################################
 
 ############################
@@ -58,7 +67,7 @@ CCR_CONFIG_DIR="${HOME}/.claude-code-router"
 CCR_CONFIG_FILE="${CCR_CONFIG_DIR}/config.json"
 
 # Router 日志文件
-CCR_LOG_FILE="${CCR_LOG_FILE:-/tmp/claude-code-router.log}"
+CCR_LOG_FILE="${CCR_LOG_FILE:-${HOME}/.claude-code-router.log}"
 
 # Router 所需的 OpenAI 兼容 API 配置
 # 可以从 ANTHROPIC_API_KEY 继承，也可以单独设置
@@ -801,7 +810,8 @@ run_inner_loop_forever() {
 # 8) inner / outer main
 ############################
 inner_main() {
-  MOON_TEST_LOG="/tmp/typus_moon_test_last_$$.log"
+  # 修复：将临时测试日志放在 $HOME 下，避免 /tmp 权限问题
+  MOON_TEST_LOG="${HOME}/.typus_moon_test_last_$$.log"
   run_inner_loop_forever
 }
 
