@@ -33,10 +33,11 @@ exec >>"$LOG_FILE" 2>&1
 #
 # 新增/修改（Claude 版本）：
 # - 移除 NVIDIA OpenAI 接口配置，改用 Anthropic 原生 API Key (ANTHROPIC_API_KEY)
-# - 移除 IFLOW 相关逻辑，替换为 `claude --non-interactive` 命令调用
+# - 移除 IFLOW 相关逻辑，替换为 `claude -p` 命令调用
 # - 支持通过 CLAUDE_CMD 变量切换命令（默认为 claude，若使用 ccr 包装器可修改为 ccr）
 # - ✅ 新增：支持 Claude Code Router (ccr)，自动管理服务和配置
 # - ✅ 新增：修复日志文件默认路径，避免 /tmp 权限错误
+# - ✅ 修改：将无头模式从 --non-interactive 改为 -p 参数触发
 ###############################################################################
 
 ############################
@@ -92,7 +93,7 @@ PUSH_RETRY_FOREVER="${PUSH_RETRY_FOREVER:-1}"     # 1=一直重试；0=失败就
 GIT_USER_NAME="${GIT_USER_NAME:-claude-bot}"
 GIT_USER_EMAIL="${GIT_USER_EMAIL:-claude-bot@users.noreply.github.com}"
 
-# 是否启用“自动 bump + GitHub Release”
+# 是否启用"自动 bump + GitHub Release"
 ENABLE_RELEASE="${ENABLE_RELEASE:-0}"   # 0/1
 
 # timeout 结束时是否把未提交变更自动提交（WIP autosave）
@@ -455,7 +456,7 @@ ensure_branch() {
   if git show-ref --verify --quiet "refs/remotes/${GIT_REMOTE}/${WORK_BRANCH}"; then
     if git show-ref --verify --quiet "refs/heads/${WORK_BRANCH}"; then
       git checkout "$WORK_BRANCH" || { log "WARN: git checkout ${WORK_BRANCH} failed."; return 1; }
-      
+
       # 在直接推送模式下，如果远程有更新，我们需要将本地修改 rebase 到远程之上
       # 这样可以确保我们的提交是线性的，并且基于最新的代码
       log "Syncing with ${GIT_REMOTE}/${WORK_BRANCH}..."
@@ -676,10 +677,10 @@ attempt_bump_and_release() {
   old_ver="$(extract_moon_version || true)"
   log "INFO: current version: ${old_ver:-<unknown>}"
 
-  # 使用 claude 替代 iflow
+  # 使用 claude 替代 iflow，使用 -p 参数触发无头模式
   # 提示词：修改 moon.mod.json 版本号
   log "INFO: bump patch version in moon.mod.json via ${CLAUDE_CMD}..."
-  run_cmd "$CLAUDE_CMD" --non-interactive "把moon.mod.json里的version增加一个patch版本(例如0.9.1变成0.9.2)，只改版本号本身" || {
+  run_cmd "$CLAUDE_CMD" -p "把moon.mod.json里的version增加一个patch版本(例如0.9.1变成0.9.2)，只改版本号本身" || {
     log "WARN: bump failed, skip release."
     return 0
   }
@@ -744,8 +745,8 @@ run_inner_loop_forever() {
     # 检查 MoonBit 必要配置文件
     if [[ ! -f "moon.mod.json" ]]; then
       log "MoonBit config missing. Fixing via ${CLAUDE_CMD}..."
-      # 使用 claude 替代 iflow
-      run_cmd "$CLAUDE_CMD" --non-interactive "如果PLAN.md里的特性都实现了(如果没有没有都实现就实现这些特性，给项目命名为Feather)就解决moon test显示的所有问题（除了warning），除非测试用例本身有编译错误，否则只修改测试用例以外的代码，debug时可通过加日志和打断点，尽量不要消耗大量CPU/内存资源" || true
+      # 使用 claude 替代 iflow，使用 -p 参数触发无头模式
+      run_cmd "$CLAUDE_CMD" -p "如果PLAN.md里的特性都实现了(如果没有没有都实现就实现这些特性，给项目命名为Feather)就解决moon test显示的所有问题（除了warning），除非测试用例本身有编译错误，否则只修改测试用例以外的代码，debug时可通过加日志和打断点，尽量不要消耗大量CPU/内存资源" || true
     fi
 
     log "Running: moon test"
@@ -776,8 +777,8 @@ run_inner_loop_forever() {
     fi
 
     if [[ "$moon_status" -eq 0 ]]; then
-      # 测试通过：增加测试用例
-      run_cmd "$CLAUDE_CMD" --non-interactive "给这个项目增加一些moon test测试用例，不要超过10个" || true
+      # 测试通过：增加测试用例，使用 -p 参数触发无头模式
+      run_cmd "$CLAUDE_CMD" -p "给这个项目增加一些moon test测试用例，不要超过10个" || true
 
       git add -A
       if git diff --cached --quiet; then
@@ -796,9 +797,9 @@ run_inner_loop_forever() {
         log "INFO: warnings detected."
       fi
     else
-      # 测试失败：修复代码
+      # 测试失败：修复代码，使用 -p 参数触发无头模式
       log "Fixing via ${CLAUDE_CMD}..."
-      run_cmd "$CLAUDE_CMD" --non-interactive "如果PLAN.md里的特性都实现了(如果没有没有都实现就实现这些特性，给项目命名为Feather)就解决moon test显示的所有问题（除了warning），除非测试用例本身有编译错误，否则只修改测试用例以外的代码，debug时可通过加日志和打断点，尽量不要消耗大量CPU/内存资源" || true
+      run_cmd "$CLAUDE_CMD" -p "如果PLAN.md里的特性都实现了(如果没有没有都实现就实现这些特性，给项目命名为Feather)就解决moon test显示的所有问题（除了warning），除非测试用例本身有编译错误，否则只修改测试用例以外的代码，debug时可通过加日志和打断点，尽量不要消耗大量CPU/内存资源" || true
     fi
 
     log "Looping..."
