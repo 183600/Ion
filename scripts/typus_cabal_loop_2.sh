@@ -747,7 +747,7 @@ run_inner_loop_forever() {
     if [[ ! -f "moon.mod.json" ]]; then
       log "MoonBit config missing. Fixing via ${CLAUDE_CMD}..."
       # 使用 claude 替代 iflow，使用 -p 参数触发无头模式
-      run_cmd "$CLAUDE_CMD" -p "如果PLAN.md里的特性都实现了(如果没有没有都实现就实现这些特性，给项目命名为Feather)就解决moon test显示的所有问题（除了warning），除非测试用例本身有编译错误，否则只修改测试用例以外的代码，debug时可通过加日志和打断点，尽量不要消耗大量CPU/内存资源" || true
+      run_cmd "$CLAUDE_CMD" -p "如果PLAN.md里的特性都实现了(如果没有没有都实现就实现这些特性)就解决moon test显示的所有问题（除了warning），除非测试用例本身有编译错误，否则只修改测试用例以外的代码，debug时可通过加日志和打断点，尽量不要消耗大量CPU/内存资源，给项目命名为Ion，而不是Feather" || true
     fi
 
     log "Running: moon test"
