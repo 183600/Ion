@@ -1,10 +1,11 @@
+显示警告信息：显示 /root/.claude-cabal-autoloop.log 无法写入（权限问题），已回退到 /dev/null
 #!/usr/bin/env bash
 set -euo pipefail
 
 # 静默运行：不打印到终端，但默认写入日志文件，便于排查 5 小时后的提交/推送是否成功
-# 修复：默认日志路径改为 /tmp 目录，避免 /root 或其他用户主目录的权限冲突
+# 修复：默认日志路径改为 $HOME 目录，避免 /tmp 权限冲突
 # 如仍想彻底丢弃日志：export LOG_FILE=/dev/null
-LOG_FILE="${LOG_FILE:-/tmp/.claude-cabal-autoloop.log}"
+LOG_FILE="${LOG_FILE:-${HOME}/.claude-cabal-autoloop.log}"
 
 # 尝试创建/触碰日志文件，检查写入权限。如果失败，则回退到 /dev/null
 if ! touch "$LOG_FILE" 2>/dev/null || [[ ! -w "$LOG_FILE" ]]; then
@@ -36,7 +37,7 @@ exec >>"$LOG_FILE" 2>&1
 # - 移除 IFLOW 相关逻辑，替换为 `claude -p` 命令调用
 # - 支持通过 CLAUDE_CMD 变量切换命令（默认为 claude，若使用 ccr 包装器可修改为 ccr）
 # - ✅ 新增：支持 Claude Code Router (ccr)，自动管理服务和配置
-# - ✅ 修复：将日志文件默认路径改为 /tmp，避免 /root 或 HOME 权限错误
+# - ✅ 新增：修复日志文件默认路径，避免 /tmp 权限错误
 # - ✅ 修改：将无头模式从 --non-interactive 改为 -p 参数触发
 ###############################################################################
 
@@ -746,12 +747,10 @@ run_inner_loop_forever() {
     if [[ ! -f "moon.mod.json" ]]; then
       log "MoonBit config missing. Fixing via ${CLAUDE_CMD}..."
       # 使用 claude 替代 iflow，使用 -p 参数触发无头模式
-      run_cmd "$CLAUDE_CMD" -p "如果PLAN.md里的特性都实现了(如果没有没有都实现就实现这些特性，给项目命名为Ion，而不是Feather)就解决moon test显示的所有问题（除了warning），除非测试用例本身有编译错误，否则只修改测试用例以外的代码，debug时可通过加日志和打断点，尽量不要消耗大量CPU/内存资源" || true
+      run_cmd "$CLAUDE_CMD" -p "如果PLAN.md里的特性都实现了(如果没有没有都实现就实现这些特性，给项目命名为Feather)就解决moon test显示的所有问题（除了warning），除非测试用例本身有编译错误，否则只修改测试用例以外的代码，debug时可通过加日志和打断点，尽量不要消耗大量CPU/内存资源" || true
     fi
 
     log "Running: moon test"
-    # 修复：将临时测试日志放在 /tmp 下，避免权限问题
-    MOON_TEST_LOG="/tmp/.typus_moon_test_last_$$.log"
     : > "$MOON_TEST_LOG"
 
     local had_errexit=0
@@ -801,7 +800,7 @@ run_inner_loop_forever() {
     else
       # 测试失败：修复代码，使用 -p 参数触发无头模式
       log "Fixing via ${CLAUDE_CMD}..."
-      run_cmd "$CLAUDE_CMD" -p "如果PLAN.md里的特性都实现了(如果没有没有都实现就实现这些特性)就解决moon test显示的所有问题（除了warning），除非测试用例本身有编译错误，否则只修改测试用例以外的代码，debug时可通过加日志和打断点，尽量不要消耗大量CPU/内存资源，给项目命名为Ion，而不是Feather" || true
+      run_cmd "$CLAUDE_CMD" -p "如果PLAN.md里的特性都实现了(如果没有没有都实现就实现这些特性，给项目命名为Feather)就解决moon test显示的所有问题（除了warning），除非测试用例本身有编译错误，否则只修改测试用例以外的代码，debug时可通过加日志和打断点，尽量不要消耗大量CPU/内存资源" || true
     fi
 
     log "Looping..."
@@ -813,6 +812,8 @@ run_inner_loop_forever() {
 # 8) inner / outer main
 ############################
 inner_main() {
+  # 修复：将临时测试日志放在 $HOME 下，避免 /tmp 权限问题
+  MOON_TEST_LOG="${HOME}/.typus_moon_test_last_$$.log"
   run_inner_loop_forever
 }
 
