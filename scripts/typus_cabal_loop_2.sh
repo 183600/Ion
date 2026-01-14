@@ -1,4 +1,3 @@
-显示警告信息：显示 /root/.claude-cabal-autoloop.log 无法写入（权限问题），已回退到 /dev/null
 #!/usr/bin/env bash
 set -euo pipefail
 
