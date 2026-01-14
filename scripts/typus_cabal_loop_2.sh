@@ -3,7 +3,7 @@ set -euo pipefail
 
 # 静默运行：不打印到终端，但默认写入日志文件，便于排查 5 小时后的提交/推送是否成功
 # 如仍想彻底丢弃日志：export LOG_FILE=/dev/null
-LOG_FILE="${LOG_FILE:-/tmp/iflow-cabal-autoloop.log}"
+LOG_FILE="${LOG_FILE:-$HOME/.iflow-cabal-autoloop.log}"
 exec >>"$LOG_FILE" 2>&1
 
 ###############################################################################
@@ -20,12 +20,14 @@ exec >>"$LOG_FILE" 2>&1
 # 重要修复（本次新增）：
 # C) 在 set -e 模式下，push_if_ahead / ensure_branch / ensure_gitee_remote 等函数内部
 #    若 git push/checkout/remote add 失败，会导致脚本直接退出，破坏 retry/|| true 语义。
-#    现已将关键 git 操作改为“失败 return”，避免意外终止外层重试流程。
+#    现已将关键 git 操作改为"失败 return"，避免意外终止外层重试流程。
+#
+# D) 确保无root权限运行：所有安装都在用户目录，避免使用sudo
 #
 # 新增：每运行 RUN_HOURS（默认 5 小时）后
 # - 自动把未提交变更做一次 autosave commit（可通过 AUTO_COMMIT_ON_TIMEOUT=0 关闭）
 # - 同时 push 到 GitHub(origin) 与 Gitee(gitee)
-# - push 失败会自动重试（默认一直重试，确保“提交并推送成功后再进入下一轮”）
+# - push 失败会自动重试（默认一直重试，确保"提交并推送成功后再进入下一轮"）
 #
 # 新增功能：支持通过环境变量设置远端 URL
 # - GITHUB_REMOTE_URL: 强制设置 GitHub (origin) 的仓库地址
@@ -55,14 +57,14 @@ GITEE_REMOTE_URL="${GITEE_REMOTE_URL:-}"
 # 推送的远端列表（空格分隔）。默认：GitHub + Gitee
 PUSH_REMOTES="${PUSH_REMOTES:-$GIT_REMOTE $GITEE_REMOTE}"
 
-# 推送失败重试策略（确保“推送完成后再进入下一轮”）
+# 推送失败重试策略（确保"推送完成后再进入下一轮"）
 PUSH_RETRY_INTERVAL="${PUSH_RETRY_INTERVAL:-60}"  # 秒
 PUSH_RETRY_FOREVER="${PUSH_RETRY_FOREVER:-1}"     # 1=一直重试；0=失败就放过（不推荐）
 
 GIT_USER_NAME="${GIT_USER_NAME:-iflow-bot}"
 GIT_USER_EMAIL="${GIT_USER_EMAIL:-iflow-bot@users.noreply.github.com}"
 
-# 是否启用“自动 bump + GitHub Release”
+# 是否启用"自动 bump + GitHub Release"
 ENABLE_RELEASE="${ENABLE_RELEASE:-0}"   # 0/1
 
 # timeout 结束时是否把未提交变更自动提交（WIP autosave）
@@ -153,7 +155,7 @@ kill_descendants() {
 }
 
 try_kill_process_group_if_safe() {
-  # 仅当“自己是进程组组长”时，才 kill 整个进程组，避免误杀同组其它进程
+  # 仅当"自己是进程组组长"时，才 kill 整个进程组，避免误杀同组其它进程
   local pid pgid
   pid="$$"
 
@@ -182,11 +184,58 @@ ensure_git() {
 ensure_node_and_iflow() {
   need_cmd npm
 
-  if ! command -v iflow >/dev/null 2>&1; then
-    log "Installing iFlow CLI..."
-    npm i -g @iflow-ai/iflow-cli@latest
+  # 检查是否已安装 iflow
+  if command -v iflow >/dev/null 2>&1; then
+    iflow --version >/dev/null 2>&1 || true
+    return 0
   fi
-  iflow --version >/dev/null 2>&1 || true
+
+  # 检查是否在本地 node_modules/.bin 中
+  local local_iflow
+  local_iflow="$(npm bin 2>/dev/null || echo ./node_modules/.bin)/iflow"
+  if [[ -x "$local_iflow" ]]; then
+    export PATH="$(dirname "$local_iflow"):$PATH"
+    iflow --version >/dev/null 2>&1 || true
+    return 0
+  fi
+
+  # 安装到本地用户目录，避免需要 root 权限
+  log "Installing iFlow CLI to user directory..."
+  
+  # 确保用户目录存在
+  mkdir -p "$HOME/.local/bin"
+  mkdir -p "$HOME/.local/lib/node_modules"
+  
+  # 设置 npm prefix 到用户目录
+  npm config set prefix "$HOME/.local"
+  
+  # 安装 iflow-cli
+  npm install @iflow-ai/iflow-cli@latest || {
+    log "WARN: Failed to install iFlow CLI via npm, trying alternative method..."
+    # 备用方法：安装到项目本地
+    npm install @iflow-ai/iflow-cli@latest --no-save || {
+      log "ERROR: Cannot install iFlow CLI. Please install it manually: npm install @iflow-ai/iflow-cli"
+      exit 1
+    }
+    # 将本地 node_modules/.bin 加入 PATH
+    export PATH="$(npm bin):$PATH"
+  }
+  
+  # 将用户 bin 目录加入 PATH
+  export PATH="$HOME/.local/bin:$PATH"
+  
+  iflow --version >/dev/null 2>&1 || {
+    log "WARN: iflow command not found in PATH, trying to locate..."
+    # 尝试找到安装位置
+    local iflow_path
+    iflow_path="$(find "$HOME/.local/lib/node_modules" -name "iflow" -type f 2>/dev/null | head -n1 || true)"
+    if [[ -n "$iflow_path" && -x "$iflow_path" ]]; then
+      log "Found iflow at: $iflow_path"
+      ln -sf "$iflow_path" "$HOME/.local/bin/iflow" 2>/dev/null || true
+      export PATH="$HOME/.local/bin:$PATH"
+    fi
+    true  # 不退出，让脚本继续运行
+  }
 }
 
 ensure_moon() {
@@ -195,12 +244,54 @@ ensure_moon() {
     return 0
   fi
 
+  # 检查是否已在用户目录
+  if [[ -x "$HOME/.moon/bin/moon" ]]; then
+    export PATH="$HOME/.moon/bin:$PATH"
+    moon version || true
+    return 0
+  fi
+
   need_cmd curl
-  log "Installing MoonBit toolchain..."
-  curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+  log "Installing MoonBit toolchain to user directory..."
+  
+  # 创建临时目录下载安装脚本
+  local tmp_dir
+  tmp_dir="$(mktemp -d 2>/dev/null || echo "/tmp/moon-install-$$")"
+  mkdir -p "$tmp_dir"
+  
+  # 下载安装脚本
+  curl -fsSL https://cli.moonbitlang.com/install/unix.sh -o "$tmp_dir/install-moon.sh" || {
+    log "ERROR: Failed to download MoonBit installer."
+    rm -rf "$tmp_dir"
+    exit 1
+  }
+  
+  # 运行安装脚本，指定安装到用户目录
+  chmod +x "$tmp_dir/install-moon.sh"
+  MOONBIT_INSTALL_DIR="$HOME/.moon" bash "$tmp_dir/install-moon.sh" || {
+    log "WARN: MoonBit installation may have failed, but continuing..."
+    rm -rf "$tmp_dir"
+    # 尝试手动创建目录和设置 PATH
+    export PATH="$HOME/.moon/bin:$PATH"
+    return 0
+  }
+  
+  rm -rf "$tmp_dir"
+  
+  # 确保 PATH 包含 moon 目录
   export PATH="$HOME/.moon/bin:$PATH"
-  need_cmd moon
-  moon version
+  
+  # 检查是否安装成功
+  if ! command -v moon >/dev/null 2>&1; then
+    log "WARN: moon command not found after installation. Trying to locate..."
+    if [[ -x "$HOME/.moon/bin/moon" ]]; then
+      export PATH="$HOME/.moon/bin:$PATH"
+    else
+      log "WARN: MoonBit may not be installed correctly, but continuing..."
+    fi
+  fi
+  
+  moon version || true
 }
 
 ############################
@@ -296,7 +387,7 @@ ensure_branch() {
 
 push_if_ahead() {  # push_if_ahead [remote]
   # 注意：在 set -e 模式下，函数内部的 git push 失败可能导致脚本直接退出。
-  # 这里用 “|| return 1 / if ! ...; then ...” 确保失败只向上返回状态码，方便外层重试。
+  # 这里用 "|| return 1 / if ! ...; then ..." 确保失败只向上返回状态码，方便外层重试。
   local remote="${1:-$GIT_REMOTE}"
 
   git fetch "$remote" --prune >/dev/null 2>&1 || true
@@ -336,7 +427,7 @@ infer_gitee_url_from_github() {
 }
 
 commit_worktree_if_dirty() {
-  # 自动把未提交内容保存成一次提交（用于 5 小时窗口结束时“确保提交”）
+  # 自动把未提交内容保存成一次提交（用于 5 小时窗口结束时"确保提交"）
   local msg="$1"
 
   if git diff --quiet && git diff --cached --quiet; then
@@ -353,7 +444,7 @@ commit_worktree_if_dirty() {
 }
 
 push_all_remotes() {
-  # 返回值：仅当“主远端(GIT_REMOTE) push 失败”才返回非 0；Gitee 失败不影响返回值
+  # 返回值：仅当"主远端(GIT_REMOTE) push 失败"才返回非 0；Gitee 失败不影响返回值
   local primary_status=0
 
   # 尝试保证 gitee remote 存在（失败就跳过）
@@ -376,8 +467,8 @@ push_all_remotes() {
 }
 
 push_all_remotes_with_retry() {
-  # 确保“主远端(GIT_REMOTE)”推送成功才返回 0
-  # 默认一直重试（PUSH_RETRY_FOREVER=1），从而保证“提交并推送完成后再进入下一轮”
+  # 确保"主远端(GIT_REMOTE)"推送成功才返回 0
+  # 默认一直重试（PUSH_RETRY_FOREVER=1），从而保证"提交并推送完成后再进入下一轮"
   local attempt=0
 
   while true; do
@@ -651,12 +742,20 @@ run_inner_loop_forever() {
 # 8) inner / outer main
 ############################
 inner_main() {
-  MOON_TEST_LOG="/tmp/typus_moon_test_last_$$.log"
+  MOON_TEST_LOG="$HOME/.typus_moon_test_last_$$.log"
   run_inner_loop_forever
 }
 
 outer_main() {
   need_cmd curl
+
+  # 确保使用用户目录
+  mkdir -p "$HOME/.local/bin"
+  mkdir -p "$HOME/.local/lib"
+  mkdir -p "$HOME/.cache"
+  
+  # 将用户目录加入 PATH
+  export PATH="$HOME/.local/bin:$HOME/.moon/bin:$PATH"
 
   # RUN_HOURS 必须是整数，避免 $((...)) 直接退出
   [[ "$RUN_HOURS" =~ ^[0-9]+$ ]] || { log "ERROR: RUN_HOURS must be an integer (got: $RUN_HOURS)"; exit 1; }
@@ -676,6 +775,7 @@ outer_main() {
   log "IFLOW_MODEL_NAME=$IFLOW_MODEL_NAME"
   log "IFLOW_selectedAuthType=$IFLOW_selectedAuthType"
   log "LOG_FILE=$LOG_FILE"
+  log "PATH=$PATH"
 
   local tbin
   tbin="$(timeout_bin)"
@@ -697,7 +797,7 @@ outer_main() {
       "$tbin" --signal=TERM --kill-after=60s $(( RUN_HOURS * 3600 )) bash "$script" __inner__ || true
     fi
 
-    # timeout 结束后：确保把当前进度“提交+推送”到 GitHub/Gitee，然后再进入下一轮
+    # timeout 结束后：确保把当前进度"提交+推送"到 GitHub/Gitee，然后再进入下一轮
     # 这里的 ensure_branch 允许失败（网络/冲突等），不要让脚本直接崩掉
     ensure_branch || true
 
