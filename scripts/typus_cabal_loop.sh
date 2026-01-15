@@ -209,7 +209,7 @@ ensure_moon() {
 ensure_github_remote() {
   # 确保 GitHub 远端配置正确
   local url="${GITHUB_REMOTE_URL:-}"
-  
+
   # 如果未指定环境变量，且远端已存在，则信任现有配置
   if [[ -z "${url:-}" ]]; then
     remote_exists "$GIT_REMOTE" || { log "ERROR: $GIT_REMOTE remote missing and GITHUB_REMOTE_URL not set."; return 1; }
@@ -662,11 +662,11 @@ outer_main() {
   [[ "$RUN_HOURS" =~ ^[0-9]+$ ]] || { log "ERROR: RUN_HOURS must be an integer (got: $RUN_HOURS)"; exit 1; }
 
   ensure_git
-  
+
   # 初始化远端配置（在 fetch/checkout 之前）
   ensure_github_remote || log "WARN: Failed to ensure GitHub remote config."
   ensure_gitee_remote || log "WARN: Failed to ensure Gitee remote config."
-  
+
   ensure_branch
 
   ensure_node_and_iflow
