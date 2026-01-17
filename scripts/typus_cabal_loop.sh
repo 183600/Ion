@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 静默运行：不打印到终端，但默认写入日志文件，便于排查 5 小时后的提交/推送是否成功
-# 如仍想彻底丢弃日志：export LOG_FILE=/dev/null
-LOG_FILE="${LOG_FILE:-/tmp/iflow-cabal-autoloop.log}"
-exec >>"$LOG_FILE" 2>&1
-
 ###############################################################################
 # iflow-cabal-autoloop.sh (no-watchdog)
 # - 单文件融合版：等价于 iflow-cabal-loop.yml + scripts/typus_cabal_loop.sh
@@ -20,7 +15,7 @@ exec >>"$LOG_FILE" 2>&1
 # 重要修复（本次新增）：
 # C) 在 set -e 模式下，push_if_ahead / ensure_branch / ensure_gitee_remote 等函数内部
 #    若 git push/checkout/remote add 失败，会导致脚本直接退出，破坏 retry/|| true 语义。
-#    现已将关键 git 操作改为“失败 return”，避免意外终止外层重试流程。
+#    现已将关键 git 操作改为"失败 return"，避免意外终止外层重试流程。
 #
 # 本次修改逻辑：
 # - 新增 commit_and_push_changes 函数：统一处理 iflow 结束后的提交与推送。
@@ -51,14 +46,14 @@ GITEE_REMOTE_URL="${GITEE_REMOTE_URL:-}"
 # 推送的远端列表（空格分隔）。默认：GitHub + Gitee
 PUSH_REMOTES="${PUSH_REMOTES:-$GIT_REMOTE $GITEE_REMOTE}"
 
-# 推送失败重试策略（确保“推送完成后再进入下一轮”）
+# 推送失败重试策略（确保"推送完成后再进入下一轮"）
 PUSH_RETRY_INTERVAL="${PUSH_RETRY_INTERVAL:-60}"  # 秒
 PUSH_RETRY_FOREVER="${PUSH_RETRY_FOREVER:-1}"     # 1=一直重试；0=失败就放过（不推荐）
 
 GIT_USER_NAME="${GIT_USER_NAME:-iflow-bot}"
 GIT_USER_EMAIL="${GIT_USER_EMAIL:-iflow-bot@users.noreply.github.com}"
 
-# 是否启用“自动 bump + GitHub Release”
+# 是否启用"自动 bump + GitHub Release"
 ENABLE_RELEASE="${ENABLE_RELEASE:-0}"   # 0/1
 
 # 注意：AUTO_COMMIT_ON_TIMEOUT 逻辑已移除，现在仅根据 iflow 运行结果触发提交
@@ -74,12 +69,10 @@ export IFLOW_MODEL_NAME="${IFLOW_MODEL_NAME:-moonshotai/kimi-k2-thinking}"
 : "${IFLOW_API_KEY:?Missing IFLOW_API_KEY. Please export IFLOW_API_KEY before running.}"
 
 ############################
-# 2) 工具函数：日志/依赖/timeout 兼容
+# 2) 工具函数：依赖/timeout 兼容
 ############################
-log() { printf '[%s] %s\n' "$(date '+%F %T')" "$*"; }
-
 need_cmd() {
-  command -v "$1" >/dev/null 2>&1 || { log "ERROR: missing command: $1"; exit 1; }
+  command -v "$1" >/dev/null 2>&1 || { echo "ERROR: missing command: $1"; exit 1; }
 }
 
 timeout_bin() {
@@ -88,7 +81,7 @@ timeout_bin() {
   elif command -v gtimeout >/dev/null 2>&1; then
     echo "gtimeout"   # macOS coreutils
   else
-    log "ERROR: need GNU timeout (timeout/gtimeout)."
+    echo "ERROR: need GNU timeout (timeout/gtimeout)."
     exit 1
   fi
 }
@@ -149,7 +142,7 @@ kill_descendants() {
 }
 
 try_kill_process_group_if_safe() {
-  # 仅当“自己是进程组组长”时，才 kill 整个进程组，避免误杀同组其它进程
+  # 仅当"自己是进程组组长"时，才 kill 整个进程组，避免误杀同组其它进程
   local pid pgid
   pid="$$"
 
@@ -170,7 +163,7 @@ try_kill_process_group_if_safe() {
 ############################
 ensure_git() {
   need_cmd git
-  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { log "ERROR: not a git repo."; exit 1; }
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "ERROR: not a git repo."; exit 1; }
   git config user.name  "$GIT_USER_NAME"
   git config user.email "$GIT_USER_EMAIL"
 }
@@ -179,7 +172,7 @@ ensure_node_and_iflow() {
   need_cmd npm
 
   if ! command -v iflow >/dev/null 2>&1; then
-    log "Installing iFlow CLI..."
+    echo "Installing iFlow CLI..."
     npm i -g @iflow-ai/iflow-cli@latest
   fi
   iflow --version >/dev/null 2>&1 || true
@@ -192,7 +185,7 @@ ensure_moon() {
   fi
 
   need_cmd curl
-  log "Installing MoonBit toolchain..."
+  echo "Installing MoonBit toolchain..."
   curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
   export PATH="$HOME/.moon/bin:$PATH"
   need_cmd moon
@@ -208,7 +201,7 @@ ensure_github_remote() {
 
   # 如果未指定环境变量，且远端已存在，则信任现有配置
   if [[ -z "${url:-}" ]]; then
-    remote_exists "$GIT_REMOTE" || { log "ERROR: $GIT_REMOTE remote missing and GITHUB_REMOTE_URL not set."; return 1; }
+    remote_exists "$GIT_REMOTE" || { echo "ERROR: $GIT_REMOTE remote missing and GITHUB_REMOTE_URL not set."; return 1; }
     return 0
   fi
 
@@ -217,12 +210,12 @@ ensure_github_remote() {
     local current_url
     current_url="$(git remote get-url "$GIT_REMOTE" 2>/dev/null || true)"
     if [[ "$current_url" != "$url" ]]; then
-      log "Updating GitHub remote URL: ${GIT_REMOTE} -> ${url}"
-      git remote set-url "$GIT_REMOTE" "$url" || { log "WARN: failed to update GitHub remote."; return 1; }
+      echo "Updating GitHub remote URL: ${GIT_REMOTE} -> ${url}"
+      git remote set-url "$GIT_REMOTE" "$url" || { echo "WARN: failed to update GitHub remote."; return 1; }
     fi
   else
-    log "Adding GitHub remote: ${GIT_REMOTE} -> ${url}"
-    git remote add "$GIT_REMOTE" "$url" || { log "WARN: failed to add GitHub remote."; return 1; }
+    echo "Adding GitHub remote: ${GIT_REMOTE} -> ${url}"
+    git remote add "$GIT_REMOTE" "$url" || { echo "WARN: failed to add GitHub remote."; return 1; }
   fi
 }
 
@@ -242,7 +235,7 @@ ensure_gitee_remote() {
 
   # 如果 URL 仍为空（无法推断且未设置），则无法处理 Gitee
   if [[ -z "${url:-}" ]]; then
-    log "WARN: ${GITEE_REMOTE} remote missing and cannot infer url. Skip Gitee push."
+    echo "WARN: ${GITEE_REMOTE} remote missing and cannot infer url. Skip Gitee push."
     return 1
   fi
 
@@ -251,31 +244,31 @@ ensure_gitee_remote() {
     local current_url
     current_url="$(git remote get-url "$GITEE_REMOTE" 2>/dev/null || true)"
     if [[ "$current_url" != "$url" ]]; then
-      log "Updating Gitee remote URL: ${GITEE_REMOTE} -> ${url}"
-      git remote set-url "$GITEE_REMOTE" "$url" || { log "WARN: failed to update Gitee remote."; return 1; }
+      echo "Updating Gitee remote URL: ${GITEE_REMOTE} -> ${url}"
+      git remote set-url "$GITEE_REMOTE" "$url" || { echo "WARN: failed to update Gitee remote."; return 1; }
     fi
   else
-    log "Adding Gitee remote: ${GITEE_REMOTE} -> ${url}"
-    git remote add "$GITEE_REMOTE" "$url" || { log "WARN: failed to add Gitee remote."; return 1; }
+    echo "Adding Gitee remote: ${GITEE_REMOTE} -> ${url}"
+    git remote add "$GITEE_REMOTE" "$url" || { echo "WARN: failed to add Gitee remote."; return 1; }
   fi
 }
 
 ensure_branch() {
-  log "Ensuring branch: $WORK_BRANCH"
+  echo "Ensuring branch: $WORK_BRANCH"
 
   git fetch "$GIT_REMOTE" --prune >/dev/null 2>&1 || true
 
   if git show-ref --verify --quiet "refs/remotes/${GIT_REMOTE}/${WORK_BRANCH}"; then
     # 远端存在该分支
     if git show-ref --verify --quiet "refs/heads/${WORK_BRANCH}"; then
-      git checkout "$WORK_BRANCH" || { log "WARN: git checkout ${WORK_BRANCH} failed."; return 1; }
+      git checkout "$WORK_BRANCH" || { echo "WARN: git checkout ${WORK_BRANCH} failed."; return 1; }
       git merge --ff-only "${GIT_REMOTE}/${WORK_BRANCH}" || {
-        log "WARN: cannot fast-forward ${WORK_BRANCH} to ${GIT_REMOTE}/${WORK_BRANCH}. Manual intervention may be needed."
+        echo "WARN: cannot fast-forward ${WORK_BRANCH} to ${GIT_REMOTE}/${WORK_BRANCH}. Manual intervention may be needed."
       }
     else
       # 本地没有该分支：从远端分支创建，避免从错误 HEAD 分叉
       git checkout -b "$WORK_BRANCH" "${GIT_REMOTE}/${WORK_BRANCH}" || {
-        log "WARN: git checkout -b ${WORK_BRANCH} from ${GIT_REMOTE}/${WORK_BRANCH} failed."
+        echo "WARN: git checkout -b ${WORK_BRANCH} from ${GIT_REMOTE}/${WORK_BRANCH} failed."
         return 1
       }
     fi
@@ -283,23 +276,23 @@ ensure_branch() {
   else
     # 远端不存在该分支：本地确保存在即可
     if git show-ref --verify --quiet "refs/heads/${WORK_BRANCH}"; then
-      git checkout "$WORK_BRANCH" || { log "WARN: git checkout ${WORK_BRANCH} failed."; return 1; }
+      git checkout "$WORK_BRANCH" || { echo "WARN: git checkout ${WORK_BRANCH} failed."; return 1; }
     else
-      git checkout -b "$WORK_BRANCH" || { log "WARN: git checkout -b ${WORK_BRANCH} failed."; return 1; }
+      git checkout -b "$WORK_BRANCH" || { echo "WARN: git checkout -b ${WORK_BRANCH} failed."; return 1; }
     fi
   fi
 }
 
 push_if_ahead() {  # push_if_ahead [remote]
   # 注意：在 set -e 模式下，函数内部的 git push 失败可能导致脚本直接退出。
-  # 这里用 “|| return 1 / if ! ...; then ...” 确保失败只向上返回状态码，方便外层重试。
+  # 这里用 "|| return 1 / if ! ...; then ..." 确保失败只向上返回状态码，方便外层重试。
   local remote="${1:-$GIT_REMOTE}"
 
   git fetch "$remote" --prune >/dev/null 2>&1 || true
 
   # 远端分支不存在：直接推送
   if ! git show-ref --verify --quiet "refs/remotes/${remote}/${WORK_BRANCH}"; then
-    log "Remote branch ${remote}/${WORK_BRANCH} missing; pushing HEAD:${WORK_BRANCH}..."
+    echo "Remote branch ${remote}/${WORK_BRANCH} missing; pushing HEAD:${WORK_BRANCH}..."
     git push "$remote" "HEAD:${WORK_BRANCH}" || return 1
     return 0
   fi
@@ -312,10 +305,10 @@ push_if_ahead() {  # push_if_ahead [remote]
   fi
 
   if [[ "$ahead" -gt 0 ]]; then
-    log "Pushing ${ahead} commit(s) to ${remote}/${WORK_BRANCH}..."
+    echo "Pushing ${ahead} commit(s) to ${remote}/${WORK_BRANCH}..."
     git push "$remote" "HEAD:${WORK_BRANCH}" || return 1
   else
-    log "No commits ahead of ${remote}/${WORK_BRANCH}. Skip push."
+    echo "No commits ahead of ${remote}/${WORK_BRANCH}. Skip push."
   fi
 }
 
@@ -337,17 +330,17 @@ commit_and_push_changes() {
   git add -A
 
   if git diff --cached --quiet; then
-    log "INFO: No changes to commit."
+    echo "INFO: No changes to commit."
     return 0
   fi
 
   git commit -m "$msg" || {
-    log "ERROR: git commit failed."
+    echo "ERROR: git commit failed."
     return 1
   }
 
   if ! push_all_remotes_with_retry; then
-    log "ERROR: Failed to push changes after multiple retries."
+    echo "ERROR: Failed to push changes after multiple retries."
     return 1
   fi
   
@@ -355,7 +348,7 @@ commit_and_push_changes() {
 }
 
 push_all_remotes() {
-  # 返回值：仅当“主远端(GIT_REMOTE) push 失败”才返回非 0；Gitee 失败不影响返回值
+  # 返回值：仅当"主远端(GIT_REMOTE) push 失败"才返回非 0；Gitee 失败不影响返回值
   local primary_status=0
 
   # 尝试保证 gitee remote 存在（失败就跳过）
@@ -363,7 +356,7 @@ push_all_remotes() {
 
   local r
   for r in $PUSH_REMOTES; do
-    remote_exists "$r" || { log "WARN: remote not found: $r, skip."; continue; }
+    remote_exists "$r" || { echo "WARN: remote not found: $r, skip."; continue; }
 
     if [[ "$r" == "$GIT_REMOTE" ]]; then
       push_if_ahead "$r" || primary_status=1
@@ -378,22 +371,22 @@ push_all_remotes() {
 }
 
 push_all_remotes_with_retry() {
-  # 确保“主远端(GIT_REMOTE)”推送成功才返回 0
-  # 默认一直重试（PUSH_RETRY_FOREVER=1），从而保证“提交并推送完成后再进入下一轮”
+  # 确保"主远端(GIT_REMOTE)"推送成功才返回 0
+  # 默认一直重试（PUSH_RETRY_FOREVER=1），从而保证"提交并推送完成后再进入下一轮"
   local attempt=0
 
   while true; do
     attempt=$(( attempt + 1 ))
 
     if push_all_remotes; then
-      log "Push ok."
+      echo "Push ok."
       return 0
     fi
 
-    log "WARN: push to primary remote failed (attempt=${attempt})."
+    echo "WARN: push to primary remote failed (attempt=${attempt})."
 
     if [[ "$PUSH_RETRY_FOREVER" != "1" ]]; then
-      log "WARN: PUSH_RETRY_FOREVER!=1, giving up retry."
+      echo "WARN: PUSH_RETRY_FOREVER!=1, giving up retry."
       return 1
     fi
 
@@ -420,10 +413,10 @@ extract_moon_version() {
   sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$f" | head -n1
 }
 
-has_error_in_log() {
-  local logf="$1"
-  [[ -f "$logf" ]] || return 1
-  grep -Eiq '(^|[^[:alpha:]])(error:|fatal:|panic:|exception:|segmentation fault)([^[:alpha:]]|$)' "$logf"
+has_error_in_output() {
+  local output="$1"
+  [[ -n "${output:-}" ]] || return 1
+  echo "$output" | grep -Eiq '(^|[^[:alpha:]])(error:|fatal:|panic:|exception:|segmentation fault)([^[:alpha:]]|$)'
 }
 
 derive_github_repo() {
@@ -520,57 +513,57 @@ latest_release_age_ok() {
 ############################
 attempt_bump_and_release() {
   if [[ "$ENABLE_RELEASE" != "1" ]]; then
-    log "INFO: ENABLE_RELEASE=0, skip bump+release."
+    echo "INFO: ENABLE_RELEASE=0, skip bump+release."
     return 0
   fi
 
   if ! latest_release_age_ok; then
-    log "INFO: release in last 7 days (or cannot check). skip release."
+    echo "INFO: release in last 7 days (or cannot check). skip release."
     return 0
   fi
 
   local old_ver new_ver tag repo
   old_ver="$(extract_moon_version || true)"
-  log "INFO: current version: ${old_ver:-<unknown>}"
+  echo "INFO: current version: ${old_ver:-<unknown>}"
 
-  log "INFO: bump patch version in moon.mod.json via iflow..."
+  echo "INFO: bump patch version in moon.mod.json via iflow..."
   run_cmd iflow "把moon.mod.json里的version增加一个patch版本(例如0.9.1变成0.9.2)，只改版本号本身 think:high" --yolo || {
-    log "WARN: bump failed, skip release."
+    echo "WARN: bump failed, skip release."
     return 0
   }
 
   new_ver="$(extract_moon_version || true)"
-  log "INFO: new version: ${new_ver:-<unknown>}"
+  echo "INFO: new version: ${new_ver:-<unknown>}"
 
-  [[ -n "$new_ver" ]] || { log "WARN: cannot parse version, skip."; return 0; }
-  [[ -z "$old_ver" || "$new_ver" != "$old_ver" ]] || { log "WARN: version unchanged, skip."; return 0; }
+  [[ -n "$new_ver" ]] || { echo "WARN: cannot parse version, skip."; return 0; }
+  [[ -z "$old_ver" || "$new_ver" != "$old_ver" ]] || { echo "WARN: version unchanged, skip."; return 0; }
 
-  # 统一调用 commit_and_push_changes，确保也是“运行完一次 iflow -> commit -> push”
+  # 统一调用 commit_and_push_changes，确保也是"运行完一次 iflow -> commit -> push"
   # 且复用重试逻辑
   if ! commit_and_push_changes "chore(release): v${new_ver}"; then
-    log "WARN: commit/push failed for release, skip release creation."
+    echo "WARN: commit/push failed for release, skip release creation."
     return 0
   fi
 
   tag="v${new_ver}"
-  command -v gh >/dev/null 2>&1 || { log "WARN: gh missing, cannot create release."; return 0; }
+  command -v gh >/dev/null 2>&1 || { echo "WARN: gh missing, cannot create release."; return 0; }
 
   repo="${GITHUB_REPOSITORY:-}"
   [[ -n "$repo" ]] || repo="$(derive_github_repo || true)"
-  [[ -n "$repo" ]] || { log "WARN: cannot derive repo, skip release."; return 0; }
+  [[ -n "$repo" ]] || { echo "WARN: cannot derive repo, skip release."; return 0; }
 
   if gh release view "${tag}" >/dev/null 2>&1; then
-    log "INFO: release ${tag} already exists, skip create."
+    echo "INFO: release ${tag} already exists, skip create."
     return 0
   fi
 
-  log "INFO: creating GitHub Release ${tag}..."
+  echo "INFO: creating GitHub Release ${tag}..."
   gh release create "${tag}" --target "$WORK_BRANCH" --generate-notes || {
-    log "WARN: release create failed."
+    echo "WARN: release create failed."
     return 0
   }
 
-  log "INFO: released ${tag}"
+  echo "INFO: released ${tag}"
 }
 
 ############################
@@ -579,7 +572,7 @@ attempt_bump_and_release() {
 run_inner_loop_forever() {
   terminate_inner() {
     echo
-    log "terminated."
+    echo "terminated."
     # 尽量清理自己派生的进程，避免误杀 outer/同组进程
     kill_descendants "$$" || true
     try_kill_process_group_if_safe || true
@@ -588,30 +581,29 @@ run_inner_loop_forever() {
   trap terminate_inner INT TERM
 
   while true; do
-    log "Running: moon test"
-    : > "$MOON_TEST_LOG"
+    echo "Running: moon test"
 
     local had_errexit=0
     [[ $- == *e* ]] && had_errexit=1
     set +e
 
+    local moon_output=""
     if command -v stdbuf >/dev/null 2>&1; then
-      stdbuf -oL -eL moon test 2>&1 \
-        | stdbuf -oL -eL tee "$MOON_TEST_LOG"
+      moon_output="$(stdbuf -oL -eL moon test 2>&1)"
     else
-      moon test 2>&1 | tee "$MOON_TEST_LOG"
+      moon_output="$(moon test 2>&1)"
     fi
 
     local moon_status="${PIPESTATUS[0]:-255}"
     ((had_errexit)) && set -e
 
     local has_warnings=0
-    if grep -Eiq '(warn(ing)?|警告)' "$MOON_TEST_LOG"; then
+    if echo "$moon_output" | grep -Eiq '(warn(ing)?|警告)'; then
       has_warnings=1
     fi
 
     local has_error=0
-    if has_error_in_log "$MOON_TEST_LOG"; then
+    if has_error_in_output "$moon_output"; then
       has_error=1
     fi
 
@@ -624,21 +616,21 @@ run_inner_loop_forever() {
       if [[ "$has_error" -eq 0 ]]; then
         attempt_bump_and_release || true
       else
-        log "INFO: moon test exit 0 but log contains error keywords; skip release."
+        echo "INFO: moon test exit 0 but output contains error keywords; skip release."
       fi
 
       if [[ "$has_warnings" -eq 1 ]]; then
-        log "INFO: warnings detected."
+        echo "INFO: warnings detected."
       fi
     else
-      log "Fixing via iflow..."
+      echo "Fixing via iflow..."
       run_cmd iflow "如果PLAN.md里的特性都实现了(如果没有没有都实现就实现这些特性，给项目命名为Feather)就解决moon test显示的所有问题（除了warning），除非测试用例本身有编译错误，否则只修改测试用例以外的代码，debug时可通过加日志和打断点，尽量不要消耗大量CPU/内存资源 think:high" --yolo || true
       
       # 修改点：运行完 iflow 后，立即 commit 并 push
       commit_and_push_changes "fix: resolve errors" || true
     fi
 
-    log "Looping..."
+    echo "Looping..."
     sleep 1
   done
 }
@@ -647,7 +639,6 @@ run_inner_loop_forever() {
 # 8) inner / outer main
 ############################
 inner_main() {
-  MOON_TEST_LOG="/tmp/typus_moon_test_last_$$.log"
   run_inner_loop_forever
 }
 
@@ -655,23 +646,22 @@ outer_main() {
   need_cmd curl
 
   # RUN_HOURS 必须是整数，避免 $((...)) 直接退出
-  [[ "$RUN_HOURS" =~ ^[0-9]+$ ]] || { log "ERROR: RUN_HOURS must be an integer (got: $RUN_HOURS)"; exit 1; }
+  [[ "$RUN_HOURS" =~ ^[0-9]+$ ]] || { echo "ERROR: RUN_HOURS must be an integer (got: $RUN_HOURS)"; exit 1; }
 
   ensure_git
 
   # 初始化远端配置（在 fetch/checkout 之前）
-  ensure_github_remote || log "WARN: Failed to ensure GitHub remote config."
-  ensure_gitee_remote || log "WARN: Failed to ensure Gitee remote config."
+  ensure_github_remote || echo "WARN: Failed to ensure GitHub remote config."
+  ensure_gitee_remote || echo "WARN: Failed to ensure Gitee remote config."
 
   ensure_branch
 
   ensure_node_and_iflow
   ensure_moon
 
-  log "IFLOW_BASE_URL=$IFLOW_BASE_URL"
-  log "IFLOW_MODEL_NAME=$IFLOW_MODEL_NAME"
-  log "IFLOW_selectedAuthType=$IFLOW_selectedAuthType"
-  log "LOG_FILE=$LOG_FILE"
+  echo "IFLOW_BASE_URL=$IFLOW_BASE_URL"
+  echo "IFLOW_MODEL_NAME=$IFLOW_MODEL_NAME"
+  echo "IFLOW_selectedAuthType=$IFLOW_selectedAuthType"
 
   local tbin
   tbin="$(timeout_bin)"
@@ -682,7 +672,7 @@ outer_main() {
   script="$(cd -- "$(dirname -- "$script")" && pwd)/$(basename -- "$script")"
 
   while true; do
-    log "Run loop for ${RUN_HOURS} hour(s)..."
+    echo "Run loop for ${RUN_HOURS} hour(s)..."
 
     # 用 setsid 把 inner 放到独立 session/进程组，便于 timeout/TERM 时一并回收子进程
     # 加 --kill-after 防止 TERM 后仍残留（例如子进程忽略 TERM）
@@ -697,7 +687,7 @@ outer_main() {
     # 仅保留分支同步，确保下次循环是基于最新的远端状态
     ensure_branch || true
 
-    log "Restarting loop (no autosave/push as per requirements)..."
+    echo "Restarting loop (no autosave/push as per requirements)..."
   done
 }
 
