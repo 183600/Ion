@@ -1,0 +1,54 @@
+/// Dialer interface for establishing connections
+pub trait Dialer {
+  // Dial TCP connection to host:port
+  dial_tcp(host : String, port : Int, options : Option[TcpOptions]) -> Result[Stream, NetError]
+  
+  // Resolve hostname to IP addresses
+  resolve(host : String) -> Result[Array[String], NetError]
+}
+
+/// TCP connection options
+pub struct TcpOptions {
+  timeout_ms : Int
+  keepalive : Bool
+}
+
+pub fn TcpOptions::new() -> TcpOptions {
+  { timeout_ms: 30000, keepalive: true }
+}
+
+/// Mock dialer for testing
+pub struct MockDialer {
+  streams : Map[String, Stream]
+}
+
+pub fn MockDialer::new() -> MockDialer {
+  { streams: Map::new() }
+}
+
+pub fn MockDialer::register_stream(
+  self : MockDialer,
+  addr : String,
+  stream : Stream
+) -> Unit {
+  self.streams[addr] = stream
+}
+
+pub impl Dialer for MockDialer {
+  fn dial_tcp(
+    self : MockDialer,
+    host : String,
+    port : Int,
+    options : Option[TcpOptions]
+  ) -> Result[Stream, NetError] {
+    let addr = host + ":" + port.to_string()
+    match self.streams.get(addr) {
+      Some(stream) => Ok(stream)
+      None => Err(ConnectionFailed("No mock stream registered for " + addr))
+    }
+  }
+  
+  fn resolve(self : MockDialer, host : String) -> Result[Array[String], NetError] {
+    Ok(["127.0.0.1", "::1"])
+  }
+}

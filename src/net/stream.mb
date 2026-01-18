@@ -1,0 +1,83 @@
+/// Abstract stream interface for byte I/O
+/// Can be backed by TCP socket, TLS-wrapped stream, or any other byte stream
+pub trait Stream {
+  // Read up to buf.length bytes into buf, returning number of bytes read
+  read(buf : Bytes) -> Result[Int, NetError]
+  
+  // Write all bytes from buf, returning number of bytes written
+  write(buf : Bytes) -> Result[Int, NetError]
+  
+  // Flush any buffered output
+  flush() -> Result[Unit, NetError]
+  
+  // Close the stream
+  close() -> Result[Unit, NetError]
+  
+  // Optional: Set read/write timeout
+  set_timeout_ms(timeout_ms : Int) -> Result[Unit, NetError]
+  
+  // Get peer address if available
+  peer_addr() -> Result[String, NetError]
+  
+  // Get local address if available
+  local_addr() -> Result[String, NetError]
+}
+
+/// Memory-based stream implementation for testing
+pub struct MemoryStream {
+  buffer : Bytes
+  pos : Int
+  closed : Bool
+}
+
+pub fn MemoryStream::new(buffer : Bytes) -> MemoryStream {
+  { buffer, pos: 0, closed: false }
+}
+
+pub impl Stream for MemoryStream {
+  fn read(self : MemoryStream, buf : Bytes) -> Result[Int, NetError] {
+    if self.closed {
+      return Err(IoError("Stream is closed"))
+    }
+    if self.pos >= self.buffer.length() {
+      return Ok(0) // EOF
+    }
+    let remaining = self.buffer.length() - self.pos
+    let to_read = buf.length().min(remaining)
+    for i = 0; i < to_read; i = i + 1 {
+      buf[i] = self.buffer[self.pos + i]
+    }
+    self.pos = self.pos + to_read
+    Ok(to_read)
+  }
+  
+  fn write(self : MemoryStream, buf : Bytes) -> Result[Int, NetError] {
+    if self.closed {
+      return Err(IoError("Stream is closed"))
+    }
+    // In a real implementation, this would append to buffer
+    // For now, just return the length as if we wrote it
+    Ok(buf.length())
+  }
+  
+  fn flush(self : MemoryStream) -> Result[Unit, NetError] {
+    Ok(())
+  }
+  
+  fn close(self : MemoryStream) -> Result[Unit, NetError] {
+    self.closed = true
+    Ok(())
+  }
+  
+  fn set_timeout_ms(self : MemoryStream, timeout_ms : Int) -> Result[Unit, NetError] {
+    Ok(())
+  }
+  
+  fn peer_addr(self : MemoryStream) -> Result[String, NetError] {
+    Ok("memory://localhost")
+  }
+  
+  fn local_addr(self : MemoryStream) -> Result[String, NetError] {
+    Ok("memory://localhost")
+  }
+}

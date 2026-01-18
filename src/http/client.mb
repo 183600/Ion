@@ -1,0 +1,186 @@
+/// HTTP client implementation
+/// Works with any Stream implementation
+
+pub struct HttpClient {
+  dialer : Dialer
+  tls_provider : TlsProvider
+  timeout_ms : Int
+  max_redirects : Int
+  user_agent : String
+}
+
+pub fn HttpClient::new(dialer : Dialer, tls_provider : TlsProvider) -> HttpClient {
+  {
+    dialer,
+    tls_provider,
+    timeout_ms: 30000,
+    max_redirects: 10,
+    user_agent: "Feather/0.1.0"
+  }
+}
+
+pub fn HttpClient::set_timeout(self : HttpClient, timeout_ms : Int) -> HttpClient {
+  self.timeout_ms = timeout_ms
+  self
+}
+
+pub fn HttpClient::set_max_redirects(self : HttpClient, max_redirects : Int) -> HttpClient {
+  self.max_redirects = max_redirects
+  self
+}
+
+pub fn HttpClient::set_user_agent(self : HttpClient, user_agent : String) -> HttpClient {
+  self.user_agent = user_agent
+  self
+}
+
+pub fn HttpClient::execute(self : HttpClient, req : Request) -> Result[Response, HttpError] {
+  // Parse URL
+  let scheme = extract_scheme(req.url)
+  let host = extract_host(req.url)
+  let port = get_port(req.url, scheme)
+  
+  // Dial TCP connection
+  let tcp_stream = match self.dialer.dial_tcp(host, port, Some(TcpOptions::new())) {
+    Ok(stream) => stream
+    Err(err) => return Err(NetworkError(err))
+  }
+  
+  // Apply TLS if needed
+  let stream = if scheme == "https" {
+    // Configure TLS
+    let tls_config = TlsConfig::new(host)
+    let tls_ctx = match self.tls_provider.new_client(tls_config) {
+      Ok(ctx) => ctx
+      Err(err) => {
+        tcp_stream.close() |> ignore()
+        return Err(RequestFailed("TLS setup failed: " + err.to_string()))
+      }
+    }
+    
+    // Perform TLS handshake
+    match tls_ctx.connect(tcp_stream) {
+      Ok(tls_stream) => tls_stream
+      Err(err) => {
+        tcp_stream.close() |> ignore()
+        return Err(RequestFailed("TLS handshake failed: " + err.to_string()))
+      }
+    }
+  } else {
+    tcp_stream
+  }
+  
+  // Set timeout
+  stream.set_timeout_ms(req.timeout_ms) |> ignore()
+  
+  // Build and send HTTP request
+  let http_req = {
+    let r = req
+    r.headers.set("User-Agent", self.user_agent)
+    r
+  }
+  
+  let request_bytes = encode_request(http_req)
+  
+  // Send request
+  match stream.write(request_bytes) {
+    Ok(_) => ()
+    Err(err) => {
+      stream.close() |> ignore()
+      return Err(NetworkError(err))
+    }
+  }
+  
+  stream.flush() |> ignore()
+  
+  // Read response (simplified - just read status line for now)
+  let response_line = read_line(stream)
+  let (status, _) = match parse_response_line(response_line) {
+    Ok(result) => result
+    Err(msg) => {
+      stream.close() |> ignore()
+      return Err(InvalidResponse(msg))
+    }
+  }
+  
+  // Read headers
+  let headers = read_headers(stream)
+  
+  // Return response
+  Ok(Response::new(status, stream))
+}
+
+/// Helper functions
+
+fn get_port(url : String, scheme : String) -> Int {
+  // Extract port from URL if present, otherwise use default
+  let start = url.index_of("://")
+  if start < 0 {
+    return if scheme == "https" { 443 } else { 80 }
+  }
+  
+  let after_scheme = start + 3
+  
+  // Find port if present
+  let host_start = after_scheme
+  let path_start = url.index_of('/', host_start)
+  let host_end = if path_start >= 0 { path_start } else { url.length() }
+  
+  let host_port = url.substring(host_start, host_end)
+  let colon_pos = host_port.index_of(':')
+  
+  if colon_pos >= 0 {
+    match host_port.substring(colon_pos + 1).parse_int() {
+      Ok(port) => port
+      Err(_) => if scheme == "https" { 443 } else { 80 }
+    }
+  } else {
+    if scheme == "https" { 443 } else { 80 }
+  }
+}
+
+fn read_line(stream : Stream) -> String {
+  // Read until CRLF
+  let mut line = ""
+  let mut prev_was_cr = false
+  
+  let buf = Bytes::new()
+  while true {
+    let mut byte_buf = Bytes::of([0])
+    match stream.read(byte_buf) {
+      Ok(1) => {
+        let byte = byte_buf[0]
+        if byte == '\r' {
+          prev_was_cr = true
+        } else if byte == '\n' && prev_was_cr {
+          break
+        } else {
+          if prev_was_cr {
+            line = line + "\r"
+            prev_was_cr = false
+          }
+          line = line + byte.to_char().to_string()
+        }
+      }
+      Ok(0) => break // EOF
+      Ok(_) => () // Should not happen
+      Err(_) => break // Error
+    }
+  }
+  
+  line
+}
+
+fn read_headers(stream : Stream) -> HttpHeaders {
+  let mut header_lines = []
+  
+  while true {
+    let line = read_line(stream)
+    if line.is_empty() {
+      break // Empty line indicates end of headers
+    }
+    header_lines.push(line)
+  }
+  
+  parse_headers(header_lines)
+}

@@ -1,0 +1,9 @@
+{
+  "name": "Feather",
+  "version": "0.1.0",
+  "readme": "README.md",
+  "repository": "",
+  "license": "MIT",
+  "keywords": ["http", "https", "tls", "client"],
+  "description": "A unified HTTP/HTTPS client with TLS abstraction layer for MoonBit"
+}

@@ -1,0 +1,17 @@
+pub enum NetError {
+  ConnectionFailed(String)
+  Timeout
+  DnsFailed(String)
+  IoError(String)
+  InvalidAddress(String)
+}
+
+pub fn to_string(self : NetError) -> String {
+  match self {
+    ConnectionFailed(msg) => "ConnectionFailed: " + msg
+    Timeout => "Timeout"
+    DnsFailed(msg) => "DnsFailed: " + msg
+    IoError(msg) => "IoError: " + msg
+    InvalidAddress(msg) => "InvalidAddress: " + msg
+  }
+}
