@@ -1,1 +1,11 @@
 执行命令: iflow '确保这个项目可以正常使用' --yolo
+
+
+Code Assist login required.
+Attempting to open authentication page in your browser.
+Otherwise navigate to:
+
+https://iflow.cn/oauth?loginMethod=phone&type=phone&redirect=http%3A%2F%2Flocalhost%3A37425%2Foauth2callback&state=be972635fcbdb2d7944d598f15411160697bb247db0f0ea30149bcc0dad4b711&client_id=10009311001
+
+
+Waiting for authentication...
