@@ -1,1 +1,2 @@
-environment: line 52: /data/data/com.termux/files/home/my-multi-lang-llm-coder/jiandan.sh: Permission denied
+执行命令: iflow '确保这个项目可以正常使用' --yolo
+我来帮你检查这个项目是否可以正常使用。首先让我了解一下项目的结构和配置。现在我了解了这是一个 MoonBit 项目，名为 "feather"，是一个 HTTP/HTTPS 客户端库。让我检查构建和测试是否正常。
