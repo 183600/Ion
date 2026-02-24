@@ -5,7 +5,7 @@ Code Assist login required.
 Attempting to open authentication page in your browser.
 Otherwise navigate to:
 
-https://iflow.cn/oauth?loginMethod=phone&type=phone&redirect=http%3A%2F%2Flocalhost%3A40819%2Foauth2callback&state=8b33f8fded27a21ce93de859e18f99d50fc6db086cd2c98efa39ebcb714c5c92&client_id=10009311001
+https://iflow.cn/oauth?loginMethod=phone&type=phone&redirect=http%3A%2F%2Flocalhost%3A42483%2Foauth2callback&state=262284dbc804a74a7befc52da0447175c7b3f8954e5004baae7b4b4c217ae0e0&client_id=10009311001
 
 
 Waiting for authentication...
