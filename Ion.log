@@ -1,4 +1,2 @@
 执行命令: iflow '确保这个项目可以正常使用' --yolo
-让我先检查这个项目的结构和配置，了解它是什么类型的项目以及如何构建/运行。这是一个 MoonBit 项目（名为 feather），是一个 HTTP 客户端库。让我检查构建工具是否可用并尝试构建项目。Error executing tool run_shell_command: 
-bash: line 1: which: command not found
-
+我来帮你确保这个项目可以正常使用。首先让我了解一下项目的结构和配置。这是一个 MoonBit 项目（名为 feather），实现了一个 HTTP/HTTPS 客户端库。让我检查项目是否可以正常构建和运行测试。
