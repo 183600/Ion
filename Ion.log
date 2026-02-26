@@ -1,13 +1,96 @@
 执行命令: iflow '确保这个项目可以正常使用' --yolo
-Error when talking to iFlow API Full report available at: /data/data/com.termux/files/usr/tmp/iflow-client-error-Turn.run-sendMessageStream-2026-02-26T09-06-37-583Z.json
+Error fetching iFlow user info (attempt 1/3): TypeError: fetch failed - Retrying in 1000ms
+Error fetching iFlow user info (attempt 2/3): TypeError: fetch failed - Retrying in 2000ms
+Error fetching iFlow user info after all retries: TypeError: fetch failed
+    at node:internal/deps/undici/undici:16416:13
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async m_t (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:441:5102)
+    at async xOr (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:441:4412)
+    at async ggo (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:433:10424)
+    at async qkt (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:966:1239)
+    at async $O.initialize (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:3416:1849)
+    at async t.refreshAuth (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:4821:22718)
+    at async Z2u (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:7330:10547)
+    at async X2u (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:7330:10255)
+    at async Ioo (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:7330:9683) {
+  [cause]: Error: connect ECONNREFUSED 47.246.165.152:443
+      at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16) {
+    errno: -111,
+    code: 'ECONNREFUSED',
+    syscall: 'connect',
+    address: '47.246.165.152',
+    port: 443
+  }
+}
+Attempt 1 failed. Retrying with backoff... Error: generate data error: fetch failed:connect ECONNREFUSED 47.246.165.152:443
+    at Hq.generateContentInternal (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:952:17230)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:952:656
+    ... 8 lines matching cause stack trace ...
+    at async Ioo (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:7330:9732) {
+  [cause]: TypeError: fetch failed
+      at node:internal/deps/undici/undici:16416:13
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at async Hq.generateContentInternal (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:952:10406)
+      at async file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:952:656
+      at async Oh (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:488:5256)
+      at async Hq.generateContentLatency (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:952:2984)
+      at async lY (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:3361:6725)
+      at async W4e.sendMessageStream (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:3361:12375)
+      at async oY.run (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:2577:40547)
+      at async $O.<anonymous> (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:3439:226)
+      at async $O.sendMessageStream (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:3439:879)
+      at async mio (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:7284:452)
+      at async Ioo (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:7330:9732) {
+    [cause]: Error: connect ECONNREFUSED 47.246.165.152:443
+        at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16) {
+      errno: -111,
+      code: 'ECONNREFUSED',
+      syscall: 'connect',
+      address: '47.246.165.152',
+      port: 443
+    }
+  }
+}
+Attempt 2 failed. Retrying with backoff... Error: generate data error: fetch failed:connect ECONNREFUSED 47.246.165.152:443
+    at Hq.generateContentInternal (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:952:17230)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:952:656
+    ... 8 lines matching cause stack trace ...
+    at async Ioo (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:7330:9732) {
+  [cause]: TypeError: fetch failed
+      at node:internal/deps/undici/undici:16416:13
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at async Hq.generateContentInternal (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:952:10406)
+      at async file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:952:656
+      at async Oh (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:488:5256)
+      at async Hq.generateContentLatency (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:952:2984)
+      at async lY (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:3361:6725)
+      at async W4e.sendMessageStream (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:3361:12375)
+      at async oY.run (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:2577:40547)
+      at async $O.<anonymous> (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:3439:226)
+      at async $O.sendMessageStream (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:3439:879)
+      at async mio (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:7284:452)
+      at async Ioo (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:7330:9732) {
+    [cause]: Error: connect ECONNREFUSED 47.246.165.152:443
+        at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16) {
+      errno: -111,
+      code: 'ECONNREFUSED',
+      syscall: 'connect',
+      address: '47.246.165.152',
+      port: 443
+    }
+  }
+}
+Error when talking to iFlow API Full report available at: /data/data/com.termux/files/usr/tmp/iflow-client-error-Turn.run-sendMessageStream-2026-02-26T09-45-45-016Z.json
 
 
 <Execution Info>
 {
-  "session-id": "session-3c5c59bf-2f4a-43e9-84de-2153405ca670",
-  "conversation-id": "2e8be6f3-58fc-4693-a082-c916e134d228",
+  "session-id": "session-748cacd2-008e-45a7-9288-b53e86bb2d9d",
+  "conversation-id": "870e84b1-4974-4447-9478-d88d1634ef37",
   "assistantRounds": 1,
-  "executionTimeMs": 38970,
+  "executionTimeMs": 134623,
   "tokenUsage": {
     "input": 0,
     "output": 0,
@@ -15,5 +98,63 @@ Error when talking to iFlow API Full report available at: /data/data/com.termux/
   }
 }
 </Execution Info>
+Error shutting down SDK: Error: Timeout
+    at Timeout._onTimeout (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:457:22650)
+    at listOnTimeout (node:internal/timers:605:17)
+    at process.processTimers (node:internal/timers:541:7)
 等待 10 秒后执行下一次...
 执行命令: iflow '确保这个项目可以正常使用' --yolo
+Error fetching iFlow user info (attempt 1/3): TypeError: fetch failed - Retrying in 1000ms
+Error fetching iFlow user info (attempt 2/3): TypeError: fetch failed - Retrying in 2000ms
+Error fetching iFlow user info after all retries: TypeError: fetch failed
+    at node:internal/deps/undici/undici:16416:13
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async m_t (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:441:5102)
+    at async xOr (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:441:4412)
+    at async ggo (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:433:10424)
+    at async qkt (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:966:1239)
+    at async $O.initialize (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:3416:1849)
+    at async t.refreshAuth (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:4821:22718)
+    at async Z2u (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:7330:10547)
+    at async X2u (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:7330:10255)
+    at async Ioo (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:7330:9683) {
+  [cause]: Error: connect ECONNREFUSED 47.246.110.141:443
+      at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16) {
+    errno: -111,
+    code: 'ECONNREFUSED',
+    syscall: 'connect',
+    address: '47.246.110.141',
+    port: 443
+  }
+}
+Attempt 1 failed. Retrying with backoff... Error: generate data error: fetch failed:connect ECONNREFUSED 47.246.167.138:443
+    at Hq.generateContentInternal (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:952:17230)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:952:656
+    ... 8 lines matching cause stack trace ...
+    at async Ioo (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:7330:9732) {
+  [cause]: TypeError: fetch failed
+      at node:internal/deps/undici/undici:16416:13
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at async Hq.generateContentInternal (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:952:10406)
+      at async file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:952:656
+      at async Oh (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:488:5256)
+      at async Hq.generateContentLatency (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:952:2984)
+      at async lY (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:3361:6725)
+      at async W4e.sendMessageStream (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:3361:12375)
+      at async oY.run (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:2577:40547)
+      at async $O.<anonymous> (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:3439:226)
+      at async $O.sendMessageStream (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:3439:879)
+      at async mio (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:7284:452)
+      at async Ioo (file:///data/data/com.termux/files/home/.local/share/pnpm/global/5/.pnpm/@iflow-ai+iflow-cli@0.5.13_react@19.2.4/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js:7330:9732) {
+    [cause]: Error: connect ECONNREFUSED 47.246.167.138:443
+        at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16) {
+      errno: -111,
+      code: 'ECONNREFUSED',
+      syscall: 'connect',
+      address: '47.246.167.138',
+      port: 443
+    }
+  }
+}
+我来检查这个项目的状态，确保它可以正常使用。
