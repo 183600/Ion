@@ -203,6 +203,47 @@ int32_t feather_tcp_set_timeout(int32_t fd, int32_t timeout_ms) {
 }
 
 MOONBIT_FFI_EXPORT
+int32_t feather_tcp_local_addr(int32_t fd, moonbit_bytes_t output, int32_t capacity) {
+  if (fd < 0) {
+    return -EBADF;
+  }
+  struct sockaddr_storage addr;
+  socklen_t length = sizeof(addr);
+  if (getsockname(fd, (struct sockaddr *)&addr, &length) < 0) {
+    return -errno;
+  }
+  char host[INET6_ADDRSTRLEN];
+  const void *address = NULL;
+  int port = 0;
+  int ipv6 = 0;
+  if (addr.ss_family == AF_INET) {
+    struct sockaddr_in *inet = (struct sockaddr_in *)&addr;
+    address = &inet->sin_addr;
+    port = ntohs(inet->sin_port);
+  } else if (addr.ss_family == AF_INET6) {
+    struct sockaddr_in6 *inet6 = (struct sockaddr_in6 *)&addr;
+    address = &inet6->sin6_addr;
+    port = ntohs(inet6->sin6_port);
+    ipv6 = 1;
+  } else {
+    return -EAFNOSUPPORT;
+  }
+  if (inet_ntop(addr.ss_family, address, host, sizeof(host)) == NULL) {
+    return -errno;
+  }
+  char text[INET6_ADDRSTRLEN + 16];
+  int written = snprintf(text, sizeof(text), ipv6 ? "[%s]:%d" : "%s:%d", host, port);
+  if (written < 0 || written >= (int)sizeof(text)) {
+    return -EIO;
+  }
+  if (written > capacity) {
+    return -ENOSPC;
+  }
+  memcpy(output, text, (size_t)written);
+  return written;
+}
+
+MOONBIT_FFI_EXPORT
 int32_t feather_tcp_is_alive(int32_t fd) {
   if (fd < 0) {
     return -EBADF;

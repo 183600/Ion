@@ -15,6 +15,9 @@ extern "C" fn feather_tcp_set_timeout(fd : Int, timeout_ms : Int) -> Int = "feat
 
 extern "C" fn feather_tcp_is_alive(fd : Int) -> Int = "feather_tcp_is_alive"
 
+#borrow(output)
+extern "C" fn feather_tcp_local_addr(fd : Int, output : Bytes, capacity : Int) -> Int = "feather_tcp_local_addr"
+
 #borrow(host)
 #borrow(output)
 extern "C" fn feather_tcp_resolve(host : Bytes, output : Bytes, capacity : Int) -> Int = "feather_tcp_resolve"
@@ -186,7 +189,13 @@ pub impl Stream for NativeTcpStream with fn local_addr(
   if !self.is_open || self.fd < 0 {
     return Err(NetError::Closed)
   }
-  Ok("0.0.0.0:0")
+  let capacity = 128
+  let output = Bytes::new(capacity)
+  let length = feather_tcp_local_addr(self.fd, output, capacity)
+  if length < 0 {
+    return Err(native_tcp_error(-length, "TCP local address"))
+  }
+  Ok(@utf8.decode_lossy(output.exact_view(start=0, end=length)))
 }
 
 /// TCP dialer that performs real native DNS resolution and socket connections.
