@@ -639,10 +639,13 @@ pub fn H1Codec::decode_response(
       on_complete: self.on_complete,
       completed: false,
     }
-    if self.on_complete is Some(_) &&
-      (is_head || response_head.status == 101 || response_head.status == 204 ||
-      response_head.status == 205 || response_head.status == 304) {
-      let _ = response_stream.prepare()
+    if self.on_complete is Some(_) {
+      if is_head || response_head.status == 101 || response_head.status == 204 ||
+        response_head.status == 205 || response_head.status == 304 {
+        let _ = response_stream.prepare()
+      } else {
+        response_stream.complete_if_empty()
+      }
     }
     let response_stream : &Stream = response_stream
 
@@ -860,6 +863,16 @@ fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
     }
   }
   Ok(())
+}
+
+fn ResponseStream::complete_if_empty(self : ResponseStream) -> Unit {
+  if response_is_chunked(self.headers) is Ok(false) &&
+    response_content_length(self.headers) is Ok(Some(0)) {
+    match self.prepare() {
+      Ok(_) => self.finish()
+      Err(_) => ()
+    }
+  }
 }
 
 fn ResponseStream::finish(self : ResponseStream) -> Unit {

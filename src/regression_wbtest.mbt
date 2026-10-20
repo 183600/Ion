@@ -854,6 +854,28 @@ test "unread response body is not reused for the next request" {
 }
 
 ///|
+test "zero-length responses return to the pool without being read" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+  let stream = regression_mock_stream(raw, 1, 0)
+  let streams : Array[&Stream] = [stream]
+  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let options = ClientOptions::new().with_follow_redirects(false)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let url = Url::parse("http://example.com/").unwrap()
+
+  let first = client.request(Request::new(GET, url)).unwrap()
+  assert_eq(first.status, 200)
+  assert_true(stream.is_open)
+
+  let second = client.request(Request::new(GET, url)).unwrap()
+  let body_buf = @buffer.new(size_hint=8)
+  assert_eq(second.body.read(body_buf).unwrap(), 2)
+  assert_eq(body_buf.to_bytes(), @utf8.encode("ok"))
+  assert_eq(dialer.index, 1)
+}
+
+///|
 test "closing one response keeps another pooled connection for the same origin" {
   let first_stream = regression_mock_stream(
     "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nA1",
