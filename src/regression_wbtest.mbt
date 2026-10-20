@@ -276,6 +276,18 @@ test "sequential responses on one codec preserve buffered bytes" {
 }
 
 ///|
+test "decode_response remembers a preceding HEAD request" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"
+  let stream = regression_mock_stream(raw, 0, 0)
+  let codec = H1Codec::new(stream)
+  let url = Url::parse("http://example.com/").unwrap()
+  assert_true(codec.encode_request(Request::new(HEAD, url)) is Ok(_))
+  let response = codec.decode_response().unwrap()
+  let buf = @buffer.new(size_hint=8)
+  assert_eq(response.body.read(buf).unwrap(), 0)
+}
+
+///|
 test "invalid Content-Length error is sticky" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: nope\r\n\r\n"
   let stream = regression_mock_stream(raw, 1, 0)

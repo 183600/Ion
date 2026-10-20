@@ -2,10 +2,11 @@
 pub struct H1Codec {
   stream : &Stream
   reader : StreamReader
+  mut last_is_head : Bool
 }
 
 pub fn H1Codec::new(stream : &Stream) -> H1Codec {
-  H1Codec::{ stream, reader: StreamReader::new(stream) }
+  H1Codec::{ stream, reader: StreamReader::new(stream), last_is_head: false }
 }
 
 struct StreamReader {
@@ -164,6 +165,7 @@ fn valid_header_value(value : String) -> Bool {
 
 /// Encode HTTP request to HTTP/1.1 format
 pub fn H1Codec::encode_request(self : H1Codec, req : Request) -> Result[Unit, HttpError] {
+  self.last_is_head = req.method == HEAD
   let path = if req.url.path.length() > 0 { req.url.path } else { "/" }
   let target = if req.url.query.length() > 0 {
     path + "?" + req.url.query
@@ -265,8 +267,12 @@ fn read_line(reader : StreamReader) -> Result[String, NetError] {
 /// Decode HTTP response from HTTP/1.1 format
 pub fn H1Codec::decode_response(
   self : H1Codec,
-  head? : Bool = false,
+  head? : Bool,
 ) -> Result[Response, HttpError] {
+  let is_head = match head {
+    Some(value) => value
+    None => self.last_is_head
+  }
   // Read response line
   let response_line = match read_line(self.reader) {
     Ok(line) => line
@@ -329,7 +335,7 @@ pub fn H1Codec::decode_response(
     reader: self.reader,
     headers,
     status,
-    head,
+    head: is_head,
     body: [],
     offset: 0,
     loaded: false,
