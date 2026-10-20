@@ -581,20 +581,22 @@ run_inner_loop_forever() {
   trap terminate_inner INT TERM
 
   while true; do
-    echo "Running: moon test"
+    echo "Running: moon check --target native && moon test"
 
     local had_errexit=0
     [[ $- == *e* ]] && had_errexit=1
     set +e
 
+    # Also compile the native-only sources (net/tls FFI) so the gate covers
+    # them; `moon test` alone uses the default backend and skips them.
     local moon_output=""
     if command -v stdbuf >/dev/null 2>&1; then
-      moon_output="$(stdbuf -oL -eL moon test 2>&1)"
+      moon_output="$(stdbuf -oL -eL bash -c 'moon check --target native && moon test' 2>&1)"
     else
-      moon_output="$(moon test 2>&1)"
+      moon_output="$(bash -c 'moon check --target native && moon test' 2>&1)"
     fi
 
-    local moon_status="${PIPESTATUS[0]:-255}"
+    local moon_status=$?
     ((had_errexit)) && set -e
 
     local has_warnings=0
