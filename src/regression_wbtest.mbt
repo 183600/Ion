@@ -788,6 +788,38 @@ test "empty chunked request still terminates the body" {
 }
 
 ///|
+test "redirect limit counts followed redirects exactly" {
+  let raw = "HTTP/1.1 302 Found\r\nLocation: /one\r\nContent-Length: 0\r\n\r\nHTTP/1.1 302 Found\r\nLocation: /two\r\nContent-Length: 0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
+  let stream = regression_mock_stream(raw, 1, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let options = ClientOptions::new().with_max_redirects(1)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let url = Url::parse("http://example.com/start").unwrap()
+  assert_true(client.request(Request::new(GET, url)) is Err(RedirectLimitExceeded))
+}
+
+///|
+test "cross-origin redirects strip credentials and cookies" {
+  let raw = "HTTP/1.1 302 Found\r\nLocation: http://other.example/next\r\nContent-Length: 0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
+  let stream = regression_mock_stream(raw, 1, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+  let url = Url::parse("http://example.com/start").unwrap()
+  let request = Request::new(GET, url)
+    .with_header("Cookie", "session=secret")
+    .with_header("Proxy-Authorization", "Basic secret")
+  let response = client.request(request).unwrap()
+  assert_eq(response.status, 200)
+  let wire = @utf8.decode(stream.output.to_bytes()[:])
+  let next_index = wire.find("GET /next HTTP/1.1").unwrap()
+  let second_request = wire.substring(start=next_index)
+  assert_true(!second_request.contains("Cookie"))
+  assert_true(!second_request.contains("Proxy-Authorization"))
+}
+
+///|
 test "request framing rejects ambiguous lengths" {
   let url = Url::parse("http://example.com/").unwrap()
   let mismatch = H1Codec::new(regression_mock_stream("", 0, 0))

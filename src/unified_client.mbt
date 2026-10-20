@@ -183,11 +183,6 @@ fn drain_response(response : Response) -> Result[Unit, HttpError] {
 
 /// Internal request implementation with redirect handling
 fn do_request(self : UnifiedClient, req : Request) -> Result[Response, HttpError] {
-  // Check redirect limit
-  if self.redirect_count > self.options.max_redirects {
-    return Err(RedirectLimitExceeded)
-  }
-
   // Connect to the server
   let stream = match self.connector.connect(req.url) {
     Ok(stream) => stream
@@ -249,6 +244,11 @@ fn do_request(self : UnifiedClient, req : Request) -> Result[Response, HttpError
       Err(_) => return Ok(response) // Invalid redirect URL
     }
 
+    if self.redirect_count >= self.options.max_redirects {
+      let _ = self.connector.close(request.url)
+      return Err(RedirectLimitExceeded)
+    }
+
     // Drain the redirect response body so the connection can be reused.
     match drain_response(response) {
       Ok(_) => ()
@@ -269,11 +269,16 @@ fn do_request(self : UnifiedClient, req : Request) -> Result[Response, HttpError
         .remove("Content-Encoding")
         .remove("Content-Language")
         .remove("Content-Location")
+        .remove("Expect")
+        .remove("Trailer")
     }
     if parsed_url.scheme != request.url.scheme ||
       parsed_url.host != request.url.host ||
       parsed_url.port != request.url.port {
-      next_headers = next_headers.remove("Authorization")
+      next_headers = next_headers
+        .remove("Authorization")
+        .remove("Proxy-Authorization")
+        .remove("Cookie")
     }
 
     // Create new request for redirect
