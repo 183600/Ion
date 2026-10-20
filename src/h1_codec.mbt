@@ -119,6 +119,9 @@ fn write_all(stream : &Stream, data : Bytes) -> Result[Unit, NetError] {
         if written <= 0 {
           return Err(NetError::WriteError("stream made no progress"))
         }
+        if written > total - offset {
+          return Err(NetError::WriteError("stream reported too many bytes written"))
+        }
         offset = offset + written
       }
       Err(err) => return Err(err)
@@ -420,7 +423,7 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
   self.loaded = true
 
   // Responses to HEAD and 1xx/204/304 responses never carry a body.
-  if self.head || self.status == 204 || self.status == 304 ||
+  if self.head || self.status == 204 || self.status == 205 || self.status == 304 ||
     (self.status >= 100 && self.status < 200) {
     return Ok(())
   }

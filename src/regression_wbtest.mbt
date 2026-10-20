@@ -413,6 +413,30 @@ test "connector pools connections and close removes them" {
   assert_eq(dialer.count, 2)
 }
 
+struct RegressionHttpClient {
+  mut calls : Int
+  response_body : &Stream
+}
+
+pub impl HttpClient for RegressionHttpClient with fn request(self : RegressionHttpClient, req : Request) -> Result[Response, HttpError] {
+  let _ = req
+  self.calls = self.calls + 1
+  Ok(Response::new(200, Headers::new(), self.response_body))
+}
+
+///|
+test "HttpClient convenience methods parse URLs" {
+  let body = regression_mock_stream("", 0, 0)
+  let client = RegressionHttpClient::{ calls: 0, response_body: body }
+  let trait_client : &HttpClient = client
+  let response = trait_client.get("http://example.com/x").unwrap()
+  assert_eq(response.status, 200)
+  assert_eq(client.calls, 1)
+  let bad = trait_client.get("not a url")
+  assert_true(bad is Err(_))
+  assert_eq(client.calls, 1)
+}
+
 ///|
 test "client options supply the default request timeout" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"

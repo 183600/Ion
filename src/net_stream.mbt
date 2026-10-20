@@ -39,7 +39,7 @@ pub struct TcpStream {
   host : String
   port : Int
   mut is_open : Bool
-}
+} derive(Eq, Debug)
 
 pub fn TcpStream::new(host : String, port : Int) -> TcpStream {
   TcpStream::{ host, port, is_open: false }

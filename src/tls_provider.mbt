@@ -16,7 +16,7 @@ pub trait TlsClientCtx {
 /// Mock TLS Provider (placeholder for actual implementation)
 pub struct MockTlsProvider {
   name : String
-}
+} derive(Eq, Debug)
 
 pub fn MockTlsProvider::new(name : String) -> MockTlsProvider {
   MockTlsProvider::{ name }

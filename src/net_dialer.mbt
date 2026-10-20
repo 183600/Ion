@@ -10,7 +10,7 @@ pub trait Dialer {
 /// TCP Dialer implementation
 pub struct TcpDialer {
   timeout_ms : Int
-}
+} derive(Eq, Debug)
 
 pub fn TcpDialer::new() -> TcpDialer {
   TcpDialer::{ timeout_ms: 30000 }
