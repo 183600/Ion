@@ -11,13 +11,16 @@ fn valid_tcp_host(host : String) -> Bool {
   if host.length() == 0 {
     return false
   }
-  for ch in host {
-    if ch <= ' ' || ch == '\u{7f}' || ch == '/' || ch == '\\' || ch == '?' ||
-      ch == '#' || ch == '@' || ch == ',' {
+  if host.has_prefix("[") {
+    if !host.has_suffix("]") {
       return false
     }
+    return is_ip_literal(host[1:host.length() - 1].to_owned())
   }
-  true
+  if host.contains(":") {
+    return is_ip_literal(host)
+  }
+  valid_url_host_chars(host)
 }
 
 fn valid_tcp_port(port : Int) -> Bool {
