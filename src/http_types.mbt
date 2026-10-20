@@ -187,23 +187,23 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
     return Err(InvalidUrl("Invalid URL format"))
   }
 
-  let scheme = url_str.substring(start=0, end=scheme_end).to_lower()
+  let scheme = url_str[0:scheme_end].to_owned().to_lower()
   if scheme != "http" && scheme != "https" {
     return Err(InvalidUrl("Only http and https schemes supported"))
   }
 
-  let rest = url_str.substring(start=scheme_end + 3)
+  let rest = url_str[scheme_end + 3:].to_owned()
   if rest.length() == 0 {
     return Err(InvalidUrl("URL has no host"))
   }
 
   let authority_end = find_first_delimiter(rest)
   let authority = match authority_end {
-    Some(index) => rest.substring(start=0, end=index)
+    Some(index) => rest[0:index].to_owned()
     None => rest
   }
   let remainder = match authority_end {
-    Some(index) => rest.substring(start=index)
+    Some(index) => rest[index:].to_owned()
     None => ""
   }
   if authority.length() == 0 {
@@ -212,7 +212,7 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
 
   // Ignore optional userinfo (user:password@host).
   let host_port = match find_char(authority, '@') {
-    Some(index) => authority.substring(start=index + 1)
+    Some(index) => authority[index + 1:].to_owned()
     None => authority
   }
   if host_port.length() == 0 {
@@ -228,11 +228,11 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
       Some(index) => index
       None => return Err(InvalidUrl("Invalid IPv6 host"))
     }
-    host = host_port.substring(start=1, end=close)
+    host = host_port[1:close].to_owned()
     let after = close + 1
     if after < host_port.length() {
       if host_port.get_char(after) == Some(':') {
-        port_str = Some(host_port.substring(start=after + 1))
+        port_str = Some(host_port[after + 1:].to_owned())
       } else {
         return Err(InvalidUrl("Invalid host"))
       }
@@ -240,8 +240,8 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
   } else {
     match find_char(host_port, ':') {
       Some(index) => {
-        host = host_port.substring(start=0, end=index)
-        port_str = Some(host_port.substring(start=index + 1))
+        host = host_port[0:index].to_owned()
+        port_str = Some(host_port[index + 1:].to_owned())
       }
       None => ()
     }
@@ -288,15 +288,15 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
     let mut main = remainder
     match main.find("#") {
       Some(index) => {
-        fragment = main.substring(start=index + 1)
-        main = main.substring(start=0, end=index)
+        fragment = main[index + 1:].to_owned()
+        main = main[0:index].to_owned()
       }
       None => ()
     }
     match main.find("?") {
       Some(index) => {
-        query = main.substring(start=index + 1)
-        main = main.substring(start=0, end=index)
+        query = main[index + 1:].to_owned()
+        main = main[0:index].to_owned()
       }
       None => ()
     }

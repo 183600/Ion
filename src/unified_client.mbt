@@ -133,8 +133,8 @@ fn normalize_path_and_suffix(target : String) -> String {
     }
     None => ()
   }
-  let path = target.substring(start=0, end=path_end)
-  let suffix = target.substring(start=path_end)
+  let path = target[0:path_end].to_owned()
+  let suffix = target[path_end:].to_owned()
   let trailing = path.has_suffix("/") || path.has_suffix("/.") ||
     path.has_suffix("/..") || path == "." || path == ".."
   let segments = path.split("/").collect()
@@ -191,7 +191,7 @@ fn resolve_redirect_url(base : Url, location : String) -> Result[Url, HttpError]
     base.to_string()
   } else {
     let directory = match base.path.rev_find("/") {
-      Some(index) => base.path.substring(start=0, end=index + 1)
+      Some(index) => base.path[0:index + 1].to_owned()
       None => "/"
     }
     base.origin() + normalize_path_and_suffix(directory + location)
@@ -231,7 +231,7 @@ fn drain_response(response : Response) -> Result[Unit, HttpError] {
 }
 
 /// Internal request implementation with redirect handling
-fn do_request(self : UnifiedClient, req : Request) -> Result[Response, HttpError] {
+fn UnifiedClient::do_request(self : UnifiedClient, req : Request) -> Result[Response, HttpError] {
   // Connect to the server
   let stream = match self.connector.connect(req.url) {
     Ok(stream) => stream

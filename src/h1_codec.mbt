@@ -477,7 +477,7 @@ fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] 
     Some(index) => index
     None => return Err(ProtocolError("Invalid response line"))
   }
-  let version = response_line.substring(start=0, end=first_space)
+  let version = response_line[0:first_space].to_owned()
   if version != "HTTP/1.1" && version != "HTTP/1.0" {
     return Err(ProtocolError("Unsupported HTTP version"))
   }
@@ -494,7 +494,7 @@ fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] 
   if status_end - status_start != 3 {
     return Err(ProtocolError("Invalid status code"))
   }
-  let status_text = response_line.substring(start=status_start, end=status_end)
+  let status_text = response_line[status_start:status_end].to_owned()
   if !is_decimal_digits(status_text) {
     return Err(ProtocolError("Invalid status code"))
   }
@@ -532,11 +532,11 @@ fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] 
       None => return Err(ProtocolError("Invalid header format"))
     }
 
-    let name = line.substring(start=0, end=colon_idx)
+    let name = line[0:colon_idx].to_owned()
     if !valid_header_name(name) {
       return Err(ProtocolError("Invalid header format"))
     }
-    let value = line.substring(start=colon_idx + 1).trim().to_owned()
+    let value = line[colon_idx + 1:].to_owned().trim().to_owned()
     if !valid_header_value(value) {
       return Err(ProtocolError("Invalid header value"))
     }
@@ -623,7 +623,7 @@ fn read_chunked_body(
       Err(err) => return Err(err)
     }
     let size_text = match line.find(";") {
-      Some(index) => line.substring(start=0, end=index)
+      Some(index) => line[0:index].to_owned()
       None => line
     }
     let size_text = size_text.trim().to_owned()
@@ -661,8 +661,8 @@ fn read_chunked_body(
           Some(index) => index
           None => return Err(NetError::ReadError("invalid chunked trailer"))
         }
-        let name = trailer.substring(start=0, end=colon_idx)
-        let value = trailer.substring(start=colon_idx + 1).trim().to_owned()
+        let name = trailer[0:colon_idx].to_owned()
+        let value = trailer[colon_idx + 1:].to_owned().trim().to_owned()
         if !valid_header_name(name) || !valid_header_value(value) {
           return Err(NetError::ReadError("invalid chunked trailer"))
         }
