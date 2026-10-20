@@ -291,6 +291,13 @@ test "TLS stream close is idempotent and formats IPv6 peers" {
 }
 
 ///|
+test "truncated response headers are rejected" {
+  let raw = "HTTP/1.1 204 No Content\r\n"
+  let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+  assert_true(codec.decode_response() is Err(_))
+}
+
+///|
 test "EOF-framed responses close the connection" {
   let raw = "HTTP/1.1 200 OK\r\n\r\nhello"
   let stream = regression_mock_stream(raw, 1, 0)

@@ -261,14 +261,21 @@ pub fn H1Codec::encode_request(self : H1Codec, req : Request) -> Result[Unit, Ht
   }
 }
 
-fn read_line(reader : StreamReader) -> Result[String, NetError] {
+fn read_line(reader : StreamReader) -> Result[String?, NetError] {
   let line = @buffer.new(size_hint=128)
+  let mut any = false
   while true {
     let byte = match reader.next_byte() {
       Ok(Some(byte)) => byte
-      Ok(None) => break
+      Ok(None) => {
+        if !any {
+          return Ok(None)
+        }
+        break
+      }
       Err(err) => return Err(err)
     }
+    any = true
     line.write_byte(byte)
     if byte == b'\n' {
       break
@@ -283,7 +290,7 @@ fn read_line(reader : StreamReader) -> Result[String, NetError] {
   } else {
     length
   }
-  Ok(@utf8.decode_lossy(bytes.exact_view(start=0, end=end)))
+  Ok(Some(@utf8.decode_lossy(bytes.exact_view(start=0, end=end))))
 }
 
 /// Decode HTTP response from HTTP/1.1 format
@@ -297,7 +304,8 @@ pub fn H1Codec::decode_response(
   }
   // Read response line
   let response_line = match read_line(self.reader) {
-    Ok(line) => line
+    Ok(Some(line)) => line
+    Ok(None) => return Err(ProtocolError("Invalid response line"))
     Err(err) => return Err(NetworkError(err))
   }
   let first_space = match response_line.find(" ") {
@@ -331,7 +339,8 @@ pub fn H1Codec::decode_response(
 
   while true {
     let line = match read_line(self.reader) {
-      Ok(line) => line
+      Ok(Some(line)) => line
+      Ok(None) => return Err(ProtocolError("Unexpected end of response headers"))
       Err(err) => return Err(NetworkError(err))
     }
     if line.length() == 0 {
@@ -387,7 +396,8 @@ struct ResponseStream {
 fn read_chunked_body(reader : StreamReader, output : Array[Byte]) -> Result[Unit, NetError] {
   while true {
     let line = match read_line(reader) {
-      Ok(line) => line
+      Ok(Some(line)) => line
+      Ok(None) => return Err(NetError::ReadError("unexpected end of chunked body"))
       Err(err) => return Err(err)
     }
     let size_text = match line.find(";") {
@@ -410,7 +420,8 @@ fn read_chunked_body(reader : StreamReader, output : Array[Byte]) -> Result[Unit
       // Consume optional trailers until the final empty line.
       while true {
         let trailer = match read_line(reader) {
-          Ok(trailer) => trailer
+          Ok(Some(trailer)) => trailer
+          Ok(None) => return Err(NetError::ReadError("unexpected end of chunked trailers"))
           Err(err) => return Err(err)
         }
         if trailer.length() == 0 {
