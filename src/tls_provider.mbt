@@ -118,7 +118,14 @@ pub impl Stream for TlsStream with fn local_addr(self : TlsStream) -> Result[Str
   self.underlying.local_addr()
 }
 
-/// Global TLS provider instance
+/// Global TLS provider instance.
+#cfg(target="native")
+pub fn default_tls_provider() -> OpenSslTlsProvider {
+  OpenSslTlsProvider::new()
+}
+
+/// Global TLS provider instance.
+#cfg(not(target="native"))
 pub fn default_tls_provider() -> MockTlsProvider {
   MockTlsProvider::new("default")
 }

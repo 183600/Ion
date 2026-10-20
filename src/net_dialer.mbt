@@ -63,7 +63,14 @@ pub impl Dialer for TcpDialer with fn resolve(self : TcpDialer, host : String) -
   Ok(@list.List([host]))
 }
 
-/// Global dialer instance for convenience
+/// Global dialer instance for convenience.
+#cfg(target="native")
+pub fn default_dialer() -> NativeTcpDialer {
+  NativeTcpDialer::new()
+}
+
+/// Global dialer instance for convenience.
+#cfg(not(target="native"))
 pub fn default_dialer() -> TcpDialer {
   TcpDialer::new()
 }
