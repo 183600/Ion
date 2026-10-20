@@ -384,8 +384,10 @@ fn inflate_stored(
   Ok(())
 }
 
-/// Inflate a raw DEFLATE stream (no zlib/gzip wrapper).
-fn inflate_raw(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
+/// Inflate a raw DEFLATE stream (no zlib/gzip wrapper) and report how many
+/// input bytes were consumed. Decoding stops at the end of the final block, so
+/// trailing bytes (e.g. the next gzip member) are left untouched.
+fn inflate_raw_consume(data : Bytes, max_bytes : Int) -> Result[(Bytes, Int), HttpError] {
   let br = BitReader::new(data)
   let out = Array::make(0, b'\x00')
   let mut is_last = false
@@ -430,7 +432,17 @@ fn inflate_raw(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
       return Err(inflate_error("reserved block type"))
     }
   }
-  Ok(@buffer.from_array(out[:]).to_bytes())
+  // The stream ends on a byte boundary; any bits left in `bit_buf` are padding
+  // within the last consumed byte, so `pos` is the first unread byte.
+  Ok((@buffer.from_array(out[:]).to_bytes(), br.pos))
+}
+
+/// Inflate a raw DEFLATE stream (no zlib/gzip wrapper).
+fn inflate_raw(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
+  match inflate_raw_consume(data, max_bytes) {
+    Ok((bytes, _)) => Ok(bytes)
+    Err(err) => Err(err)
+  }
 }
 
 fn adler32(data : Bytes) -> Int {
@@ -519,60 +531,87 @@ fn inflate_zlib(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
   Ok(inflated)
 }
 
-/// Decompress a gzip (RFC 1952) stream.
+/// Decompress a gzip (RFC 1952) stream. A gzip payload may contain several
+/// concatenated members (e.g. output of `cat a.gz b.gz`); each member is
+/// verified against its own trailer and the decoded contents are concatenated.
 fn inflate_gzip(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
-  if data.length() < 18 {
+  let output = Array::make(0, b'\x00')
+  let mut offset = 0
+  let mut members = 0
+  while offset < data.length() {
+    if data.length() - offset < 18 {
+      return Err(inflate_error("truncated gzip header"))
+    }
+    if data[offset].to_int() != 0x1F || data[offset + 1].to_int() != 0x8B {
+      return Err(inflate_error("invalid gzip magic"))
+    }
+    if data[offset + 2].to_int() != 8 {
+      return Err(inflate_error("unsupported gzip compression method"))
+    }
+    let flags = data[offset + 3].to_int()
+    if (flags & 0xE0) != 0 {
+      return Err(inflate_error("reserved gzip flags set"))
+    }
+    let mut cursor = offset + 10
+    if (flags & 0x04) != 0 {
+      // FEXTRA
+      if cursor + 2 > data.length() {
+        return Err(inflate_error("truncated gzip extra field"))
+      }
+      let xlen = data[cursor].to_int() | (data[cursor + 1].to_int() << 8)
+      cursor = cursor + 2 + xlen
+    }
+    if (flags & 0x08) != 0 {
+      // FNAME
+      cursor = skip_cstring(data, cursor)
+    }
+    if (flags & 0x10) != 0 {
+      // FCOMMENT
+      cursor = skip_cstring(data, cursor)
+    }
+    if (flags & 0x02) != 0 {
+      // FHCRC
+      cursor = cursor + 2
+    }
+    if cursor >= data.length() || data.length() - cursor < 8 {
+      return Err(inflate_error("truncated gzip body"))
+    }
+    // The DEFLATE stream does not declare its length, so decode it and use the
+    // number of consumed bytes to locate this member's trailer.
+    let (inflated, consumed) = match inflate_raw_consume(
+      data[cursor:data.length()].to_bytes(),
+      max_bytes,
+    ) {
+      Ok(result) => result
+      Err(err) => return Err(err)
+    }
+    let trailer = cursor + consumed
+    if trailer + 8 > data.length() {
+      return Err(inflate_error("truncated gzip trailer"))
+    }
+    let stored_crc = read_le32(data, trailer)
+    if crc32(inflated) != stored_crc {
+      return Err(inflate_error("gzip CRC mismatch"))
+    }
+    let stored_size = read_le32(data, trailer + 4)
+    if (inflated.length() & 0xFFFFFFFF) != stored_size {
+      return Err(inflate_error("gzip length mismatch"))
+    }
+    if output.length() + inflated.length() > max_bytes {
+      return Err(inflate_error("output too large"))
+    }
+    let mut index = 0
+    while index < inflated.length() {
+      output.push(inflated[index])
+      index = index + 1
+    }
+    members = members + 1
+    offset = trailer + 8
+  }
+  if members == 0 {
     return Err(inflate_error("truncated gzip header"))
   }
-  if data[0].to_int() != 0x1F || data[1].to_int() != 0x8B {
-    return Err(inflate_error("invalid gzip magic"))
-  }
-  if data[2].to_int() != 8 {
-    return Err(inflate_error("unsupported gzip compression method"))
-  }
-  let flags = data[3].to_int()
-  if (flags & 0xE0) != 0 {
-    return Err(inflate_error("reserved gzip flags set"))
-  }
-  let mut offset = 10
-  if (flags & 0x04) != 0 {
-    // FEXTRA
-    if offset + 2 > data.length() {
-      return Err(inflate_error("truncated gzip extra field"))
-    }
-    let xlen = data[offset].to_int() | (data[offset + 1].to_int() << 8)
-    offset = offset + 2 + xlen
-  }
-  if (flags & 0x08) != 0 {
-    // FNAME
-    offset = skip_cstring(data, offset)
-  }
-  if (flags & 0x10) != 0 {
-    // FCOMMENT
-    offset = skip_cstring(data, offset)
-  }
-  if (flags & 0x02) != 0 {
-    // FHCRC
-    offset = offset + 2
-  }
-  if offset >= data.length() || data.length() - offset < 8 {
-    return Err(inflate_error("truncated gzip body"))
-  }
-  let body = data[offset:data.length() - 8].to_bytes()
-  let inflated = match inflate_raw(body, max_bytes) {
-    Ok(bytes) => bytes
-    Err(err) => return Err(err)
-  }
-  let trailer = data.length() - 8
-  let stored_crc = read_le32(data, trailer)
-  if crc32(inflated) != stored_crc {
-    return Err(inflate_error("gzip CRC mismatch"))
-  }
-  let stored_size = read_le32(data, trailer + 4)
-  if (inflated.length() & 0xFFFFFFFF) != stored_size {
-    return Err(inflate_error("gzip length mismatch"))
-  }
-  Ok(inflated)
+  Ok(@buffer.from_array(output[:]).to_bytes())
 }
 
 fn skip_cstring(data : Bytes, offset : Int) -> Int {
