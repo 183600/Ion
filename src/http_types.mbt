@@ -660,10 +660,21 @@ pub fn Response::read_body_decoded(self : Response) -> Result[Bytes, HttpError] 
     Ok(body) => body
     Err(err) => return Err(err)
   }
-  match self.get_header("Content-Encoding") {
-    Some(encoding) => decode_encodings(encoding, raw)
-    None => Ok(raw)
+  // Repeated Content-Encoding header lines are equivalent to a single
+  // comma-separated value listing the codings in the order they were applied
+  // (RFC 7230 §3.2.2), so combine every line before decoding.
+  let values = self.get_header_all("Content-Encoding")
+  if values.length() == 0 {
+    return Ok(raw)
   }
+  let mut combined = ""
+  for value in values.iter() {
+    if combined.length() > 0 {
+      combined = combined + ", "
+    }
+    combined = combined + value
+  }
+  decode_encodings(combined, raw)
 }
 
 /// Apply a (possibly comma-separated) `Content-Encoding` header. Encodings are
