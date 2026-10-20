@@ -410,6 +410,7 @@ pub struct Request {
   headers : Headers
   body : Option[Bytes]
   timeout_ms : Int
+  timeout_explicit : Bool
 } derive(Eq, Debug)
 
 pub fn Request::new(method : HttpMethod, url : Url) -> Request {
@@ -419,6 +420,7 @@ pub fn Request::new(method : HttpMethod, url : Url) -> Request {
     headers: Headers::new(),
     body: None,
     timeout_ms: 30000,
+    timeout_explicit: false,
   }
 }
 
@@ -494,7 +496,11 @@ pub fn Request::with_body(self : Request, body : Bytes) -> Request {
 }
 
 pub fn Request::with_timeout(self : Request, timeout_ms : Int) -> Request {
-  Request::{ ..self, timeout_ms: if timeout_ms < 0 { 0 } else { timeout_ms } }
+  Request::{
+    ..self,
+    timeout_ms: if timeout_ms < 0 { 0 } else { timeout_ms },
+    timeout_explicit: true,
+  }
 }
 
 pub fn Request::get_header(self : Request, name : String) -> Option[String] {

@@ -252,10 +252,10 @@ fn UnifiedClient::do_request(self : UnifiedClient, req : Request) -> Result[Resp
   }
 
   // Set timeout, falling back to the client default when the request uses it.
-  let timeout_ms = if req.timeout_ms == 30000 {
-    self.options.timeout_ms
-  } else {
+  let timeout_ms = if req.timeout_explicit {
     req.timeout_ms
+  } else {
+    self.options.timeout_ms
   }
   match stream.set_timeout(timeout_ms) {
     Ok(_) => ()
@@ -356,6 +356,7 @@ fn UnifiedClient::do_request(self : UnifiedClient, req : Request) -> Result[Resp
       headers: next_headers,
       body: if keep_body { request.body } else { None },
       timeout_ms: request.timeout_ms,
+      timeout_explicit: request.timeout_explicit,
     }
 
     // Follow redirect

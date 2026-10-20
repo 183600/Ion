@@ -70,6 +70,7 @@ test "Request creation" {
   assert_eq(request.method, GET)
   assert_eq(request.url.scheme, "https")
   assert_eq(request.timeout_ms, 30000)
+  assert_false(request.timeout_explicit)
   assert_true(request.body.is_none())
 }
 
@@ -83,6 +84,7 @@ test "Request with header and body" {
   
   assert_eq(request.method, POST)
   assert_eq(request.timeout_ms, 5000)
+  assert_true(request.timeout_explicit)
   assert_true(request.body.is_some())
   
   let content_type = request.get_header("Content-Type")
