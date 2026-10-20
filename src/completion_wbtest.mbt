@@ -37,3 +37,16 @@ test "pool keeps every idle connection for the same origin" {
   assert_false(first_stream.is_open)
   assert_false(second_stream.is_open)
 }
+
+///|
+test "request connection close prevents connection reuse" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+  let stream = regression_mock_stream(raw, 0, 0)
+  let codec = H1Codec::new(stream)
+  let url = Url::parse("http://example.com/").unwrap()
+  let request = Request::new(GET, url).with_header("Connection", "close")
+  assert_true(codec.encode_request(request) is Ok(_))
+  let response = codec.decode_response().unwrap()
+  assert_eq(response.read_body().unwrap(), b"ok")
+  assert_false(stream.is_open)
+}

@@ -3,6 +3,7 @@ pub struct H1Codec {
   stream : &Stream
   reader : StreamReader
   mut last_is_head : Bool
+  mut close_after_request : Bool
   max_body_bytes : Int
   on_complete : ((Bool) -> Unit)?
 }
@@ -34,6 +35,7 @@ fn H1Codec::make(
     stream,
     reader: StreamReader::new(stream),
     last_is_head: false,
+    close_after_request: false,
     max_body_bytes: limit,
     on_complete,
   }
@@ -460,6 +462,7 @@ pub fn H1Codec::encode_request(self : H1Codec, req : Request) -> Result[Unit, Ht
   match self.reader.stream.flush() {
     Ok(_) => {
       self.last_is_head = req.method == HEAD
+      self.close_after_request = headers_have_token(req.headers, "Connection", "close")
       Ok(())
     }
     Err(err) => Err(NetworkError(err))
@@ -632,7 +635,7 @@ pub fn H1Codec::decode_response(
       remaining: 0,
       total_read: 0,
       chunk_state: ChunkSize,
-      close_after_body: false,
+      close_after_body: self.close_after_request,
       prepared: false,
       error: None,
       is_open: true,
@@ -650,6 +653,7 @@ pub fn H1Codec::decode_response(
     let response_stream : &Stream = response_stream
 
     self.last_is_head = false
+    self.close_after_request = false
     return Ok(Response::new_with_version(
       response_head.version,
       response_head.status,
@@ -823,7 +827,7 @@ fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
   let close_connection = headers_have_token(self.headers, "Connection", "close")
   let keep_alive = headers_have_token(self.headers, "Connection", "keep-alive")
   let close_by_default = self.version == "HTTP/1.0" && !keep_alive
-  self.close_after_body = close_connection || close_by_default
+  self.close_after_body = self.close_after_body || close_connection || close_by_default
 
   if self.head || self.status == 204 || self.status == 205 || self.status == 304 ||
     (self.status >= 100 && self.status < 200) {
