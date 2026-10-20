@@ -454,10 +454,17 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
     }
   }
   self.loaded = true
+  let close_connection = match self.headers.get("Connection") {
+    Some(value) => header_has_token(value, "close")
+    None => false
+  }
 
   // Responses to HEAD and 1xx/204/304 responses never carry a body.
   if self.head || self.status == 204 || self.status == 205 || self.status == 304 ||
     (self.status >= 100 && self.status < 200) {
+    if close_connection {
+      let _ = self.reader.stream.close()
+    }
     return Ok(())
   }
 
@@ -505,7 +512,7 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
 
   match result {
     Ok(_) => {
-      if close_after_load {
+      if close_after_load || close_connection {
         let _ = self.reader.stream.close()
       }
       Ok(())

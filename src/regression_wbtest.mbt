@@ -291,6 +291,17 @@ test "TLS stream close is idempotent and formats IPv6 peers" {
 }
 
 ///|
+test "Connection close responses are removed from reuse" {
+  let raw = "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 2\r\n\r\nok"
+  let stream = regression_mock_stream(raw, 1, 0)
+  let codec = H1Codec::new(stream)
+  let response = codec.decode_response().unwrap()
+  let buf = @buffer.new(size_hint=4)
+  assert_eq(response.body.read(buf).unwrap(), 2)
+  assert_eq(stream.is_open, false)
+}
+
+///|
 test "truncated response headers are rejected" {
   let raw = "HTTP/1.1 204 No Content\r\n"
   let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
