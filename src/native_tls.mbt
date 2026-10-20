@@ -21,6 +21,12 @@ extern "C" fn feather_tls_new(
 extern "C" fn feather_tls_ready(tls : NativeTlsHandle) -> Int = "feather_tls_ready"
 
 #borrow(tls)
+extern "C" fn feather_tls_capture_keylog(tls : NativeTlsHandle, enabled : Int) -> Int = "feather_tls_capture_keylog"
+
+#borrow(tls, buffer)
+extern "C" fn feather_tls_drain_keylog(tls : NativeTlsHandle, buffer : Bytes, capacity : Int) -> Int = "feather_tls_drain_keylog"
+
+#borrow(tls)
 extern "C" fn feather_tls_handshake(tls : NativeTlsHandle) -> Int = "feather_tls_handshake"
 
 #borrow(tls, buffer)
@@ -98,6 +104,38 @@ fn native_tls_root_bytes(store : RootStore) -> Bytes {
     buffer.write_byte(b'\n')
   }
   buffer.to_bytes()
+}
+
+/// Forward any captured TLS key material to the configured key-log sink. This
+/// is a debugging aid only; it never affects the handshake or I/O result.
+fn native_tls_drain_keylog(
+  tls : NativeTlsHandle,
+  sink : &KeyLogSink?,
+) -> Unit {
+  let sink = match sink {
+    Some(sink) => sink
+    None => return
+  }
+  let buffer = Buffer(size_hint=1024)
+  while true {
+    let chunk = Bytes::new(4096)
+    let length = feather_tls_drain_keylog(tls, chunk, 4096)
+    if length <= 0 {
+      break
+    }
+    buffer.write_bytes(chunk.exact_view(start=0, end=length))
+  }
+  let text = @utf8.decode_lossy(buffer.to_bytes())
+  for line in text.split("\n") {
+    if line.length() == 0 {
+      continue
+    }
+    let environment = match line.find(" ") {
+      Some(index) => line[:index]
+      None => line
+    }
+    sink.log(environment.to_owned(), @utf8.encode(line.to_owned()))
+  }
 }
 
 enum NativeTlsIo {
@@ -181,6 +219,7 @@ fn native_tls_feed_error(result : NativeTlsIo) -> TlsError {
 pub struct NativeTlsStream {
   tls : NativeTlsHandle
   underlying : &Stream
+  key_log : Option[&KeyLogSink]
   mut is_open : Bool
 }
 
@@ -194,6 +233,7 @@ pub impl Stream for NativeTlsStream with fn read(
   let buffer = Bytes::new(NATIVE_TLS_BUFFER_SIZE)
   while true {
     let count = feather_tls_read(self.tls, buffer, NATIVE_TLS_BUFFER_SIZE)
+    native_tls_drain_keylog(self.tls, self.key_log)
     if count > 0 {
       buf.write_bytes(buffer.exact_view(start=0, end=count))
       return Ok(count)
@@ -237,6 +277,7 @@ pub impl Stream for NativeTlsStream with fn write(
   let mut offset = 0
   while offset < data.length() {
     let count = feather_tls_write(self.tls, data, offset, data.length() - offset)
+    native_tls_drain_keylog(self.tls, self.key_log)
     if count > 0 {
       offset = offset + count
       match native_tls_flush(self.tls, self.underlying) {
@@ -369,10 +410,16 @@ pub impl TlsClientCtx for OpenSslTlsClientCtx with fn connect(
     return Err(InvalidConfig(native_tls_error_message(tls)))
   }
 
+  let key_log = self.config.key_log
+  if key_log is Some(_) {
+    let _ = feather_tls_capture_keylog(tls, 1)
+  }
+
   let mut steps = 0
   while steps < NATIVE_TLS_HANDSHAKE_STEPS {
     steps = steps + 1
     let status = feather_tls_handshake(tls)
+    native_tls_drain_keylog(tls, key_log)
     match native_tls_flush(tls, underlying) {
       TlsIoData => ()
       result => return Err(native_tls_flush_error(result))
@@ -387,7 +434,7 @@ pub impl TlsClientCtx for OpenSslTlsClientCtx with fn connect(
         }
       }
       self.is_connected = true
-      let stream = NativeTlsStream::{ tls, underlying, is_open: true }
+      let stream = NativeTlsStream::{ tls, underlying, key_log, is_open: true }
       return Ok(stream)
     }
     if status == 0 {

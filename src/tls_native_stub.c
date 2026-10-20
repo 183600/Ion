@@ -20,7 +20,28 @@ typedef struct {
   int last_error;
   int verify_error;
   unsigned long library_error;
+  int capture_keylog;
+  char keylog[8192];
+  int keylog_length;
 } FeatherTls;
+
+static void feather_tls_keylog_callback(const SSL *ssl, const char *line) {
+  FeatherTls *tls = (FeatherTls *)SSL_get_app_data(ssl);
+  if (tls == NULL || !tls->capture_keylog || line == NULL) {
+    return;
+  }
+  size_t length = strlen(line);
+  if (length == 0) {
+    return;
+  }
+  size_t available = sizeof(tls->keylog) - (size_t)tls->keylog_length;
+  if (length + 1 > available) {
+    return;
+  }
+  memcpy(tls->keylog + tls->keylog_length, line, length);
+  tls->keylog_length += (int)length;
+  tls->keylog[tls->keylog_length++] = '\n';
+}
 
 static void feather_tls_finalize(void *pointer) {
   FeatherTls *tls = (FeatherTls *)pointer;
@@ -142,6 +163,9 @@ FeatherTls *feather_tls_new(
     return tls;
   }
 
+  SSL_set_app_data(tls->ssl, tls);
+  SSL_CTX_set_keylog_callback(tls->ctx, feather_tls_keylog_callback);
+
   if (SSL_set_tlsext_host_name(tls->ssl, name) != 1) {
     feather_tls_record_error(tls);
     return tls;
@@ -190,6 +214,32 @@ FeatherTls *feather_tls_new(
 MOONBIT_FFI_EXPORT
 int32_t feather_tls_ready(FeatherTls *tls) {
   return tls != NULL && tls->ready;
+}
+
+MOONBIT_FFI_EXPORT
+int32_t feather_tls_capture_keylog(FeatherTls *tls, int32_t enabled) {
+  if (tls == NULL) {
+    return -1;
+  }
+  tls->capture_keylog = enabled != 0 ? 1 : 0;
+  return 0;
+}
+
+MOONBIT_FFI_EXPORT
+int32_t feather_tls_drain_keylog(FeatherTls *tls, moonbit_bytes_t buffer, int32_t capacity) {
+  if (tls == NULL || capacity <= 0) {
+    return 0;
+  }
+  int length = tls->keylog_length;
+  if (length > capacity) {
+    length = capacity;
+  }
+  memcpy(buffer, tls->keylog, (size_t)length);
+  if (length < tls->keylog_length) {
+    memmove(tls->keylog, tls->keylog + length, (size_t)(tls->keylog_length - length));
+  }
+  tls->keylog_length -= length;
+  return length;
 }
 
 MOONBIT_FFI_EXPORT

@@ -46,3 +46,34 @@ test "CLI methods map to their HTTP verbs" {
   }
   assert_true(HttpMethod::parse("brew") is Err(InvalidMethod(_)))
 }
+
+///|
+test "TLS config carries a key-log sink" {
+  let capturing = CapturingKeyLogSink::{ lines: [] }
+  let config = TlsConfig::new("example.com").with_key_log(capturing)
+  assert_true(config.key_log is Some(_))
+  capturing.log("CLIENT_RANDOM", @utf8.encode("CLIENT_RANDOM abc def"))
+  assert_eq(capturing.lines.length(), 1)
+  assert_eq(capturing.lines[0], "CLIENT_RANDOM abc def")
+}
+
+///|
+test "the print key-log sink can be constructed" {
+  let sink : &KeyLogSink = PrintKeyLogSink::{}
+  sink.log("LABEL", @utf8.encode("LABEL x y"))
+}
+
+///|
+struct CapturingKeyLogSink {
+  lines : Array[String]
+}
+
+///|
+impl KeyLogSink for CapturingKeyLogSink with fn log(
+  self : CapturingKeyLogSink,
+  environment : String,
+  keylog : Bytes,
+) -> Unit {
+  let _ = environment
+  self.lines.push(@utf8.decode_lossy(keylog))
+}

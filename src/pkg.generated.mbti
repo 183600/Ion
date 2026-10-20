@@ -168,6 +168,9 @@ pub enum NetError {
   IoError(String)
 } derive(Eq, @debug.Debug)
 
+type PrintKeyLogSink
+pub impl KeyLogSink for PrintKeyLogSink
+
 pub struct Proxy {
   url : Url
   authorization : String?

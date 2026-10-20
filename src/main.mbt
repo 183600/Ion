@@ -14,7 +14,22 @@ fn print_usage() -> Unit {
   println("       FEATHER_PROXY=<url> feather     route requests through an HTTP proxy")
   println("       FEATHER_CA=<pem file> feather   trust an extra CA certificate bundle")
   println("       FEATHER_INSECURE=1 feather      DISABLE TLS verification (unsafe)")
+  println("       FEATHER_KEYLOG=1 feather        print TLS key material (debug)")
   println("Methods: get, post, put, delete, head, options, patch")
+}
+
+/// Prints each TLS key-log line so the captured secrets can be inspected (or
+/// piped into a tool such as Wireshark's SSLKEYLOGFILE).
+struct PrintKeyLogSink {}
+
+pub impl KeyLogSink for PrintKeyLogSink with fn log(
+  self : PrintKeyLogSink,
+  environment : String,
+  keylog : Bytes,
+) -> Unit {
+  let _ = self
+  let _ = environment
+  println(@utf8.decode_lossy(keylog))
 }
 
 /// Read a whole file as bytes, returning None when it cannot be read.
@@ -46,7 +61,11 @@ fn env_tls_config() -> TlsConfig? {
     Some(value) => if value.length() > 0 { Some(value) } else { None }
     None => None
   }
-  if !insecure && ca_path is None {
+  let key_log = match @env.get_env_var("FEATHER_KEYLOG") {
+    Some(value) => value == "1" || value.to_lower() == "true"
+    None => false
+  }
+  if !insecure && ca_path is None && !key_log {
     return None
   }
   let mut config = TlsConfig::new("")
@@ -60,6 +79,9 @@ fn env_tls_config() -> TlsConfig? {
       None => println("warning: could not read CA bundle: " + path)
     }
     None => ()
+  }
+  if key_log {
+    config = config.with_key_log(PrintKeyLogSink::{})
   }
   Some(config)
 }
