@@ -183,7 +183,7 @@ pub impl Stream for NativeTlsStream with fn read(
       }
       match native_tls_feed(self.tls, self.underlying) {
         Ok(true) => continue
-        Ok(false) => return Err(NetError::ReadError("TLS connection closed unexpectedly"))
+        Ok(false) => return Ok(0)
         Err(_) => return Err(NetError::ReadError("TLS read failed"))
       }
     }
