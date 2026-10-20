@@ -200,8 +200,11 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
   if host.length() == 0 {
     return Err(InvalidUrl("URL has no host"))
   }
-  if !bracketed && host.contains(":") {
-    return Err(InvalidUrl("Invalid unbracketed IPv6 host"))
+  if host.contains("@") {
+    return Err(InvalidUrl("Invalid host"))
+  }
+  if !bracketed && (host.contains(":") || host.contains("[") || host.contains("]")) {
+    return Err(InvalidUrl("Invalid host"))
   }
 
   let port = match port_str {
