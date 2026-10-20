@@ -913,6 +913,10 @@ pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buf
         self.remaining = self.remaining - count
         self.total_read = self.total_read + count
         produced = produced + count
+        if self.remaining == 0 {
+          self.finish()
+          break
+        }
       }
       BodyUntilEof => {
         let count = match self.reader.read_some(buf, limit - produced) {

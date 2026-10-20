@@ -372,6 +372,28 @@ test "response bodies are read in bounded chunks" {
 }
 
 ///|
+test "fixed-length body finishing at the read boundary returns to the pool" {
+  let body = "a".repeat(8192)
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 8192\r\n\r\n" + body +
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"
+  let stream = regression_mock_stream(raw, 1, 0)
+  let streams : Array[&Stream] = [stream]
+  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let options = ClientOptions::new().with_follow_redirects(false)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let url = Url::parse("http://example.com/").unwrap()
+
+  let first = client.request(Request::new(GET, url)).unwrap()
+  let first_buf = @buffer.new(size_hint=8192)
+  assert_eq(first.body.read(first_buf).unwrap(), 8192)
+
+  let second = client.request(Request::new(GET, url)).unwrap()
+  assert_eq(second.text().unwrap(), "hi")
+  assert_eq(dialer.index, 1)
+}
+
+///|
 test "prefetched response bytes prevent unsafe connection reuse" {
   let first_stream = regression_mock_stream(
     "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nokHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi",
