@@ -4,11 +4,20 @@ struct ActiveConnection {
   stream : &Stream
 }
 
+struct IdleConnection {
+  stream : &Stream
+  last_used_ms : UInt64
+}
+
+/// Default maximum idle time for a pooled connection (90 seconds).
+const DEFAULT_IDLE_TIMEOUT_MS : Int = 90000
+
 struct ConnectionPoolState {
-  mut idle : Map[String, List[&Stream]]
+  mut idle : Map[String, List[IdleConnection]]
   mut active : List[ActiveConnection]
   mut next_id : Int
   mut max_idle : Int
+  mut idle_timeout_ms : Int
 }
 
 fn ConnectionPoolState::new() -> ConnectionPoolState {
@@ -17,6 +26,7 @@ fn ConnectionPoolState::new() -> ConnectionPoolState {
     active: @list.List([]),
     next_id: 0,
     max_idle: 8,
+    idle_timeout_ms: DEFAULT_IDLE_TIMEOUT_MS,
   }
 }
 
@@ -37,16 +47,17 @@ fn ConnectionPoolState::cache_idle(
   self : ConnectionPoolState,
   key : String,
   stream : &Stream,
+  now_ms : UInt64,
 ) -> Unit {
   let idle = match self.idle.get(key) {
     Some(streams) => streams
     None => @list.List([])
   }
-  let mut updated = idle.prepend(stream)
+  let mut updated = idle.prepend(IdleConnection::{ stream, last_used_ms: now_ms })
   while updated.length() > self.max_idle {
     match updated.last() {
       Some(evicted) => {
-        let _ = evicted.close()
+        let _ = evicted.stream.close()
         updated = updated.take(updated.length() - 1)
       }
       None => break
@@ -78,7 +89,7 @@ fn ConnectionLease::release(self : ConnectionLease, reusable : Bool) -> Unit {
   self.pool.val.active = self.pool.val.active.filter(fn(entry) { entry.id != id })
   if reusable {
     match self.stream.peer_addr() {
-      Ok(_) => self.pool.val.cache_idle(self.key, self.stream)
+      Ok(_) => self.pool.val.cache_idle(self.key, self.stream, @env.now())
       Err(_) => {
         let _ = self.stream.close()
       }
@@ -88,33 +99,46 @@ fn ConnectionLease::release(self : ConnectionLease, reusable : Bool) -> Unit {
   }
 }
 
-fn take_idle_stream(
+/// Remove and return an idle connection for `key`. Entries whose last use is
+/// older than the configured idle timeout are closed and skipped; the search
+/// stops at the first live entry because `idle` is ordered by recency.
+fn take_idle_stream_at(
   pool : @ref.Ref[ConnectionPoolState],
   key : String,
+  now_ms : UInt64,
 ) -> Option[&Stream] {
-  let streams = match pool.val.idle.get(key) {
-    Some(streams) => streams
+  let entries = match pool.val.idle.get(key) {
+    Some(entries) => entries
     None => return None
   }
-  let mut remaining = streams
+  let timeout = pool.val.idle_timeout_ms
+  let mut remaining = entries
   while true {
     match remaining.head() {
-      Some(stream) => {
+      Some(entry) => {
         let rest = remaining.unsafe_tail()
-        match stream.peer_addr() {
-          Ok(_) => {
-            if rest.length() == 0 {
-              let _ = pool.val.idle.remove(key)
-            } else {
-              pool.val.idle.set(key, rest)
-            }
-            return Some(stream)
-          }
-          Err(_) => {
-            let _ = stream.close()
-            remaining = rest
-          }
+        let expired = if timeout > 0 {
+          now_ms - entry.last_used_ms > timeout.to_uint64()
+        } else {
+          false
         }
+        let alive = if expired { false } else { entry.stream.peer_addr() is Ok(_) }
+        if expired || !alive {
+          let _ = entry.stream.close()
+          if rest.length() == 0 {
+            let _ = pool.val.idle.remove(key)
+            return None
+          }
+          pool.val.idle.set(key, rest)
+          remaining = rest
+          continue
+        }
+        if rest.length() == 0 {
+          let _ = pool.val.idle.remove(key)
+        } else {
+          pool.val.idle.set(key, rest)
+        }
+        return Some(entry.stream)
       }
       None => {
         let _ = pool.val.idle.remove(key)
@@ -123,6 +147,13 @@ fn take_idle_stream(
     }
   }
   None
+}
+
+fn take_idle_stream(
+  pool : @ref.Ref[ConnectionPoolState],
+  key : String,
+) -> Option[&Stream] {
+  take_idle_stream_at(pool, key, @env.now())
 }
 
 pub fn Connector::new(dialer : &Dialer, tls_provider : &TlsProvider) -> Connector {
@@ -186,6 +217,18 @@ pub fn Connector::with_max_connections_per_host(
 /// The current per-host connection cap; `0` means unlimited.
 pub fn Connector::max_connections_per_host(self : Connector) -> Int {
   self.max_connections_per_host
+}
+
+/// Discard pooled connections that have been idle for longer than
+/// `idle_timeout_ms`. A value below 1 disables idle eviction.
+pub fn Connector::with_idle_timeout(self : Connector, idle_timeout_ms : Int) -> Connector {
+  self.pool.val.idle_timeout_ms = if idle_timeout_ms < 0 { 0 } else { idle_timeout_ms }
+  self
+}
+
+/// The current idle timeout; `0` means idle connections are never evicted.
+pub fn Connector::idle_timeout(self : Connector) -> Int {
+  self.pool.val.idle_timeout_ms
 }
 
 fn connection_key(url : Url) -> String {
@@ -297,13 +340,13 @@ fn Connector::connect_impl(
     }
 
     if cache_new {
-      self.pool.val.cache_idle(conn_key, tls_stream)
+      self.pool.val.cache_idle(conn_key, tls_stream, @env.now())
     }
     Ok((tls_stream, false))
   } else {
     // For HTTP, use the raw stream directly
     if cache_new {
-      self.pool.val.cache_idle(conn_key, raw_stream)
+      self.pool.val.cache_idle(conn_key, raw_stream, @env.now())
     }
     Ok((raw_stream, false))
   }
@@ -334,9 +377,9 @@ pub fn Connector::close(self : Connector, url : Url) -> Result[Unit, HttpError] 
   let conn_key = connection_key(url)
 
   match self.pool.val.idle.get(conn_key) {
-    Some(streams) => {
-      for stream in streams {
-        let _ = stream.close()
+    Some(entries) => {
+      for entry in entries {
+        let _ = entry.stream.close()
       }
       let _ = self.pool.val.idle.remove(conn_key)
     }
@@ -353,9 +396,9 @@ pub fn Connector::close(self : Connector, url : Url) -> Result[Unit, HttpError] 
 }
 
 pub fn Connector::close_all(self : Connector) -> Result[Unit, HttpError] {
-  for _conn_key, streams in self.pool.val.idle.iter2() {
-    for stream in streams {
-      let _ = stream.close()
+  for _conn_key, entries in self.pool.val.idle.iter2() {
+    for entry in entries {
+      let _ = entry.stream.close()
     }
   }
   for entry in self.pool.val.active {

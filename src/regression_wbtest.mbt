@@ -2118,3 +2118,44 @@ test "connector clamps the connection cap to unlimited" {
     .with_max_connections_per_host(0)
   assert_eq(connector.max_connections_per_host(), 0)
 }
+
+///|
+test "connector rejects idle connections past the idle timeout" {
+  let stream = regression_mock_stream("", 1, 0)
+  let pool = @ref.Ref(ConnectionPoolState::new())
+  let key = "http://example.com:80"
+  pool.val.cache_idle(key, stream, 1000)
+  // A lookup well before the timeout reuses the connection.
+  match take_idle_stream_at(pool, key, 2000) {
+    Some(_) => assert_true(stream.is_open)
+    None => abort("live connection should be reused")
+  }
+  assert_true(take_idle_stream_at(pool, key, 2000) is None)
+
+  let expired = regression_mock_stream("", 1, 0)
+  pool.val.cache_idle(key, expired, 1000)
+  assert_true(take_idle_stream_at(pool, key, 95000) is None)
+  assert_false(expired.is_open)
+}
+
+///|
+test "connector never evicts idle connections when the timeout is disabled" {
+  let stream = regression_mock_stream("", 1, 0)
+  let pool = @ref.Ref(ConnectionPoolState::new())
+  pool.val.idle_timeout_ms = 0
+  let key = "http://example.com:80"
+  pool.val.cache_idle(key, stream, 1000)
+  match take_idle_stream_at(pool, key, 999999999) {
+    Some(_) => assert_true(stream.is_open)
+    None => abort("idle timeout disabled should keep the connection")
+  }
+}
+
+///|
+test "connector exposes a configurable idle timeout" {
+  let dialer = TcpDialer::new()
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  assert_eq(connector.idle_timeout(), 90000)
+  assert_eq(connector.with_idle_timeout(5000).idle_timeout(), 5000)
+  assert_eq(connector.with_idle_timeout(-1).idle_timeout(), 0)
+}

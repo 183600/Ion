@@ -70,9 +70,11 @@ pub fn Connector::checkout(Self, Url) -> Result[(&Stream, ConnectionLease), Http
 pub fn Connector::close(Self, Url) -> Result[Unit, HttpError]
 pub fn Connector::close_all(Self) -> Result[Unit, HttpError]
 pub fn Connector::connect(Self, Url) -> Result[&Stream, HttpError]
+pub fn Connector::idle_timeout(Self) -> Int32
 pub fn Connector::max_connections_per_host(Self) -> Int32
 pub fn Connector::max_idle_per_host(Self) -> Int32
 pub fn Connector::new(&Dialer, &TlsProvider) -> Self
+pub fn Connector::with_idle_timeout(Self, Int32) -> Self
 pub fn Connector::with_max_connections_per_host(Self, Int32) -> Self
 pub fn Connector::with_max_idle_per_host(Self, Int32) -> Self
 pub fn Connector::with_timeout(Self, Int32) -> Self
@@ -137,6 +139,8 @@ pub fn HttpMethod::parse(String) -> Result[Self, HttpError]
 pub fn HttpMethod::to_string(Self) -> String
 
 type Huffman
+
+type IdleConnection
 
 pub struct MockTlsClientCtx {
   config : TlsConfig
@@ -286,6 +290,7 @@ pub fn UnifiedClient::patch(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::post(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::post_form(Self, String, Array[(String, String)]) -> Result[Response, HttpError]
 pub fn UnifiedClient::put(Self, String, Bytes) -> Result[Response, HttpError]
+pub fn UnifiedClient::with_idle_timeout(Self, Int32) -> Self
 pub fn UnifiedClient::with_max_connections_per_host(Self, Int32) -> Self
 pub fn UnifiedClient::with_options(ClientOptions) -> Self
 pub fn UnifiedClient::with_tls_config(Self, TlsConfig) -> Self

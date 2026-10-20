@@ -131,6 +131,20 @@ pub fn UnifiedClient::with_max_connections_per_host(
   }
 }
 
+/// Discard pooled connections idle for longer than `idle_timeout_ms`. A value
+/// below 1 disables idle eviction.
+pub fn UnifiedClient::with_idle_timeout(
+  self : UnifiedClient,
+  idle_timeout_ms : Int,
+) -> UnifiedClient {
+  let _ = self.connector.with_idle_timeout(idle_timeout_ms)
+  UnifiedClient::{
+    connector: self.connector,
+    options: self.options,
+    redirect_count: 0,
+  }
+}
+
 /// Replace the TLS configuration used for HTTPS connections.
 pub fn UnifiedClient::with_tls_config(
   self : UnifiedClient,
