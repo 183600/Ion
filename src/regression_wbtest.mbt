@@ -859,6 +859,16 @@ test "request framing rejects ambiguous lengths" {
         .with_body(@utf8.encode("hello")),
     ) is Err(InvalidHeader(_)),
   )
+  for value in ["gzip, chunked", "chunked, chunked"] {
+    let codec = H1Codec::new(regression_mock_stream("", 0, 0))
+    assert_true(
+      codec.encode_request(
+        Request::new(POST, url)
+          .with_header("Transfer-Encoding", value)
+          .with_body(@utf8.encode("hello")),
+      ) is Err(InvalidHeader(_)),
+    )
+  }
 }
 
 ///|

@@ -277,17 +277,15 @@ fn request_is_chunked(headers : Headers) -> Result[Bool, HttpError] {
   if values.length() > 1 {
     return Err(InvalidHeader("Transfer-Encoding"))
   }
-  let mut final_token = ""
   let mut seen = false
   for part in values.nth(0).unwrap().split(",") {
     let token = part.trim().to_owned().to_lower()
-    if token.length() == 0 {
+    if token != "chunked" || seen {
       return Err(InvalidHeader("Transfer-Encoding"))
     }
-    final_token = token
     seen = true
   }
-  if !seen || final_token != "chunked" {
+  if !seen {
     return Err(InvalidHeader("Transfer-Encoding"))
   }
   Ok(true)
