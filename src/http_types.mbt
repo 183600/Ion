@@ -258,19 +258,35 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
   Ok(Url::{ scheme, host, port, path, query, fragment })
 }
 
-pub fn Url::to_string(self : Url) -> String {
+/// Host and optional non-default port, bracketing IPv6 literals.
+pub fn Url::authority(self : Url) -> String {
   let scheme = self.scheme.to_lower()
   let host_text = if self.host.contains(":") && !(self.host.has_prefix("[") && self.host.has_suffix("]")) {
     "[" + self.host + "]"
   } else {
     self.host
   }
-  let host_port = if (scheme == "https" && self.port != 443) ||
-    (scheme == "http" && self.port != 80) {
-    host_text + ":" + self.port.to_string()
+  let default_port = if scheme == "https" {
+    443
+  } else if scheme == "http" {
+    80
   } else {
-    host_text
+    -1
   }
+  if self.port == default_port {
+    host_text
+  } else {
+    host_text + ":" + self.port.to_string()
+  }
+}
+
+/// Scheme, authority, path, and query without the fragment.
+pub fn Url::origin(self : Url) -> String {
+  self.scheme.to_lower() + "://" + self.authority()
+}
+
+/// Origin-form request target: an absolute path plus an optional query.
+pub fn Url::request_target(self : Url) -> String {
   let path = if self.path.length() == 0 {
     "/"
   } else if self.path.has_prefix("/") {
@@ -278,16 +294,19 @@ pub fn Url::to_string(self : Url) -> String {
   } else {
     "/" + self.path
   }
-  let base = self.scheme + "://" + host_port + path
-  let with_query = if self.query.length() > 0 {
-    base + "?" + self.query
+  if self.query.length() > 0 {
+    path + "?" + self.query
+  } else {
+    path
+  }
+}
+
+pub fn Url::to_string(self : Url) -> String {
+  let base = self.origin() + self.request_target()
+  if self.fragment.length() > 0 {
+    base + "#" + self.fragment
   } else {
     base
-  }
-  if self.fragment.length() > 0 {
-    with_query + "#" + self.fragment
-  } else {
-    with_query
   }
 }
 

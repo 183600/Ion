@@ -221,8 +221,11 @@ pub struct Url {
   query : String
   fragment : String
 } derive(Eq, @debug.Debug)
+pub fn Url::authority(Self) -> String
 pub fn Url::new(String, String, Int32) -> Self
+pub fn Url::origin(Self) -> String
 pub fn Url::parse(String) -> Result[Self, HttpError]
+pub fn Url::request_target(Self) -> String
 pub fn Url::to_string(Self) -> String
 
 pub enum VerifyMode {

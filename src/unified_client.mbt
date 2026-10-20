@@ -70,21 +70,6 @@ pub impl HttpClient for UnifiedClient with fn request(self : UnifiedClient, req 
   self.do_request(req)
 }
 
-fn url_authority(url : Url) -> String {
-  let scheme = url.scheme.to_lower()
-  let host = if url.host.contains(":") && !(url.host.has_prefix("[") && url.host.has_suffix("]")) {
-    "[" + url.host + "]"
-  } else {
-    url.host
-  }
-  if (scheme == "https" && url.port != 443) ||
-    (scheme == "http" && url.port != 80) {
-    host + ":" + url.port.to_string()
-  } else {
-    host
-  }
-}
-
 fn normalize_path_and_suffix(target : String) -> String {
   let mut path_end = target.length()
   match target.find("?") {
@@ -133,25 +118,6 @@ fn normalize_path_and_suffix(target : String) -> String {
   result + suffix
 }
 
-fn absolute_path(path : String) -> String {
-  if path.length() == 0 {
-    "/"
-  } else if path.has_prefix("/") {
-    path
-  } else {
-    "/" + path
-  }
-}
-
-fn base_without_fragment(base : Url) -> String {
-  let base_str = base.scheme + "://" + url_authority(base) + absolute_path(base.path)
-  if base.query.length() > 0 {
-    base_str + "?" + base.query
-  } else {
-    base_str
-  }
-}
-
 fn resolve_redirect_url(base : Url, location : String) -> Result[Url, HttpError] {
   let location = location.trim().to_string()
   let lower = location.to_lower()
@@ -160,12 +126,18 @@ fn resolve_redirect_url(base : Url, location : String) -> Result[Url, HttpError]
   } else if location.has_prefix("//") {
     base.scheme + ":" + location
   } else if location.has_prefix("#") {
-    base_without_fragment(base) + location
+    base.origin() + base.request_target() + location
   } else if location.has_prefix("/") {
-    base.scheme + "://" + url_authority(base) +
-    normalize_path_and_suffix(location)
+    base.origin() + normalize_path_and_suffix(location)
   } else if location.has_prefix("?") {
-    base.scheme + "://" + url_authority(base) + absolute_path(base.path) + location
+    let path = if base.path.length() == 0 {
+      "/"
+    } else if base.path.has_prefix("/") {
+      base.path
+    } else {
+      "/" + base.path
+    }
+    base.origin() + path + location
   } else if location.length() == 0 {
     base.to_string()
   } else {
@@ -173,8 +145,7 @@ fn resolve_redirect_url(base : Url, location : String) -> Result[Url, HttpError]
       Some(index) => base.path.substring(start=0, end=index + 1)
       None => "/"
     }
-    base.scheme + "://" + url_authority(base) +
-    normalize_path_and_suffix(directory + location)
+    base.origin() + normalize_path_and_suffix(directory + location)
   }
   Url::parse(full)
 }

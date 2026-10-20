@@ -140,21 +140,6 @@ fn write_all(stream : &Stream, data : Bytes) -> Result[Unit, NetError] {
   Ok(())
 }
 
-fn host_header_value(url : Url) -> String {
-  let scheme = url.scheme.to_lower()
-  let host = if url.host.contains(":") && !(url.host.has_prefix("[") && url.host.has_suffix("]")) {
-    "[" + url.host + "]"
-  } else {
-    url.host
-  }
-  if (scheme == "https" && url.port != 443) ||
-    (scheme == "http" && url.port != 80) {
-    host + ":" + url.port.to_string()
-  } else {
-    host
-  }
-}
-
 fn valid_header_name(name : String) -> Bool {
   if name.length() == 0 {
     return false
@@ -218,18 +203,7 @@ fn header_has_token(value : String, token : String) -> Bool {
 /// Encode HTTP request to HTTP/1.1 format
 pub fn H1Codec::encode_request(self : H1Codec, req : Request) -> Result[Unit, HttpError] {
   self.last_is_head = req.method == HEAD
-  let path = if req.url.path.length() == 0 {
-    "/"
-  } else if req.url.path.has_prefix("/") {
-    req.url.path
-  } else {
-    "/" + req.url.path
-  }
-  let target = if req.url.query.length() > 0 {
-    path + "?" + req.url.query
-  } else {
-    path
-  }
+  let target = req.url.request_target()
   if !valid_request_target(target) {
     return Err(InvalidUrl("Invalid request target"))
   }
@@ -250,7 +224,7 @@ pub fn H1Codec::encode_request(self : H1Codec, req : Request) -> Result[Unit, Ht
   // Add Host header if not present
   let has_host = req.headers.get("Host") is Some(_)
   if !has_host {
-    headers_str += "Host: " + host_header_value(req.url) + "\r\n"
+    headers_str += "Host: " + req.url.authority() + "\r\n"
   }
 
   // Add Content-Length if body is present and the caller did not set it.
