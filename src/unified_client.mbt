@@ -125,6 +125,8 @@ pub impl HttpClient for UnifiedClient with fn request(self : UnifiedClient, req 
   self.do_request(req)
 }
 
+extend UnifiedClient with HttpClient::{request}
+
 fn normalize_path_and_suffix(target : String) -> String {
   let mut path_end = target.length()
   match target.find("?") {
@@ -498,4 +500,22 @@ pub fn UnifiedClient::close(self : UnifiedClient) -> Result[Unit, HttpError] {
 /// Global default client for convenience
 pub fn default_client() -> UnifiedClient {
   UnifiedClient::new()
+}
+
+/// Send a GET request with a one-shot default client, choosing HTTP or HTTPS
+/// automatically from the URL scheme.
+pub fn get(url : String) -> Result[Response, HttpError] {
+  let client = default_client()
+  let result = client.get(url)
+  let _ = client.close_all()
+  result
+}
+
+/// Send a POST request with a one-shot default client, choosing HTTP or HTTPS
+/// automatically from the URL scheme.
+pub fn post(url : String, body : Bytes) -> Result[Response, HttpError] {
+  let client = default_client()
+  let result = client.post(url, body)
+  let _ = client.close_all()
+  result
 }

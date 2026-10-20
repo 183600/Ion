@@ -70,3 +70,9 @@ test "UnifiedClient closes pooled connections" {
   let client = UnifiedClient::new()
   assert_true(client.close_all() is Ok(_))
 }
+
+test "free get/post helpers validate URLs before dialing" {
+  assert_true(get("not a url") is Err(InvalidUrl(_)))
+  assert_true(get("ftp://example.com/") is Err(InvalidUrl(_)))
+  assert_true(post("not a url", b"body") is Err(InvalidUrl(_)))
+}

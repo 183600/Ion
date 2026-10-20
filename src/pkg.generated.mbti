@@ -15,6 +15,10 @@ pub fn default_dialer() -> TcpDialer
 
 pub fn default_tls_provider() -> MockTlsProvider
 
+pub fn get(String) -> Result[Response, HttpError]
+
+pub fn post(String, Bytes) -> Result[Response, HttpError]
+
 // Errors
 
 // Types and methods
