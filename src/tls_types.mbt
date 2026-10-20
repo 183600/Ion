@@ -130,7 +130,7 @@ pub fn TlsConfig::validate(self : TlsConfig) -> Result[Unit, TlsError] {
     return Err(InvalidConfig("Invalid TLS server name"))
   }
   for protocol in self.alpn {
-    if !valid_alpn_protocol(protocol) {
+    if !valid_alpn_protocol(protocol) || @utf8.encode(protocol).length() > 255 {
       return Err(InvalidConfig("Invalid ALPN protocol"))
     }
   }

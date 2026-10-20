@@ -35,3 +35,9 @@ test "ClientCert creation" {
   assert_eq(client_cert.certificate, cert)
   assert_eq(client_cert.private_key, key)
 }
+///|
+test "TLS validation rejects oversized ALPN protocol names" {
+  let long_protocol = "a".repeat(256)
+  let config = TlsConfig::new("example.com").with_alpn(@list.List([long_protocol]))
+  assert_true(config.validate() is Err(InvalidConfig(_)))
+}
