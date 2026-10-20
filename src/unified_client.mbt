@@ -367,6 +367,19 @@ fn is_redirect(status : Int) -> Bool {
   status == 301 || status == 302 || status == 303 || status == 307 || status == 308
 }
 
+/// Send a form-encoded POST request.
+pub fn UnifiedClient::post_form(
+  self : UnifiedClient,
+  url : String,
+  fields : Array[(String, String)],
+) -> Result[Response, HttpError] {
+  let parsed_url = match Url::parse(url) {
+    Ok(url) => url
+    Err(err) => return Err(err)
+  }
+  self.request(Request::new(POST, parsed_url).with_form(fields))
+}
+
 /// Convenience method for GET requests
 pub fn UnifiedClient::get(self : UnifiedClient, url : String) -> Result[Response, HttpError] {
   let parsed_url = match Url::parse(url) {

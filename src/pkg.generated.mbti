@@ -245,6 +245,7 @@ pub fn UnifiedClient::new() -> Self
 pub fn UnifiedClient::options(Self, String) -> Result[Response, HttpError]
 pub fn UnifiedClient::patch(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::post(Self, String, Bytes) -> Result[Response, HttpError]
+pub fn UnifiedClient::post_form(Self, String, Array[(String, String)]) -> Result[Response, HttpError]
 pub fn UnifiedClient::put(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::with_options(ClientOptions) -> Self
 pub fn UnifiedClient::with_tls_config(Self, TlsConfig) -> Self
