@@ -68,3 +68,58 @@ test "client does not pool a connection requested to close" {
   assert_eq(response.status, 204)
   assert_false(stream.is_open)
 }
+
+///|
+test "idempotent requests retry once on a stale pooled connection" {
+  let stale = regression_mock_stream(
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
+    0,
+    0,
+  )
+  let fresh = regression_mock_stream(
+    "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nfresh",
+    0,
+    0,
+  )
+  let streams : Array[&Stream] = [stale, fresh]
+  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new().with_follow_redirects(false),
+    redirect_count: 0,
+  }
+  let url = Url::parse("http://example.com/").unwrap()
+  let first = client.request(Request::new(GET, url)).unwrap()
+  assert_eq(first.read_body().unwrap(), b"ok")
+  let second = client.request(Request::new(GET, url)).unwrap()
+  assert_eq(second.read_body().unwrap(), b"fresh")
+  assert_eq(dialer.index, 2)
+}
+
+///|
+test "non-idempotent requests are not retried on a stale pooled connection" {
+  let stale = regression_mock_stream(
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
+    0,
+    0,
+  )
+  let fresh = regression_mock_stream(
+    "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nfresh",
+    0,
+    0,
+  )
+  let streams : Array[&Stream] = [stale, fresh]
+  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new().with_follow_redirects(false),
+    redirect_count: 0,
+  }
+  let url = Url::parse("http://example.com/").unwrap()
+  let first = client.request(Request::new(POST, url)).unwrap()
+  assert_eq(first.read_body().unwrap(), b"ok")
+  assert_true(client.request(Request::new(POST, url)) is Err(_))
+  assert_eq(dialer.index, 1)
+}

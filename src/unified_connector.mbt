@@ -27,6 +27,7 @@ struct ConnectionLease {
   id : Int
   key : String
   stream : &Stream
+  reused : Bool
   pool : @ref.Ref[ConnectionPoolState]
 }
 
@@ -118,14 +119,17 @@ fn connection_key(url : Url) -> String {
 
 /// Connect to a URL (either HTTP or HTTPS)
 pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpError] {
-  self.connect_impl(url, true)
+  match self.connect_impl(url, true) {
+    Ok((stream, _)) => Ok(stream)
+    Err(err) => Err(err)
+  }
 }
 
 fn Connector::connect_impl(
   self : Connector,
   url : Url,
   cache_new : Bool,
-) -> Result[&Stream, HttpError] {
+) -> Result[(&Stream, Bool), HttpError] {
   let scheme = url.scheme.to_lower()
   let host = url.host
   let port = url.port
@@ -156,7 +160,7 @@ fn Connector::connect_impl(
 
   // Check if we have a cached connection
   match take_idle_stream(self.pool, conn_key) {
-    Some(stream) => return Ok(stream)
+    Some(stream) => return Ok((stream, true))
     None => ()
   }
 
@@ -214,7 +218,7 @@ fn Connector::connect_impl(
       }
       self.pool.val.idle.set(conn_key, idle.prepend(tls_stream))
     }
-    Ok(tls_stream)
+    Ok((tls_stream, false))
   } else {
     // For HTTP, use the raw stream directly
     if cache_new {
@@ -224,7 +228,7 @@ fn Connector::connect_impl(
       }
       self.pool.val.idle.set(conn_key, idle.prepend(raw_stream))
     }
-    Ok(raw_stream)
+    Ok((raw_stream, false))
   }
 }
 
@@ -233,8 +237,8 @@ pub fn Connector::checkout(
   url : Url,
 ) -> Result[(&Stream, ConnectionLease), HttpError] {
   let conn_key = connection_key(url)
-  let stream = match self.connect_impl(url, false) {
-    Ok(stream) => stream
+  let (stream, reused) = match self.connect_impl(url, false) {
+    Ok(connection) => connection
     Err(err) => return Err(err)
   }
   let id = self.pool.val.next_id
@@ -242,7 +246,10 @@ pub fn Connector::checkout(
   self.pool.val.active = self.pool.val.active.prepend(
     ActiveConnection::{ id, key: conn_key, stream },
   )
-  Ok((stream, ConnectionLease::{ id, key: conn_key, stream, pool: self.pool }))
+  Ok((
+    stream,
+    ConnectionLease::{ id, key: conn_key, stream, reused, pool: self.pool },
+  ))
 }
 
 /// Close a connection and remove from pool

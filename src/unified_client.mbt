@@ -243,8 +243,27 @@ fn drain_response(response : Response) -> Result[Unit, HttpError] {
   Ok(())
 }
 
+fn request_can_be_retried(method : HttpMethod) -> Bool {
+  match method {
+    GET => true
+    HEAD => true
+    PUT => true
+    DELETE => true
+    OPTIONS => true
+    _ => false
+  }
+}
+
 /// Internal request implementation with redirect handling
 fn UnifiedClient::do_request(self : UnifiedClient, req : Request) -> Result[Response, HttpError] {
+  self.do_request_once(req, true)
+}
+
+fn UnifiedClient::do_request_once(
+  self : UnifiedClient,
+  req : Request,
+  allow_retry : Bool,
+) -> Result[Response, HttpError] {
   // Connect to the server
   let (stream, lease) = match self.connector.checkout(req.url) {
     Ok(stream) => stream
@@ -291,6 +310,9 @@ fn UnifiedClient::do_request(self : UnifiedClient, req : Request) -> Result[Resp
     Ok(response) => response
     Err(err) => {
       let _ = self.connector.close(request.url)
+      if allow_retry && lease.reused && request_can_be_retried(request.method) {
+        return self.do_request_once(req, false)
+      }
       return Err(err)
     }
   }
