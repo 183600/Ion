@@ -122,6 +122,12 @@ test "URL supports bracketed IPv6 literals" {
 }
 
 ///|
+test "URL rejects control characters" {
+  assert_true(Url::parse("http://example.com/\r\nInjected: yes") is Err(_))
+  assert_true(Url::parse("http://example.com/\u{0}") is Err(_))
+}
+
+///|
 test "headers are case insensitive" {
   let headers = Headers::new()
     .add("Content-Type", "text/plain")
@@ -172,6 +178,33 @@ test "non-ASCII header values round-trip through UTF-8" {
   let decode_codec = H1Codec::new(decode_stream)
   let response = decode_codec.decode_response().unwrap()
   assert_eq(response.get_header("x-name").unwrap(), "café")
+}
+
+///|
+test "status line tolerates repeated spaces" {
+  let raw = "HTTP/1.1   200  OK\r\nContent-Length: 0\r\n\r\n"
+  let stream = regression_mock_stream(raw, 0, 0)
+  let codec = H1Codec::new(stream)
+  let response = codec.decode_response().unwrap()
+  assert_eq(response.status, 200)
+}
+
+///|
+test "empty header name is rejected" {
+  let raw = "HTTP/1.1 200 OK\r\n: value\r\n\r\n"
+  let stream = regression_mock_stream(raw, 0, 0)
+  let codec = H1Codec::new(stream)
+  assert_true(codec.decode_response() is Err(_))
+}
+
+///|
+test "request encoding rejects header injection" {
+  let stream = regression_mock_stream("", 0, 0)
+  let codec = H1Codec::new(stream)
+  let url = Url::parse("http://example.com/").unwrap()
+  let request = Request::new(GET, url).with_header("X-Test", "ok\r\nInjected: yes")
+  assert_true(codec.encode_request(request) is Err(InvalidHeader(_)))
+  assert_eq(stream.output.to_bytes(), b"")
 }
 
 ///|

@@ -123,6 +123,11 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
   if url_str.length() == 0 {
     return Err(InvalidUrl("Empty URL"))
   }
+  for ch in url_str {
+    if ch == '\r' || ch == '\n' || ch == '\u{0}' {
+      return Err(InvalidUrl("Invalid URL characters"))
+    }
+  }
 
   let scheme_end = match url_str.find("://") {
     Some(index) => index

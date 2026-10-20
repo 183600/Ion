@@ -140,6 +140,28 @@ fn host_header_value(url : Url) -> String {
   }
 }
 
+fn valid_header_name(name : String) -> Bool {
+  if name.length() == 0 {
+    return false
+  }
+  for ch in name {
+    if ch == '\r' || ch == '\n' || ch == '\u{0}' || ch == ':' ||
+      ch == ' ' || ch == '\t' {
+      return false
+    }
+  }
+  true
+}
+
+fn valid_header_value(value : String) -> Bool {
+  for ch in value {
+    if ch == '\r' || ch == '\n' || ch == '\u{0}' {
+      return false
+    }
+  }
+  true
+}
+
 /// Encode HTTP request to HTTP/1.1 format
 pub fn H1Codec::encode_request(self : H1Codec, req : Request) -> Result[Unit, HttpError] {
   let path = if req.url.path.length() > 0 { req.url.path } else { "/" }
@@ -149,6 +171,12 @@ pub fn H1Codec::encode_request(self : H1Codec, req : Request) -> Result[Unit, Ht
     path
   }
   let req_line = req.method.to_string() + " " + target + " HTTP/1.1\r\n"
+
+  for header in req.headers.iter() {
+    if !valid_header_name(header.name) || !valid_header_value(header.value) {
+      return Err(InvalidHeader(header.name))
+    }
+  }
 
   // Build headers
   let mut headers_str = ""
@@ -244,14 +272,25 @@ pub fn H1Codec::decode_response(
     Ok(line) => line
     Err(err) => return Err(NetworkError(err))
   }
-  let parts = response_line.split(" ").collect()
-
-  if parts.length() < 2 {
-    return Err(ProtocolError("Invalid response line"))
+  let first_space = match response_line.find(" ") {
+    Some(index) => index
+    None => return Err(ProtocolError("Invalid response line"))
   }
-
+  let mut status_start = first_space
+  while status_start < response_line.length() &&
+    response_line.get_char(status_start) == Some(' ') {
+    status_start = status_start + 1
+  }
+  let mut status_end = status_start
+  while status_end < response_line.length() &&
+    response_line.get_char(status_end) != Some(' ') {
+    status_end = status_end + 1
+  }
+  if status_start == status_end {
+    return Err(ProtocolError("Invalid status code"))
+  }
   let status = try {
-    @string.parse_int(parts[1])
+    @string.parse_int(response_line.substring(start=status_start, end=status_end))
   } catch {
     _ => return Err(ProtocolError("Invalid status code"))
   }
@@ -277,6 +316,9 @@ pub fn H1Codec::decode_response(
     }
 
     let name = line.substring(start=0, end=colon_idx).trim().to_string()
+    if name.length() == 0 {
+      return Err(ProtocolError("Invalid header format"))
+    }
     let value = line.substring(start=colon_idx + 1).trim().to_string()
 
     headers = headers.add(name, value)
