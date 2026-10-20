@@ -1367,3 +1367,15 @@ test "request and response expose repeated header values" {
     .with_header("X-Test", "two")
   assert_eq(request.get_header_all("x-test"), @list.List(["one", "two"]))
 }
+///|
+test "post_form sends a URL-encoded request" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+  let stream = regression_mock_stream(raw, 4096, 4096)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+  let response = client.post_form("http://example.com/submit", [("a", "b c")]).unwrap()
+  assert_eq(response.text().unwrap(), "ok")
+  let written = @utf8.decode(stream.output.to_bytes()[:])
+  assert_true(written.has_suffix("\r\n\r\na=b+c"))
+}

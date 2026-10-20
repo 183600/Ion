@@ -593,6 +593,18 @@ pub fn &HttpClient::post(self : &HttpClient, url : String, body : Bytes) -> Resu
   self.request(req)
 }
 
+pub fn &HttpClient::post_form(
+  self : &HttpClient,
+  url : String,
+  fields : Array[(String, String)],
+) -> Result[Response, HttpError] {
+  let parsed_url = match Url::parse(url) {
+    Ok(url) => url
+    Err(err) => return Err(err)
+  }
+  self.request(Request::new(POST, parsed_url).with_form(fields))
+}
+
 pub fn &HttpClient::put(self : &HttpClient, url : String, body : Bytes) -> Result[Response, HttpError] {
   let parsed_url = match Url::parse(url) {
     Ok(url) => url

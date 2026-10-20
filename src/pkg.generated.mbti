@@ -293,6 +293,7 @@ pub fn &HttpClient::head(Self, String) -> Result[Response, HttpError]
 pub fn &HttpClient::options(Self, String) -> Result[Response, HttpError]
 pub fn &HttpClient::patch(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn &HttpClient::post(Self, String, Bytes) -> Result[Response, HttpError]
+pub fn &HttpClient::post_form(Self, String, Array[(String, String)]) -> Result[Response, HttpError]
 pub fn &HttpClient::put(Self, String, Bytes) -> Result[Response, HttpError]
 
 pub trait KeyLogSink {
