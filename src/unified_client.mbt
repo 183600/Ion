@@ -175,6 +175,35 @@ fn normalize_path_and_suffix(target : String) -> String {
   result + suffix
 }
 
+// RFC 3986 §3.1: scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ) ":".
+fn has_uri_scheme(location : String) -> Bool {
+  match location.get_char(0) {
+    Some(ch) =>
+      if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) {
+        return false
+      }
+    None => return false
+  }
+  let mut index = 1
+  while true {
+    match location.get_char(index) {
+      Some(ch) => {
+        if ch == ':' {
+          return true
+        }
+        let valid = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+          (ch >= '0' && ch <= '9') || ch == '+' || ch == '-' || ch == '.'
+        if !valid {
+          return false
+        }
+      }
+      None => return false
+    }
+    index = index + 1
+  }
+  false
+}
+
 fn resolve_redirect_url(base : Url, location : String) -> Result[Url, HttpError] {
   let location = location.trim().to_owned()
   let lower = location.to_lower()
@@ -197,6 +226,12 @@ fn resolve_redirect_url(base : Url, location : String) -> Result[Url, HttpError]
     base.origin() + path + location
   } else if location.length() == 0 {
     base.to_string()
+  } else if has_uri_scheme(location) {
+    // A reference that carries a scheme is an absolute URI and replaces the
+    // base entirely (RFC 3986 §5.2.2). Url::parse rejects non-http(s)
+    // schemes, so a redirect to e.g. "ftp://host/x" fails cleanly instead of
+    // being misresolved as a path on the original origin.
+    location
   } else {
     let directory = match base.path.rev_find("/") {
       Some(index) => base.path[0:index + 1].to_owned()
