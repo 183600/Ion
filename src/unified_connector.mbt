@@ -15,7 +15,7 @@ pub fn Connector::new(dialer : &Dialer, tls_provider : &TlsProvider) -> Connecto
 
 /// Connect to a URL (either HTTP or HTTPS)
 pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpError] {
-  let scheme = url.scheme
+  let scheme = url.scheme.to_lower()
   let host = url.host
   let port = url.port
 
@@ -77,7 +77,7 @@ pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpEr
 
 /// Close a connection and remove from pool
 pub fn Connector::close(self : Connector, url : Url) -> Result[Unit, HttpError] {
-  let conn_key = url.scheme + "://" + url.host + ":" + url.port.to_string()
+  let conn_key = url.scheme.to_lower() + "://" + url.host + ":" + url.port.to_string()
 
   match self.connection_pool.get(conn_key) {
     Some(stream) => {
