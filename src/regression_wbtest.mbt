@@ -755,6 +755,25 @@ test "HttpClient convenience methods parse URLs" {
 }
 
 ///|
+test "HEAD responses return their connection to the pool" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"
+  let stream = regression_mock_stream(raw, 1, 0)
+  let streams : Array[&Stream] = [stream]
+  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let options = ClientOptions::new().with_follow_redirects(false)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let url = Url::parse("http://example.com/").unwrap()
+
+  let head_response = client.head("http://example.com/").unwrap()
+  assert_eq(head_response.status, 200)
+
+  let second = client.request(Request::new(GET, url)).unwrap()
+  assert_eq(second.text().unwrap(), "hi")
+  assert_eq(dialer.index, 1)
+}
+
+///|
 test "client reuses a connection after a fully read response" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nokHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"
   let stream = regression_mock_stream(raw, 1, 0)

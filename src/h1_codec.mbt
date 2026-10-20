@@ -621,7 +621,7 @@ pub fn H1Codec::decode_response(
       continue
     }
 
-    let response_stream : &Stream = ResponseStream::{
+    let response_stream = ResponseStream::{
       reader: self.reader,
       version: response_head.version,
       headers: response_head.headers,
@@ -639,6 +639,12 @@ pub fn H1Codec::decode_response(
       on_complete: self.on_complete,
       completed: false,
     }
+    if self.on_complete is Some(_) &&
+      (is_head || response_head.status == 204 || response_head.status == 205 ||
+      response_head.status == 304) {
+      let _ = response_stream.prepare()
+    }
+    let response_stream : &Stream = response_stream
 
     self.last_is_head = false
     return Ok(Response::new_with_version(
