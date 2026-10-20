@@ -46,3 +46,12 @@ test "TLS validation rejects oversized server names" {
   let config = TlsConfig::new("a".repeat(256))
   assert_true(config.validate() is Err(InvalidConfig(_)))
 }
+///|
+test "TLS validation rejects malformed server names" {
+  for name in ["example.com:443", "bad name", "example.com/path", "[::1", "[::1]extra"] {
+    assert_true(TlsConfig::new(name).validate() is Err(InvalidConfig(_)))
+  }
+  for name in ["127.0.0.1", "::1", "[::1]", "[2001:db8::1]"] {
+    assert_true(TlsConfig::new(name).validate() is Ok(_))
+  }
+}

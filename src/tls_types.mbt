@@ -103,13 +103,16 @@ fn valid_server_name(value : String) -> Bool {
   if value.length() == 0 || @utf8.encode(value).length() > 255 {
     return false
   }
-  for ch in value {
-    if ch <= ' ' || ch == '\u{7f}' || ch == '/' || ch == '\\' || ch == '@' ||
-      ch == ',' {
+  if value.has_prefix("[") {
+    if !value.has_suffix("]") {
       return false
     }
+    return is_ip_literal(value[1:value.length() - 1].to_owned())
   }
-  true
+  if value.contains(":") {
+    return is_ipv6_literal(value)
+  }
+  valid_url_host_chars(value)
 }
 
 fn valid_alpn_protocol(value : String) -> Bool {
