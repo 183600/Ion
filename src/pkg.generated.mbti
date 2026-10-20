@@ -39,12 +39,14 @@ pub struct Connector {
   dialer : &Dialer
   tls_provider : &TlsProvider
   tls_config : TlsConfig?
+  timeout_ms : Int32
   mut connection_pool : Map[String, &Stream]
 }
 pub fn Connector::close(Self, Url) -> Result[Unit, HttpError]
 pub fn Connector::close_all(Self) -> Result[Unit, HttpError]
 pub fn Connector::connect(Self, Url) -> Result[&Stream, HttpError]
 pub fn Connector::new(&Dialer, &TlsProvider) -> Self
+pub fn Connector::with_timeout(Self, Int32) -> Self
 pub fn Connector::with_tls_config(Self, TlsConfig) -> Self
 
 pub struct H1Codec {

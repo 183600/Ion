@@ -42,8 +42,8 @@ pub fn ClientOptions::with_max_redirects(self : ClientOptions, max_redirects : I
 pub fn UnifiedClient::new() -> UnifiedClient {
   let dialer = TcpDialer::new()
   let tls_provider = MockTlsProvider::new("default")
-  let connector = Connector::new(dialer, tls_provider)
   let options = ClientOptions::new()
+  let connector = Connector::new(dialer, tls_provider).with_timeout(options.timeout_ms)
 
   UnifiedClient::{
     connector,
@@ -56,7 +56,7 @@ pub fn UnifiedClient::new() -> UnifiedClient {
 pub fn UnifiedClient::with_options(options : ClientOptions) -> UnifiedClient {
   let dialer = TcpDialer::new()
   let tls_provider = MockTlsProvider::new("default")
-  let connector = Connector::new(dialer, tls_provider)
+  let connector = Connector::new(dialer, tls_provider).with_timeout(options.timeout_ms)
 
   UnifiedClient::{
     connector,
@@ -72,7 +72,7 @@ pub fn UnifiedClient::with_transport(
   options : ClientOptions,
 ) -> UnifiedClient {
   UnifiedClient::{
-    connector: Connector::new(dialer, tls_provider),
+    connector: Connector::new(dialer, tls_provider).with_timeout(options.timeout_ms),
     options,
     redirect_count: 0,
   }
@@ -86,7 +86,7 @@ pub fn UnifiedClient::with_tls_config(
   let connector = Connector::new(
     self.connector.dialer,
     self.connector.tls_provider,
-  ).with_tls_config(config)
+  ).with_timeout(self.connector.timeout_ms).with_tls_config(config)
   UnifiedClient::{
     connector,
     options: self.options,

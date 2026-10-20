@@ -3,6 +3,7 @@ pub struct Connector {
   dialer : &Dialer
   tls_provider : &TlsProvider
   tls_config : TlsConfig?
+  timeout_ms : Int
   mut connection_pool : Map[String, &Stream]
 }
 
@@ -11,8 +12,15 @@ pub fn Connector::new(dialer : &Dialer, tls_provider : &TlsProvider) -> Connecto
     dialer,
     tls_provider,
     tls_config: None,
+    timeout_ms: 30000,
     connection_pool: Map([]),
   }
+}
+
+/// Set the timeout applied to newly dialed connections and TLS handshakes.
+pub fn Connector::with_timeout(self : Connector, timeout_ms : Int) -> Connector {
+  let timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
+  Connector::{ ..self, timeout_ms }
 }
 
 /// Use a shared TLS configuration for every HTTPS connection.
@@ -61,6 +69,14 @@ pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpEr
 
   // If HTTPS, wrap with TLS
   if scheme == "https" {
+    // Bound the TLS handshake using the same deadline as the connection.
+    match raw_stream.set_timeout(self.timeout_ms) {
+      Ok(_) => ()
+      Err(err) => {
+        let _ = raw_stream.close()
+        return Err(NetworkError(err))
+      }
+    }
     // Use the shared configuration when present, otherwise secure defaults.
     let tls_config = match self.tls_config {
       Some(config) => config.with_server_name(host)

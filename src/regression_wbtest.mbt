@@ -1107,3 +1107,14 @@ test "chunked trailers must be valid header fields" {
     assert_true(response.read_body() is Err(_))
   }
 }
+///|
+test "connector applies its timeout before TLS handshakes" {
+  let stream = regression_mock_stream("", 0, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_timeout(
+    1234,
+  )
+  let url = Url::parse("https://example.com/").unwrap()
+  let _ = connector.connect(url).unwrap()
+  assert_eq(stream.last_timeout, 1234)
+}
