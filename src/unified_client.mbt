@@ -38,11 +38,21 @@ pub fn ClientOptions::with_max_redirects(self : ClientOptions, max_redirects : I
   ClientOptions::{ ..self, max_redirects }
 }
 
+#cfg(target="native")
+fn default_client_dialer(timeout_ms : Int) -> NativeTcpDialer {
+  NativeTcpDialer::with_timeout(timeout_ms)
+}
+
+#cfg(not(target="native"))
+fn default_client_dialer(timeout_ms : Int) -> TcpDialer {
+  TcpDialer::with_timeout(timeout_ms)
+}
+
 /// Create a new UnifiedClient with default options
 pub fn UnifiedClient::new() -> UnifiedClient {
-  let dialer = TcpDialer::new()
-  let tls_provider = MockTlsProvider::new("default")
   let options = ClientOptions::new()
+  let dialer = default_client_dialer(options.timeout_ms)
+  let tls_provider = MockTlsProvider::new("default")
   let connector = Connector::new(dialer, tls_provider).with_timeout(options.timeout_ms)
 
   UnifiedClient::{
@@ -54,7 +64,7 @@ pub fn UnifiedClient::new() -> UnifiedClient {
 
 /// Create a new UnifiedClient with custom options
 pub fn UnifiedClient::with_options(options : ClientOptions) -> UnifiedClient {
-  let dialer = TcpDialer::new()
+  let dialer = default_client_dialer(options.timeout_ms)
   let tls_provider = MockTlsProvider::new("default")
   let connector = Connector::new(dialer, tls_provider).with_timeout(options.timeout_ms)
 
