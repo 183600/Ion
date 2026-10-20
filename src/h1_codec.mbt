@@ -328,8 +328,12 @@ pub fn H1Codec::decode_response(
   if status_end - status_start != 3 {
     return Err(ProtocolError("Invalid status code"))
   }
+  let status_text = response_line.substring(start=status_start, end=status_end)
+  if !is_decimal_digits(status_text) {
+    return Err(ProtocolError("Invalid status code"))
+  }
   let status = try {
-    @string.parse_int(response_line.substring(start=status_start, end=status_end))
+    @string.parse_int(status_text[:])
   } catch {
     _ => return Err(ProtocolError("Invalid status code"))
   }
@@ -408,7 +412,7 @@ fn read_chunked_body(reader : StreamReader, output : Array[Byte]) -> Result[Unit
       None => line
     }
     let size_text = size_text.trim().to_string()
-    if size_text.length() == 0 {
+    if !is_hex_digits(size_text) {
       return Err(NetError::ReadError("invalid chunk size"))
     }
     let size = try {
@@ -483,19 +487,20 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
   } else {
     match self.headers.get("Content-Length") {
       Some(value) => {
+        let length_text = value.trim().to_string()
+        if !is_decimal_digits(length_text) {
+          let err = NetError::ReadError("invalid Content-Length")
+          let _ = self.reader.stream.close()
+          self.error = Some(err)
+          return Err(err)
+        }
         let parsed = try {
-          Some(@string.parse_int(value.trim()[:]))
+          Some(@string.parse_int(length_text[:]))
         } catch {
           _ => None
         }
         match parsed {
           Some(length) => {
-            if length < 0 {
-              let err = NetError::ReadError("invalid Content-Length")
-              let _ = self.reader.stream.close()
-              self.error = Some(err)
-              return Err(err)
-            }
             self.reader.read_exact(length, self.body)
           }
           None => {

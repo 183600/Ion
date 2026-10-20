@@ -114,6 +114,9 @@ test "URL rejects invalid ports" {
   assert_true(Url::parse("http://example.com:65536") is Err(_))
   assert_true(Url::parse("http://example.com:notaport") is Err(_))
   assert_true(Url::parse("http://example.com:") is Err(_))
+  assert_true(Url::parse("http://example.com:+80") is Err(_))
+  assert_true(Url::parse("http://example.com:0x50") is Err(_))
+  assert_true(Url::parse("http://example.com:8_0") is Err(_))
 }
 
 ///|
@@ -376,6 +379,26 @@ test "decode_response remembers a preceding HEAD request" {
   let response = codec.decode_response().unwrap()
   let buf = @buffer.new(size_hint=8)
   assert_eq(response.body.read(buf).unwrap(), 0)
+}
+
+///|
+test "Content-Length must be plain decimal digits" {
+  for value in ["+5", "5_0", "0x5"] {
+    let raw = "HTTP/1.1 200 OK\r\nContent-Length: " + value + "\r\n\r\nhello"
+    let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+    let response = codec.decode_response().unwrap()
+    assert_true(response.body.read(@buffer.new(size_hint=8)) is Err(_))
+  }
+}
+
+///|
+test "chunk sizes must be plain hexadecimal digits" {
+  for value in ["+5", "5_0", "0x5"] {
+    let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" + value + "\r\nhello\r\n0\r\n\r\n"
+    let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+    let response = codec.decode_response().unwrap()
+    assert_true(response.body.read(@buffer.new(size_hint=8)) is Err(_))
+  }
 }
 
 ///|

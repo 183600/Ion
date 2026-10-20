@@ -209,7 +209,7 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
 
   let port = match port_str {
     Some(port_text) => {
-      if port_text.length() == 0 {
+      if !is_decimal_digits(port_text) {
         return Err(InvalidUrl("Invalid port number"))
       }
       let parsed = try {
