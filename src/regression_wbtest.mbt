@@ -1125,10 +1125,14 @@ test "URL rejects unsafe host characters" {
     "http://exa|mple.com/",
     "http://exa}mple.com/",
     "http://exa,mple.com/",
+    "http://exa%zzmple.com/",
+    "http://exa%2mple.com/",
+    "http://exa%mple.com/",
   ] {
     assert_true(Url::parse(raw) is Err(_))
   }
   assert_true(Url::parse("http://exa_mple.example/") is Ok(_))
+  assert_true(Url::parse("http://exa%20mple.example/") is Ok(_))
   assert_true(Url::parse("http://[2001:db8::1]/") is Ok(_))
 }
 ///|
@@ -1217,6 +1221,7 @@ test "request encoding rejects malformed Host ports and IPv6 literals" {
     "exa{mple.com",
     "exa|mple.com",
     "exa}mple.com",
+    "exa%zzmple.com",
   ] {
     let codec = H1Codec::new(regression_mock_stream("", 0, 0))
     assert_true(

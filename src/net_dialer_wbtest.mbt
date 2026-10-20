@@ -31,7 +31,7 @@ test "TcpDialer resolve" {
 ///|
 test "dialer rejects malformed hosts and accepts IP literals" {
   let dialer = TcpDialer::new()
-  for host in ["exa\"mple.com", "exa<mple.com", "exa>mple.com", "example.com/path", ":::", "[::1"] {
+  for host in ["exa\"mple.com", "exa<mple.com", "exa>mple.com", "example.com/path", "exa%zzmple.com", ":::", "[::1"] {
     assert_true(dialer.dial_tcp(host, 80) is Err(InvalidAddress(_)))
     assert_true(dialer.resolve(host) is Err(InvalidAddress(_)))
   }

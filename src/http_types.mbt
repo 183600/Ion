@@ -158,13 +158,37 @@ fn find_first_delimiter(str : String) -> Int? {
 }
 
 fn valid_url_host_chars(host : String) -> Bool {
-  for ch in host {
+  let mut index = 0
+  while index < host.length() {
+    let ch = match host.get_char(index) {
+      Some(ch) => ch
+      None => return false
+    }
     if ch <= ' ' || ch == '\u{7f}' || ch == '/' || ch == '?' || ch == '#' ||
       ch == '@' || ch == '[' || ch == ']' || ch == '\\' || ch == '"' ||
       ch == '<' || ch == '>' || ch == '^' || ch == '\u{60}' || ch == '{' ||
       ch == '|' || ch == '}' || ch == ',' {
       return false
     }
+    if ch == '%' {
+      if index + 2 >= host.length() {
+        return false
+      }
+      let high = match host.get_char(index + 1) {
+        Some(ch) => ch
+        None => return false
+      }
+      let low = match host.get_char(index + 2) {
+        Some(ch) => ch
+        None => return false
+      }
+      if !is_hex_char(high) || !is_hex_char(low) {
+        return false
+      }
+      index = index + 3
+      continue
+    }
+    index = index + 1
   }
   true
 }
