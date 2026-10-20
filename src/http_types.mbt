@@ -445,7 +445,7 @@ pub fn Request::with_form(self : Request, fields : Array[(String, String)]) -> R
     body.write_bytes(@utf8.encode(form_encode_component(value)))
   }
   self
-    .with_header("Content-Type", "application/x-www-form-urlencoded")
+    .set_header("Content-Type", "application/x-www-form-urlencoded")
     .with_body(body.to_bytes())
 }
 

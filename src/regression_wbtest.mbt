@@ -1289,12 +1289,18 @@ test "form requests percent-encode fields" {
     ("empty", ""),
   ])
   assert_eq(request.get_header("Content-Type").unwrap(), "application/x-www-form-urlencoded")
+  assert_eq(request.headers.get_all("Content-Type").length(), 1)
   assert_eq(
     @utf8.decode(request.body.unwrap()[:]),
     "q=hello+world&symbols=a%2Bb%26c%3Dd%2F%C3%A9&empty=",
   )
   let encoded = H1Codec::new(regression_mock_stream("", 0, 0))
   assert_true(encoded.encode_request(request) is Ok(_))
+  let replaced = Request::new(POST, url)
+    .set_header("Content-Type", "text/plain")
+    .with_form([("a", "b")])
+  assert_eq(replaced.headers.get_all("Content-Type").length(), 1)
+  assert_eq(replaced.get_header("Content-Type").unwrap(), "application/x-www-form-urlencoded")
 }
 ///|
 test "empty Location headers are not followed" {
