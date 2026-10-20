@@ -104,12 +104,20 @@ fn normalize_path_and_suffix(target : String) -> String {
   let trailing = path.has_suffix("/") || path.has_suffix("/.") ||
     path.has_suffix("/..") || path == "." || path == ".."
   let segments = path.split("/").collect()
+  let total = segments.length()
   let normalized : Array[String] = []
+  let mut index = 0
   for segment in segments {
+    let is_first = index == 0
+    let is_last = index == total - 1
+    index = index + 1
     match segment {
-      "." | "" => ()
+      "." => ()
       ".." => if normalized.length() > 0 {
         normalized.unsafe_pop_back()
+      }
+      "" => if !is_first && !is_last {
+        normalized.push("")
       }
       _ => normalized.push(segment.to_string())
     }

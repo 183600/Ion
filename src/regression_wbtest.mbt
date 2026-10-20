@@ -630,6 +630,10 @@ test "relative redirect resolution" {
     "http://example.com/root",
   )
   assert_eq(
+    resolve_redirect_url(base, "/a//b").unwrap().to_string(),
+    "http://example.com/a//b",
+  )
+  assert_eq(
     resolve_redirect_url(base, "//other.example/x").unwrap().to_string(),
     "http://other.example/x",
   )
