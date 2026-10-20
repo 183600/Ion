@@ -26,9 +26,10 @@ pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpEr
   match self.connection_pool.get(conn_key) {
     Some(stream) => match stream.peer_addr() {
       Ok(_) => return Ok(stream)
-      Err(_) => {
+      Err(NetError::Closed) => {
         self.connection_pool.remove(conn_key)
       }
+      Err(_) => return Ok(stream)
     }
     None => ()
   }
