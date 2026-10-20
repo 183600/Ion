@@ -11,7 +11,7 @@ pub struct ClientOptions {
   timeout_ms : Int
   follow_redirects : Bool
   max_redirects : Int
-}
+} derive(Eq, Debug)
 
 pub fn ClientOptions::new() -> ClientOptions {
   ClientOptions::{
@@ -204,8 +204,13 @@ fn do_request(self : UnifiedClient, req : Request) -> Result[Response, HttpError
     Err(err) => return Err(err)
   }
 
-  // Set timeout
-  match stream.set_timeout(req.timeout_ms) {
+  // Set timeout, falling back to the client default when the request uses it.
+  let timeout_ms = if req.timeout_ms == 30000 {
+    self.options.timeout_ms
+  } else {
+    req.timeout_ms
+  }
+  match stream.set_timeout(timeout_ms) {
     Ok(_) => ()
     Err(err) => {
       let _ = self.connector.close(req.url)
@@ -267,8 +272,13 @@ fn do_request(self : UnifiedClient, req : Request) -> Result[Response, HttpError
     let (next_method, keep_body) = redirect_method(response.status, request.method)
     let mut next_headers = request.headers.remove("Host")
     if !keep_body {
-      next_headers = next_headers.remove("Content-Length")
-      next_headers = next_headers.remove("Transfer-Encoding")
+      next_headers = next_headers
+        .remove("Content-Length")
+        .remove("Transfer-Encoding")
+        .remove("Content-Type")
+        .remove("Content-Encoding")
+        .remove("Content-Language")
+        .remove("Content-Location")
     }
     if parsed_url.scheme != request.url.scheme ||
       parsed_url.host != request.url.host ||

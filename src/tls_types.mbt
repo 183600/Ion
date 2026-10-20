@@ -23,7 +23,7 @@ pub enum VerifyMode {
 /// Root certificate store
 pub struct RootStore {
   certificates : List[Bytes]
-}
+} derive(Eq, Debug)
 
 pub fn RootStore::new() -> RootStore {
   RootStore::{ certificates: @list.List([]) }
@@ -37,7 +37,7 @@ pub fn RootStore::add_certificate(self : RootStore, cert : Bytes) -> RootStore {
 pub struct ClientCert {
   certificate : Bytes
   private_key : Bytes
-}
+} derive(Eq, Debug)
 
 /// Key log sink for debugging
 pub trait KeyLogSink {

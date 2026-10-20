@@ -5,6 +5,7 @@ struct RegressionMockStream {
   max_read : Int
   max_write : Int
   mut is_open : Bool
+  mut last_timeout : Int
 }
 
 fn regression_mock_stream(input : String, max_read : Int, max_write : Int) -> RegressionMockStream {
@@ -15,6 +16,7 @@ fn regression_mock_stream(input : String, max_read : Int, max_write : Int) -> Re
     max_read,
     max_write,
     is_open: true,
+    last_timeout: 0,
   }
 }
 
@@ -68,10 +70,10 @@ pub impl Stream for RegressionMockStream with fn close(self : RegressionMockStre
 }
 
 pub impl Stream for RegressionMockStream with fn set_timeout(self : RegressionMockStream, timeout_ms : Int) -> Result[Unit, NetError] {
-  let _ = timeout_ms
   if !self.is_open {
     return Err(NetError::Closed)
   }
+  self.last_timeout = timeout_ms
   Ok(())
 }
 
@@ -157,6 +159,22 @@ test "request encoding does not duplicate Content-Length" {
 }
 
 ///|
+test "non-ASCII header values round-trip through UTF-8" {
+  let encode_stream = regression_mock_stream("", 0, 0)
+  let encode_codec = H1Codec::new(encode_stream)
+  let url = Url::parse("http://example.com/").unwrap()
+  let request = Request::new(GET, url).with_header("X-Name", "café")
+  assert_true(encode_codec.encode_request(request) is Ok(_))
+  assert_true(@utf8.decode(encode_stream.output.to_bytes()[:]).contains("X-Name: café"))
+
+  let raw = "HTTP/1.1 200 OK\r\nX-Name: café\r\nContent-Length: 0\r\n\r\n"
+  let decode_stream = regression_mock_stream(raw, 0, 0)
+  let decode_codec = H1Codec::new(decode_stream)
+  let response = decode_codec.decode_response().unwrap()
+  assert_eq(response.get_header("x-name").unwrap(), "café")
+}
+
+///|
 test "response body honors Content-Length" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nX-Test: Yes\r\n\r\nhelloEXTRA"
   let stream = regression_mock_stream(raw, 1, 0)
@@ -207,6 +225,21 @@ test "response decoding survives large read chunks" {
   assert_eq(response.body.read(buf).unwrap(), 5)
   assert_eq(buf.to_bytes(), @utf8.encode("hello"))
   assert_eq(stream.offset, raw.length())
+}
+
+///|
+test "sequential responses on one codec preserve buffered bytes" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhelloHTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nbye"
+  let stream = regression_mock_stream(raw, 0, 0)
+  let codec = H1Codec::new(stream)
+  let first = codec.decode_response().unwrap()
+  let first_buf = @buffer.new(size_hint=8)
+  assert_eq(first.body.read(first_buf).unwrap(), 5)
+  assert_eq(first_buf.to_bytes(), @utf8.encode("hello"))
+  let second = codec.decode_response().unwrap()
+  let second_buf = @buffer.new(size_hint=8)
+  assert_eq(second.body.read(second_buf).unwrap(), 3)
+  assert_eq(second_buf.to_bytes(), @utf8.encode("bye"))
 }
 
 ///|
@@ -283,6 +316,7 @@ test "same-origin redirect changes POST to GET and drops body" {
   let url = Url::parse("http://example.com/start").unwrap()
   let request = Request::new(POST, url)
     .with_header("Authorization", "Bearer token")
+    .with_header("Content-Type", "text/plain")
     .with_body(@utf8.encode("payload"))
   let response = client.request(request).unwrap()
   assert_eq(response.status, 200)
@@ -296,6 +330,7 @@ test "same-origin redirect changes POST to GET and drops body" {
   let second_request = wire.substring(start=next_index)
   assert_true(second_request.contains("Authorization: Bearer token"))
   assert_true(!second_request.contains("Content-Length"))
+  assert_true(!second_request.contains("Content-Type"))
   assert_true(!second_request.contains("payload"))
 }
 
@@ -331,6 +366,19 @@ test "connector pools connections and close removes them" {
   assert_true(connector.close(url) is Ok(_))
   let _ = connector.connect(url).unwrap()
   assert_eq(dialer.count, 2)
+}
+
+///|
+test "client options supply the default request timeout" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
+  let stream = regression_mock_stream(raw, 0, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let options = ClientOptions::new().with_timeout(1234).with_follow_redirects(false)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let url = Url::parse("http://example.com/").unwrap()
+  let _ = client.request(Request::new(GET, url)).unwrap()
+  assert_eq(stream.last_timeout, 1234)
 }
 
 ///|

@@ -38,7 +38,7 @@ pub fn HttpMethod::to_string(method : HttpMethod) -> String {
 pub struct Header {
   name : String
   value : String
-}
+} derive(Eq, Debug)
 
 pub fn Header::new(name : String, value : String) -> Header {
   Header::{ name, value }
@@ -47,7 +47,7 @@ pub fn Header::new(name : String, value : String) -> Header {
 /// HTTP headers collection
 pub struct Headers {
   headers : List[Header]
-}
+} derive(Eq, Debug)
 
 pub fn Headers::new() -> Headers {
   Headers::{ headers: @list.List([]) }
@@ -79,7 +79,7 @@ pub struct Url {
   path : String
   query : String
   fragment : String
-}
+} derive(Eq, Debug)
 
 pub fn Url::new(scheme : String, host : String, port : Int) -> Url {
   Url::{ scheme, host, port, path: "/", query: "", fragment: "" }
@@ -283,7 +283,7 @@ pub struct Request {
   headers : Headers
   body : Option[Bytes]
   timeout_ms : Int
-}
+} derive(Eq, Debug)
 
 pub fn Request::new(method : HttpMethod, url : Url) -> Request {
   Request::{

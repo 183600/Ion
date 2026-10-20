@@ -210,24 +210,28 @@ pub fn H1Codec::encode_request(self : H1Codec, req : Request) -> Result[Unit, Ht
 }
 
 fn read_line(reader : StreamReader) -> Result[String, NetError] {
-  let mut line = ""
+  let line = @buffer.new(size_hint=128)
   while true {
     let byte = match reader.next_byte() {
       Ok(Some(byte)) => byte
       Ok(None) => break
       Err(err) => return Err(err)
     }
-    let ch = byte.to_char()
-    line += ch.to_string()
-    if ch == '\n' {
+    line.write_byte(byte)
+    if byte == b'\n' {
       break
     }
   }
-  if line.length() >= 2 && line.has_suffix("\r\n") {
-    Ok(line.substring(start=0, end=line.length() - 2))
+  let bytes = line.to_bytes()
+  let length = bytes.length()
+  let end = if length >= 2 && bytes[length - 2] == b'\r' && bytes[length - 1] == b'\n' {
+    length - 2
+  } else if length >= 1 && bytes[length - 1] == b'\n' {
+    length - 1
   } else {
-    Ok(line)
+    length
   }
+  Ok(@utf8.decode_lossy(bytes.exact_view(start=0, end=end)))
 }
 
 /// Decode HTTP response from HTTP/1.1 format
@@ -288,6 +292,7 @@ pub fn H1Codec::decode_response(
     offset: 0,
     loaded: false,
     error: None,
+    is_open: true,
   }
 
   Ok(Response::new(status, headers, response_stream))
@@ -303,6 +308,7 @@ struct ResponseStream {
   mut offset : Int
   mut loaded : Bool
   mut error : NetError?
+  mut is_open : Bool
 }
 
 fn read_chunked_body(reader : StreamReader, output : Array[Byte]) -> Result[Unit, NetError] {
@@ -417,6 +423,9 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
 }
 
 pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buffer) -> Result[Int, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
   match self.load() {
     Ok(_) => ()
     Err(err) => return Err(err)
@@ -443,21 +452,37 @@ pub impl Stream for ResponseStream with fn write(self : ResponseStream, buf : Bu
 }
 
 pub impl Stream for ResponseStream with fn flush(self : ResponseStream) -> Result[Unit, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
   self.reader.stream.flush()
 }
 
 pub impl Stream for ResponseStream with fn close(self : ResponseStream) -> Result[Unit, NetError] {
+  if !self.is_open {
+    return Ok(())
+  }
+  self.is_open = false
   self.reader.stream.close()
 }
 
 pub impl Stream for ResponseStream with fn set_timeout(self : ResponseStream, timeout_ms : Int) -> Result[Unit, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
   self.reader.stream.set_timeout(timeout_ms)
 }
 
 pub impl Stream for ResponseStream with fn peer_addr(self : ResponseStream) -> Result[String, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
   self.reader.stream.peer_addr()
 }
 
 pub impl Stream for ResponseStream with fn local_addr(self : ResponseStream) -> Result[String, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
   self.reader.stream.local_addr()
 }
