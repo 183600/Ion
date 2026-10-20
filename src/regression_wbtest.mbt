@@ -2044,3 +2044,37 @@ test "post_form sends a URL-encoded request" {
   let written = @utf8.decode(stream.output.to_bytes()[:])
   assert_true(written.has_suffix("\r\n\r\na=b+c"))
 }
+///|
+test "connector caps idle connections per host" {
+  let first = regression_mock_stream("", 1, 0)
+  let second = regression_mock_stream("", 1, 0)
+  let third = regression_mock_stream("", 1, 0)
+  let fourth = regression_mock_stream("", 1, 0)
+  let streams : Array[&Stream] = [first, second, third, fourth]
+  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+    .with_max_idle_per_host(2)
+  assert_eq(connector.max_idle_per_host(), 2)
+  let url = Url::parse("http://example.com/").unwrap()
+  let (_s0, lease0) = connector.checkout(url).unwrap()
+  let (_s1, lease1) = connector.checkout(url).unwrap()
+  let (_s2, lease2) = connector.checkout(url).unwrap()
+  let (_s3, lease3) = connector.checkout(url).unwrap()
+  assert_eq(dialer.index, 4)
+  lease0.release(true)
+  lease1.release(true)
+  lease2.release(true)
+  lease3.release(true)
+  assert_false(first.is_open)
+  assert_false(second.is_open)
+  assert_true(third.is_open)
+  assert_true(fourth.is_open)
+}
+
+///|
+test "connector clamps the idle cap to at least one" {
+  let dialer = TcpDialer::new()
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+    .with_max_idle_per_host(0)
+  assert_eq(connector.max_idle_per_host(), 1)
+}

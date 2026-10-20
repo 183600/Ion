@@ -59,7 +59,9 @@ pub fn Connector::checkout(Self, Url) -> Result[(&Stream, ConnectionLease), Http
 pub fn Connector::close(Self, Url) -> Result[Unit, HttpError]
 pub fn Connector::close_all(Self) -> Result[Unit, HttpError]
 pub fn Connector::connect(Self, Url) -> Result[&Stream, HttpError]
+pub fn Connector::max_idle_per_host(Self) -> Int32
 pub fn Connector::new(&Dialer, &TlsProvider) -> Self
+pub fn Connector::with_max_idle_per_host(Self, Int32) -> Self
 pub fn Connector::with_timeout(Self, Int32) -> Self
 pub fn Connector::with_tls_config(Self, TlsConfig) -> Self
 

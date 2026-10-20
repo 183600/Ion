@@ -8,10 +8,40 @@ struct ConnectionPoolState {
   mut idle : Map[String, List[&Stream]]
   mut active : List[ActiveConnection]
   mut next_id : Int
+  mut max_idle : Int
 }
 
 fn ConnectionPoolState::new() -> ConnectionPoolState {
-  ConnectionPoolState::{ idle: Map([]), active: @list.List([]), next_id: 0 }
+  ConnectionPoolState::{
+    idle: Map([]),
+    active: @list.List([]),
+    next_id: 0,
+    max_idle: 8,
+  }
+}
+
+/// Cache a reusable connection for `key`, keeping at most `max_idle`
+/// idle connections per host. Connections beyond the cap are closed.
+fn ConnectionPoolState::cache_idle(
+  self : ConnectionPoolState,
+  key : String,
+  stream : &Stream,
+) -> Unit {
+  let idle = match self.idle.get(key) {
+    Some(streams) => streams
+    None => @list.List([])
+  }
+  let mut updated = idle.prepend(stream)
+  while updated.length() > self.max_idle {
+    match updated.last() {
+      Some(evicted) => {
+        let _ = evicted.close()
+        updated = updated.take(updated.length() - 1)
+      }
+      None => break
+    }
+  }
+  self.idle.set(key, updated)
 }
 
 /// Connector handles the connection establishment logic
@@ -36,13 +66,7 @@ fn ConnectionLease::release(self : ConnectionLease, reusable : Bool) -> Unit {
   self.pool.val.active = self.pool.val.active.filter(fn(entry) { entry.id != id })
   if reusable {
     match self.stream.peer_addr() {
-      Ok(_) => {
-        let idle = match self.pool.val.idle.get(self.key) {
-          Some(streams) => streams
-          None => @list.List([])
-        }
-        self.pool.val.idle.set(self.key, idle.prepend(self.stream))
-      }
+      Ok(_) => self.pool.val.cache_idle(self.key, self.stream)
       Err(_) => {
         let _ = self.stream.close()
       }
@@ -117,6 +141,21 @@ pub fn Connector::with_tls_config(self : Connector, config : TlsConfig) -> Conne
     timeout_ms: self.timeout_ms,
     pool: @ref.Ref(ConnectionPoolState::new()),
   }
+}
+
+/// Cap the number of idle (keep-alive) connections retained per host.
+/// A value below 1 is clamped to 1. Connections beyond the cap are closed.
+pub fn Connector::with_max_idle_per_host(
+  self : Connector,
+  max_idle : Int,
+) -> Connector {
+  self.pool.val.max_idle = if max_idle < 1 { 1 } else { max_idle }
+  self
+}
+
+/// The current per-host idle connection cap.
+pub fn Connector::max_idle_per_host(self : Connector) -> Int {
+  self.pool.val.max_idle
 }
 
 fn connection_key(url : Url) -> String {
@@ -219,21 +258,13 @@ fn Connector::connect_impl(
     }
 
     if cache_new {
-      let idle = match self.pool.val.idle.get(conn_key) {
-        Some(streams) => streams
-        None => @list.List([])
-      }
-      self.pool.val.idle.set(conn_key, idle.prepend(tls_stream))
+      self.pool.val.cache_idle(conn_key, tls_stream)
     }
     Ok((tls_stream, false))
   } else {
     // For HTTP, use the raw stream directly
     if cache_new {
-      let idle = match self.pool.val.idle.get(conn_key) {
-        Some(streams) => streams
-        None => @list.List([])
-      }
-      self.pool.val.idle.set(conn_key, idle.prepend(raw_stream))
+      self.pool.val.cache_idle(conn_key, raw_stream)
     }
     Ok((raw_stream, false))
   }
