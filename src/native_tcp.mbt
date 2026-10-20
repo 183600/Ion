@@ -28,9 +28,15 @@ fn native_tcp_error(code : Int, operation : String) -> NetError {
   if code < 0 {
     return NetError::IoError(operation + " failed (code " + code.to_string() + ")")
   }
+  // errno numbers differ across POSIX platforms, so match the values used by
+  // both Linux and macOS/BSD. The "other" platform's number is a different,
+  // non-socket errno there and is never produced by the socket paths in
+  // tcp_native_stub.c.
   match code {
-    11 | 110 | 115 => Timeout
-    101 | 111 | 113 => ConnectionFailed(operation + " failed (errno " + code.to_string() + ")")
+    11 | 110 | 115 => Timeout // Linux: EAGAIN/ETIMEDOUT/EINPROGRESS
+    35 | 36 | 60 => Timeout // macOS/BSD: EAGAIN/EINPROGRESS/ETIMEDOUT
+    101 | 111 | 113 => ConnectionFailed(operation + " failed (errno " + code.to_string() + ")") // Linux
+    51 | 61 | 65 => ConnectionFailed(operation + " failed (errno " + code.to_string() + ")") // macOS/BSD
     22 => InvalidAddress(operation + " failed: invalid address")
     _ => IoError(operation + " failed (errno " + code.to_string() + ")")
   }
