@@ -145,6 +145,19 @@ pub fn UnifiedClient::with_idle_timeout(
   }
 }
 
+/// Cap the number of idle (keep-alive) connections retained per host.
+pub fn UnifiedClient::with_max_idle_per_host(
+  self : UnifiedClient,
+  max_idle : Int,
+) -> UnifiedClient {
+  let _ = self.connector.with_max_idle_per_host(max_idle)
+  UnifiedClient::{
+    connector: self.connector,
+    options: self.options,
+    redirect_count: 0,
+  }
+}
+
 /// Replace the TLS configuration used for HTTPS connections.
 pub fn UnifiedClient::with_tls_config(
   self : UnifiedClient,

@@ -50,7 +50,7 @@ test "Connector creation" {
   let dialer = TcpDialer::new()
   let tls_provider = MockTlsProvider::new("test")
   let connector = Connector::new(dialer, tls_provider)
-  
+  let _ = connector
   // Test that connector is created successfully
   assert_true(true) // If we got here, it worked
 }
@@ -110,4 +110,15 @@ test "response body limit allows bodies within the configured bound" {
   let client = UnifiedClient::{ connector, options, redirect_count: 0 }
   let response = client.request(Request::new(GET, Url::parse("http://example.com/").unwrap())).unwrap()
   assert_eq(response.read_body().unwrap(), b"hello")
+}
+
+test "UnifiedClient exposes pool tuning on the connector" {
+  let client = UnifiedClient::new()
+  let tuned = client
+    .with_max_idle_per_host(3)
+    .with_max_connections_per_host(4)
+    .with_idle_timeout(1500)
+  assert_eq(tuned.connector.max_idle_per_host(), 3)
+  assert_eq(tuned.connector.max_connections_per_host(), 4)
+  assert_eq(tuned.connector.idle_timeout(), 1500)
 }

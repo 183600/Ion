@@ -292,6 +292,7 @@ pub fn UnifiedClient::post_form(Self, String, Array[(String, String)]) -> Result
 pub fn UnifiedClient::put(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::with_idle_timeout(Self, Int32) -> Self
 pub fn UnifiedClient::with_max_connections_per_host(Self, Int32) -> Self
+pub fn UnifiedClient::with_max_idle_per_host(Self, Int32) -> Self
 pub fn UnifiedClient::with_options(ClientOptions) -> Self
 pub fn UnifiedClient::with_tls_config(Self, TlsConfig) -> Self
 pub fn UnifiedClient::with_transport(&Dialer, &TlsProvider, ClientOptions) -> Self
