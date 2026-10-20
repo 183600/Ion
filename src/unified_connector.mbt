@@ -24,7 +24,12 @@ pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpEr
 
   // Check if we have a cached connection
   match self.connection_pool.get(conn_key) {
-    Some(stream) => return Ok(stream)
+    Some(stream) => match stream.peer_addr() {
+      Ok(_) => return Ok(stream)
+      Err(_) => {
+        self.connection_pool.remove(conn_key)
+      }
+    }
     None => ()
   }
 

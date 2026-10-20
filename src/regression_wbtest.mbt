@@ -78,6 +78,9 @@ pub impl Stream for RegressionMockStream with fn set_timeout(self : RegressionMo
 }
 
 pub impl Stream for RegressionMockStream with fn peer_addr(self : RegressionMockStream) -> Result[String, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
   Ok("mock:0")
 }
 
@@ -453,6 +456,18 @@ test "connector pools connections and close removes them" {
   let _ = first
   let _ = second
   assert_true(connector.close(url) is Ok(_))
+  let _ = connector.connect(url).unwrap()
+  assert_eq(dialer.count, 2)
+}
+
+///|
+test "connector replaces externally closed pooled streams" {
+  let stream = regression_mock_stream("", 1, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let url = Url::parse("http://example.com/").unwrap()
+  let first = connector.connect(url).unwrap()
+  assert_true(first.close() is Ok(_))
   let _ = connector.connect(url).unwrap()
   assert_eq(dialer.count, 2)
 }
