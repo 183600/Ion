@@ -223,7 +223,14 @@ fn drain_response(response : Response) -> Result[Unit, HttpError] {
     let buf = Buffer(size_hint=4096)
     match response.body.read(buf) {
       Ok(0) => return Ok(())
-      Ok(_) => ()
+      Ok(count) => {
+        if count < 0 {
+          return Err(NetworkError(ReadError("invalid read count")))
+        }
+        if buf.length() == 0 {
+          return Err(NetworkError(ReadError("stream returned no data")))
+        }
+      }
       Err(err) => return Err(NetworkError(err))
     }
   }
