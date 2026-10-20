@@ -456,6 +456,7 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
     None => false
   }
 
+  let mut close_after_load = false
   let result = if chunked {
     read_chunked_body(self.reader, self.body)
   } else {
@@ -470,6 +471,7 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
           Some(length) => {
             if length < 0 {
               let err = NetError::ReadError("invalid Content-Length")
+              let _ = self.reader.stream.close()
               self.error = Some(err)
               return Err(err)
             }
@@ -477,18 +479,28 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
           }
           None => {
             let err = NetError::ReadError("invalid Content-Length")
+            let _ = self.reader.stream.close()
             self.error = Some(err)
             return Err(err)
           }
         }
       }
-      None => self.reader.read_to_eof(self.body)
+      None => {
+        close_after_load = true
+        self.reader.read_to_eof(self.body)
+      }
     }
   }
 
   match result {
-    Ok(_) => Ok(())
+    Ok(_) => {
+      if close_after_load {
+        let _ = self.reader.stream.close()
+      }
+      Ok(())
+    }
     Err(err) => {
+      let _ = self.reader.stream.close()
       self.error = Some(err)
       Err(err)
     }

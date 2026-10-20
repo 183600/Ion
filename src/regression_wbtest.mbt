@@ -291,6 +291,18 @@ test "TLS stream close is idempotent and formats IPv6 peers" {
 }
 
 ///|
+test "EOF-framed responses close the connection" {
+  let raw = "HTTP/1.1 200 OK\r\n\r\nhello"
+  let stream = regression_mock_stream(raw, 1, 0)
+  let codec = H1Codec::new(stream)
+  let response = codec.decode_response().unwrap()
+  let buf = @buffer.new(size_hint=8)
+  assert_eq(response.body.read(buf).unwrap(), 5)
+  assert_eq(buf.to_bytes(), b"hello")
+  assert_eq(stream.is_open, false)
+}
+
+///|
 test "response rejects invalid header names and values" {
   let malformed = [
     "HTTP/1.1 200 OK\r\nBad Header: x\r\n\r\n",
