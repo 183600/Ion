@@ -1,5 +1,6 @@
 import {
   "moonbitlang/core/buffer",
+  "moonbitlang/core/encoding/base64",
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/list",
   "moonbitlang/core/string",

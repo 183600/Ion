@@ -403,6 +403,11 @@ pub fn Request::with_header(self : Request, name : String, value : String) -> Re
   Request::{ ..self, headers: self.headers.add(name, value) }
 }
 
+pub fn Request::with_basic_auth(self : Request, username : String, password : String) -> Request {
+  let encoded = @base64.encode(@utf8.encode(username + ":" + password))
+  Request::{ ..self, headers: self.headers.set("Authorization", "Basic " + encoded) }
+}
+
 pub fn Request::with_body(self : Request, body : Bytes) -> Request {
   Request::{ ..self, body: Some(body) }
 }

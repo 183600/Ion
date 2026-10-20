@@ -1230,3 +1230,13 @@ test "response status helpers and URL scheme checks" {
   assert_false(url.is_secure())
   assert_true(Url::parse("HTTPS://example.com/").unwrap().is_secure())
 }
+///|
+test "basic auth replaces existing authorization headers" {
+  let url = Url::parse("https://example.com/").unwrap()
+  let request = Request::new(GET, url)
+    .with_header("Authorization", "Bearer old")
+    .with_basic_auth("user", "pass")
+  assert_eq(request.get_header("Authorization").unwrap(), "Basic dXNlcjpwYXNz")
+  assert_eq(request.headers.length(), 1)
+  assert_eq(request.with_basic_auth("", "").get_header("Authorization").unwrap(), "Basic Og==")
+}

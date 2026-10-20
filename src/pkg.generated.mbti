@@ -134,6 +134,7 @@ pub struct Request {
 } derive(Eq, @debug.Debug)
 pub fn Request::get_header(Self, String) -> String?
 pub fn Request::new(HttpMethod, Url) -> Self
+pub fn Request::with_basic_auth(Self, String, String) -> Self
 pub fn Request::with_body(Self, Bytes) -> Self
 pub fn Request::with_header(Self, String, String) -> Self
 pub fn Request::with_method(Self, HttpMethod) -> Self
