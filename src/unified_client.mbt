@@ -301,8 +301,8 @@ fn do_request(self : UnifiedClient, req : Request) -> Result[Response, HttpError
         .remove("Expect")
         .remove("Trailer")
     }
-    if parsed_url.scheme != request.url.scheme ||
-      parsed_url.host != request.url.host ||
+    if parsed_url.scheme.to_lower() != request.url.scheme.to_lower() ||
+      parsed_url.host.to_lower() != request.url.host.to_lower() ||
       parsed_url.port != request.url.port {
       next_headers = next_headers
         .remove("Authorization")

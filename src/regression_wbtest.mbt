@@ -1118,3 +1118,19 @@ test "connector applies its timeout before TLS handshakes" {
   let _ = connector.connect(url).unwrap()
   assert_eq(stream.last_timeout, 1234)
 }
+///|
+test "redirect origin comparison ignores host case" {
+  let raw = "HTTP/1.1 302 Found\r\nLocation: http://EXAMPLE.com/next\r\nContent-Length: 0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
+  let stream = regression_mock_stream(raw, 1, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+  let url = Url::parse("http://example.com/start").unwrap()
+  let response = client.request(
+    Request::new(GET, url).with_header("Authorization", "Bearer token"),
+  ).unwrap()
+  assert_eq(response.status, 200)
+  let wire = @utf8.decode(stream.output.to_bytes()[:])
+  let next_index = wire.find("GET /next HTTP/1.1").unwrap()
+  assert_true(wire.substring(start=next_index).contains("Authorization: Bearer token"))
+}
