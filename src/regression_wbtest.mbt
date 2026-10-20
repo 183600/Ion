@@ -408,6 +408,19 @@ test "decode_response remembers a preceding HEAD request" {
 }
 
 ///|
+test "HEAD framing applies only to the next response" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+  let stream = regression_mock_stream(raw, 0, 0)
+  let codec = H1Codec::new(stream)
+  let url = Url::parse("http://example.com/").unwrap()
+  assert_true(codec.encode_request(Request::new(HEAD, url)) is Ok(_))
+  let head_response = codec.decode_response().unwrap()
+  assert_eq(head_response.body.read(@buffer.new(size_hint=8)).unwrap(), 0)
+  let next_response = codec.decode_response().unwrap()
+  assert_eq(next_response.text().unwrap(), "ok")
+}
+
+///|
 test "Content-Length must be plain decimal digits" {
   for value in ["+5", "5_0", "0x5"] {
     let raw = "HTTP/1.1 200 OK\r\nContent-Length: " + value + "\r\n\r\nhello"

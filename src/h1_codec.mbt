@@ -622,6 +622,7 @@ pub fn H1Codec::decode_response(
       is_open: true,
     }
 
+    self.last_is_head = false
     return Ok(Response::new_with_version(
       response_head.version,
       response_head.status,
