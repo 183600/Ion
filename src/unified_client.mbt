@@ -108,6 +108,7 @@ pub fn UnifiedClient::with_tls_config(
   self : UnifiedClient,
   config : TlsConfig,
 ) -> UnifiedClient {
+  let _ = self.connector.close_all()
   let connector = Connector::new(
     self.connector.dialer,
     self.connector.tls_provider,

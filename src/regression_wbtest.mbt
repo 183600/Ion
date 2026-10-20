@@ -1308,3 +1308,15 @@ test "request headers can be replaced and removed" {
     .without_header("Missing")
   assert_eq(request.headers.get_all("X-Test"), @list.List(["three"]))
 }
+///|
+test "replacing TLS configuration closes the old pool" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+  let stream = regression_mock_stream(raw, 4096, 4096)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+  let url = Url::parse("http://example.com/").unwrap()
+  let _ = client.request(Request::new(GET, url)).unwrap()
+  let _ = client.with_tls_config(TlsConfig::new("example.com"))
+  assert_false(stream.is_open)
+}
