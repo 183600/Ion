@@ -153,7 +153,7 @@ fn normalize_path_and_suffix(target : String) -> String {
       "" => if !is_first && !is_last {
         normalized.push("")
       }
-      _ => normalized.push(segment.to_string())
+      _ => normalized.push(segment.to_owned())
     }
   }
   let joined = normalized.join("/")
