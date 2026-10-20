@@ -1254,3 +1254,10 @@ test "reading a body rejects streams that make no progress" {
   let response = Response::new(200, Headers::new(), NoProgressStream::{ is_open: true })
   assert_true(response.read_body() is Err(NetworkError(ReadError(_))))
 }
+///|
+test "response body reads enforce an explicit limit" {
+  let response = Response::new(200, Headers::new(), regression_mock_stream("hello", 4096, 4096))
+  assert_true(response.read_body_with_limit(4) is Err(NetworkError(ReadError(_))))
+  let response = Response::new(200, Headers::new(), regression_mock_stream("hello", 4096, 4096))
+  assert_eq(response.read_body_with_limit(5).unwrap(), b"hello")
+}

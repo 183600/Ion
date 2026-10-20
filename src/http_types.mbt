@@ -441,8 +441,14 @@ pub fn Response::new_with_version(
   Response::{ version, status, headers, body }
 }
 
-/// Read the complete response body, enforcing the stream's own size limit.
-pub fn Response::read_body(self : Response) -> Result[Bytes, HttpError] {
+const DEFAULT_MAX_RESPONSE_BODY_BYTES : Int = 67108864
+
+/// Read the complete response body with an explicit size limit.
+pub fn Response::read_body_with_limit(
+  self : Response,
+  max_bytes : Int,
+) -> Result[Bytes, HttpError] {
+  let limit = if max_bytes < 0 { 0 } else { max_bytes }
   let output = Buffer(size_hint=4096)
   while true {
     let chunk = Buffer(size_hint=4096)
@@ -456,12 +462,20 @@ pub fn Response::read_body(self : Response) -> Result[Bytes, HttpError] {
         if bytes.length() == 0 {
           return Err(NetworkError(ReadError("stream returned no data")))
         }
+        if bytes.length() > limit - output.length() {
+          return Err(NetworkError(ReadError("response body too large")))
+        }
         output.write_bytes(bytes)
       }
       Err(err) => return Err(NetworkError(err))
     }
   }
   Ok(output.to_bytes())
+}
+
+/// Read the complete response body, enforcing the default size limit.
+pub fn Response::read_body(self : Response) -> Result[Bytes, HttpError] {
+  self.read_body_with_limit(DEFAULT_MAX_RESPONSE_BODY_BYTES)
 }
 
 /// Decode the complete response body as UTF-8 text.
