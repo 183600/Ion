@@ -312,7 +312,6 @@ fn write_chunked_body(stream : &Stream, body : Bytes) -> Result[Unit, NetError] 
 
 /// Encode HTTP request to HTTP/1.1 format
 pub fn H1Codec::encode_request(self : H1Codec, req : Request) -> Result[Unit, HttpError] {
-  self.last_is_head = req.method == HEAD
   let target = req.url.request_target()
   if !valid_request_target(target) {
     return Err(InvalidUrl("Invalid request target"))
@@ -410,7 +409,10 @@ pub fn H1Codec::encode_request(self : H1Codec, req : Request) -> Result[Unit, Ht
 
   // Flush the stream
   match self.reader.stream.flush() {
-    Ok(_) => Ok(())
+    Ok(_) => {
+      self.last_is_head = req.method == HEAD
+      Ok(())
+    }
     Err(err) => Err(NetworkError(err))
   }
 }
