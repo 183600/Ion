@@ -100,7 +100,7 @@ pub fn TlsConfig::with_key_log(self : TlsConfig, key_log : &KeyLogSink) -> TlsCo
 }
 
 fn valid_server_name(value : String) -> Bool {
-  if value.length() == 0 {
+  if value.length() == 0 || @utf8.encode(value).length() > 255 {
     return false
   }
   for ch in value {

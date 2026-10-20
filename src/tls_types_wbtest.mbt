@@ -41,3 +41,8 @@ test "TLS validation rejects oversized ALPN protocol names" {
   let config = TlsConfig::new("example.com").with_alpn(@list.List([long_protocol]))
   assert_true(config.validate() is Err(InvalidConfig(_)))
 }
+///|
+test "TLS validation rejects oversized server names" {
+  let config = TlsConfig::new("a".repeat(256))
+  assert_true(config.validate() is Err(InvalidConfig(_)))
+}
