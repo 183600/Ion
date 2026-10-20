@@ -158,6 +158,9 @@ int32_t feather_tcp_read(int32_t fd, moonbit_bytes_t buffer, int32_t capacity) {
       if (errno == EINTR) {
         continue;
       }
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        return -ETIMEDOUT;
+      }
       return -errno;
     }
     return (int32_t)count;
@@ -177,6 +180,9 @@ int32_t feather_tcp_write(int32_t fd, moonbit_bytes_t buffer, int32_t length) {
     if (count < 0) {
       if (errno == EINTR) {
         continue;
+      }
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        return -ETIMEDOUT;
       }
       return -errno;
     }
