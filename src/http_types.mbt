@@ -271,7 +271,13 @@ pub fn Url::to_string(self : Url) -> String {
   } else {
     host_text
   }
-  let path = if self.path.length() > 0 { self.path } else { "/" }
+  let path = if self.path.length() == 0 {
+    "/"
+  } else if self.path.has_prefix("/") {
+    self.path
+  } else {
+    "/" + self.path
+  }
   let base = self.scheme + "://" + host_port + path
   let with_query = if self.query.length() > 0 {
     base + "?" + self.query
