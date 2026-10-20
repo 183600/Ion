@@ -1213,3 +1213,20 @@ test "streams reporting progress without data are rejected" {
   let codec = H1Codec::new(stream)
   assert_true(codec.decode_response() is Err(NetworkError(ReadError(_))))
 }
+///|
+test "response status helpers and URL scheme checks" {
+  let response = Response::new(204, Headers::new(), regression_mock_stream("", 4096, 4096))
+  assert_true(response.is_success())
+  assert_false(response.is_redirection())
+  assert_false(response.is_client_error())
+  assert_false(response.is_server_error())
+  let redirect = Response::new(308, Headers::new(), regression_mock_stream("", 4096, 4096))
+  assert_true(redirect.is_redirection())
+  let client_error = Response::new(404, Headers::new(), regression_mock_stream("", 4096, 4096))
+  assert_true(client_error.is_client_error())
+  let server_error = Response::new(503, Headers::new(), regression_mock_stream("", 4096, 4096))
+  assert_true(server_error.is_server_error())
+  let url = Url::parse("http://example.com/").unwrap()
+  assert_false(url.is_secure())
+  assert_true(Url::parse("HTTPS://example.com/").unwrap().is_secure())
+}

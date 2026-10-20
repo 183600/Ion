@@ -336,6 +336,10 @@ pub fn Url::origin(self : Url) -> String {
 }
 
 /// Origin-form request target: an absolute path plus an optional query.
+pub fn Url::is_secure(self : Url) -> Bool {
+  self.scheme.to_lower() == "https"
+}
+
 pub fn Url::request_target(self : Url) -> String {
   let path = if self.path.length() == 0 {
     "/"
@@ -456,6 +460,23 @@ pub fn Response::text(self : Response) -> Result[String, HttpError] {
 
 pub fn Response::get_header(self : Response, name : String) -> Option[String] {
   self.headers.get(name)
+}
+
+pub fn Response::is_success(self : Response) -> Bool {
+  self.status >= 200 && self.status < 300
+}
+
+pub fn Response::is_redirection(self : Response) -> Bool {
+  self.status == 301 || self.status == 302 || self.status == 303 ||
+  self.status == 307 || self.status == 308
+}
+
+pub fn Response::is_client_error(self : Response) -> Bool {
+  self.status >= 400 && self.status < 500
+}
+
+pub fn Response::is_server_error(self : Response) -> Bool {
+  self.status >= 500 && self.status < 600
 }
 
 /// HTTP Client interface
