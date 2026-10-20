@@ -27,12 +27,27 @@ fn valid_tcp_port(port : Int) -> Bool {
   port >= 1 && port <= 65535
 }
 
-fn tcp_dial_host(host : String) -> String {
-  if host.has_prefix("[") && host.has_suffix("]") {
-    let inner = host[1:host.length() - 1].to_owned()
-    if is_ipv6_literal_with_zone(inner) {
-      return inner
+fn decode_ipv6_zone(value : String) -> String {
+  match value.find("%") {
+    Some(index) => {
+      let zone = value[index + 1:].to_owned()
+      if zone.length() > 2 && zone.has_prefix("25") {
+        return value[0:index + 1].to_owned() + zone[2:].to_owned()
+      }
     }
+    None => ()
+  }
+  value
+}
+
+fn tcp_dial_host(host : String) -> String {
+  let inner = if host.has_prefix("[") && host.has_suffix("]") {
+    host[1:host.length() - 1].to_owned()
+  } else {
+    host
+  }
+  if is_ipv6_literal_with_zone(inner) {
+    return decode_ipv6_zone(inner)
   }
   host
 }
