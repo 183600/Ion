@@ -911,6 +911,19 @@ test "an explicit request timeout wins over the client default" {
 }
 
 ///|
+test "redirects preserve an explicit request timeout" {
+  let raw = "HTTP/1.1 302 Found\r\nLocation: /next\r\nContent-Length: 0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
+  let stream = regression_mock_stream(raw, 1, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let options = ClientOptions::new().with_timeout(1234)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let url = Url::parse("http://example.com/start").unwrap()
+  let _ = client.request(Request::new(GET, url).with_timeout(30000)).unwrap()
+  assert_eq(stream.last_timeout, 30000)
+}
+
+///|
 test "relative redirect resolution" {
   let base = Url::parse("http://example.com/a/b/c?old=1").unwrap()
   assert_eq(
