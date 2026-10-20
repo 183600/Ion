@@ -1399,6 +1399,18 @@ test "replacing TLS configuration closes the old pool" {
   assert_false(stream.is_open)
 }
 ///|
+test "replacing connector TLS configuration closes its pool" {
+  let stream = regression_mock_stream("", 1, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let url = Url::parse("http://example.com/").unwrap()
+  let _ = connector.connect(url).unwrap()
+  let replaced = connector.with_tls_config(TlsConfig::new("example.com"))
+  assert_false(stream.is_open)
+  let _ = replaced.connect(url).unwrap()
+  assert_eq(dialer.count, 2)
+}
+///|
 test "101 responses close the upgraded connection" {
   let raw = "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n"
   let stream = regression_mock_stream(raw, 0, 0)

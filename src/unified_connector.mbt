@@ -24,8 +24,11 @@ pub fn Connector::with_timeout(self : Connector, timeout_ms : Int) -> Connector 
 }
 
 /// Use a shared TLS configuration for every HTTPS connection.
+/// Existing pooled connections were established with the previous
+/// configuration, so they must not be reused.
 pub fn Connector::with_tls_config(self : Connector, config : TlsConfig) -> Connector {
-  Connector::{ ..self, tls_config: Some(config) }
+  let _ = self.close_all()
+  Connector::{ ..self, tls_config: Some(config), connection_pool: Map([]) }
 }
 
 fn connection_key(url : Url) -> String {
