@@ -5,7 +5,7 @@ struct ActiveConnection {
 }
 
 struct ConnectionPoolState {
-  mut idle : Map[String, &Stream]
+  mut idle : Map[String, List[&Stream]]
   mut active : List[ActiveConnection]
   mut next_id : Int
 }
@@ -35,7 +35,13 @@ fn ConnectionLease::release(self : ConnectionLease, reusable : Bool) -> Unit {
   self.pool.val.active = self.pool.val.active.filter(fn(entry) { entry.id != id })
   if reusable {
     match self.stream.peer_addr() {
-      Ok(_) => self.pool.val.idle.set(self.key, self.stream)
+      Ok(_) => {
+        let idle = match self.pool.val.idle.get(self.key) {
+          Some(streams) => streams
+          None => @list.List([])
+        }
+        self.pool.val.idle.set(self.key, idle.prepend(self.stream))
+      }
       Err(_) => {
         let _ = self.stream.close()
       }
@@ -43,6 +49,43 @@ fn ConnectionLease::release(self : ConnectionLease, reusable : Bool) -> Unit {
   } else {
     let _ = self.stream.close()
   }
+}
+
+fn take_idle_stream(
+  pool : @ref.Ref[ConnectionPoolState],
+  key : String,
+) -> Option[&Stream] {
+  let streams = match pool.val.idle.get(key) {
+    Some(streams) => streams
+    None => return None
+  }
+  let mut remaining = streams
+  while true {
+    match remaining.head() {
+      Some(stream) => {
+        let rest = remaining.unsafe_tail()
+        match stream.peer_addr() {
+          Ok(_) => {
+            if rest.length() == 0 {
+              let _ = pool.val.idle.remove(key)
+            } else {
+              pool.val.idle.set(key, rest)
+            }
+            return Some(stream)
+          }
+          Err(_) => {
+            let _ = stream.close()
+            remaining = rest
+          }
+        }
+      }
+      None => {
+        let _ = pool.val.idle.remove(key)
+        return None
+      }
+    }
+  }
+  None
 }
 
 pub fn Connector::new(dialer : &Dialer, tls_provider : &TlsProvider) -> Connector {
@@ -75,6 +118,14 @@ fn connection_key(url : Url) -> String {
 
 /// Connect to a URL (either HTTP or HTTPS)
 pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpError] {
+  self.connect_impl(url, true)
+}
+
+fn Connector::connect_impl(
+  self : Connector,
+  url : Url,
+  cache_new : Bool,
+) -> Result[&Stream, HttpError] {
   let scheme = url.scheme.to_lower()
   let host = url.host
   let port = url.port
@@ -104,14 +155,8 @@ pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpEr
   }
 
   // Check if we have a cached connection
-  match self.pool.val.idle.get(conn_key) {
-    Some(stream) => match stream.peer_addr() {
-      Ok(_) => return Ok(stream)
-      Err(_) => {
-        let _ = stream.close()
-        self.pool.val.idle.remove(conn_key)
-      }
-    }
+  match take_idle_stream(self.pool, conn_key) {
+    Some(stream) => return Ok(stream)
     None => ()
   }
 
@@ -162,15 +207,23 @@ pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpEr
       }
     }
 
-    // Cache the TLS stream
-    self.pool.val.idle.set(conn_key, tls_stream)
-
+    if cache_new {
+      let idle = match self.pool.val.idle.get(conn_key) {
+        Some(streams) => streams
+        None => @list.List([])
+      }
+      self.pool.val.idle.set(conn_key, idle.prepend(tls_stream))
+    }
     Ok(tls_stream)
   } else {
     // For HTTP, use the raw stream directly
-    // Cache the connection
-    self.pool.val.idle.set(conn_key, raw_stream)
-
+    if cache_new {
+      let idle = match self.pool.val.idle.get(conn_key) {
+        Some(streams) => streams
+        None => @list.List([])
+      }
+      self.pool.val.idle.set(conn_key, idle.prepend(raw_stream))
+    }
     Ok(raw_stream)
   }
 }
@@ -180,11 +233,10 @@ pub fn Connector::checkout(
   url : Url,
 ) -> Result[(&Stream, ConnectionLease), HttpError] {
   let conn_key = connection_key(url)
-  let stream = match self.connect(url) {
+  let stream = match self.connect_impl(url, false) {
     Ok(stream) => stream
     Err(err) => return Err(err)
   }
-  let _ = self.pool.val.idle.remove(conn_key)
   let id = self.pool.val.next_id
   self.pool.val.next_id = id + 1
   self.pool.val.active = self.pool.val.active.prepend(
@@ -198,8 +250,10 @@ pub fn Connector::close(self : Connector, url : Url) -> Result[Unit, HttpError] 
   let conn_key = connection_key(url)
 
   match self.pool.val.idle.get(conn_key) {
-    Some(stream) => {
-      let _ = stream.close()
+    Some(streams) => {
+      for stream in streams {
+        let _ = stream.close()
+      }
       let _ = self.pool.val.idle.remove(conn_key)
     }
     None => ()
@@ -215,8 +269,10 @@ pub fn Connector::close(self : Connector, url : Url) -> Result[Unit, HttpError] 
 }
 
 pub fn Connector::close_all(self : Connector) -> Result[Unit, HttpError] {
-  for _conn_key, stream in self.pool.val.idle.iter2() {
-    let _ = stream.close()
+  for _conn_key, streams in self.pool.val.idle.iter2() {
+    for stream in streams {
+      let _ = stream.close()
+    }
   }
   for entry in self.pool.val.active {
     let _ = entry.stream.close()
