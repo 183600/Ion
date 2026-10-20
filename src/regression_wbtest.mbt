@@ -1249,3 +1249,8 @@ test "chunked transfer coding must be final" {
   let response = H1Codec::new(regression_mock_stream(valid, 4096, 4096)).decode_response().unwrap()
   assert_eq(response.read_body().unwrap(), b"hello")
 }
+///|
+test "reading a body rejects streams that make no progress" {
+  let response = Response::new(200, Headers::new(), NoProgressStream::{ is_open: true })
+  assert_true(response.read_body() is Err(NetworkError(ReadError(_))))
+}

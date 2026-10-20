@@ -448,7 +448,16 @@ pub fn Response::read_body(self : Response) -> Result[Bytes, HttpError] {
     let chunk = Buffer(size_hint=4096)
     match self.body.read(chunk) {
       Ok(0) => break
-      Ok(_) => output.write_bytes(chunk.to_bytes())
+      Ok(count) => {
+        if count < 0 {
+          return Err(NetworkError(ReadError("invalid read count")))
+        }
+        let bytes = chunk.to_bytes()
+        if bytes.length() == 0 {
+          return Err(NetworkError(ReadError("stream returned no data")))
+        }
+        output.write_bytes(bytes)
+      }
       Err(err) => return Err(NetworkError(err))
     }
   }
