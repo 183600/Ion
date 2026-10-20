@@ -175,6 +175,35 @@ pub fn UnifiedClient::with_tls_config(
   }
 }
 
+/// Route HTTP requests through a forward proxy and tunnel HTTPS requests with
+/// `CONNECT`. Existing pooled connections are closed because they were made
+/// directly.
+pub fn UnifiedClient::with_proxy(self : UnifiedClient, proxy : Proxy) -> UnifiedClient {
+  let _ = self.connector.close_all()
+  let connector = Connector::new(
+    self.connector.dialer,
+    self.connector.tls_provider,
+  ).with_timeout(self.connector.timeout_ms).with_proxy(proxy)
+  UnifiedClient::{
+    connector,
+    options: self.options,
+    redirect_count: 0,
+  }
+}
+
+/// Route HTTP requests through the proxy described by `url`
+/// (`http://[user:password@]host[:port]`).
+pub fn UnifiedClient::with_proxy_url(
+  self : UnifiedClient,
+  url : String,
+) -> Result[UnifiedClient, HttpError] {
+  let proxy = match Proxy::new(url) {
+    Ok(proxy) => proxy
+    Err(err) => return Err(err)
+  }
+  Ok(self.with_proxy(proxy))
+}
+
 pub impl HttpClient for UnifiedClient with fn request(self : UnifiedClient, req : Request) -> Result[Response, HttpError] {
   self.redirect_count = 0
   self.do_request(req)
@@ -398,8 +427,21 @@ fn UnifiedClient::do_request_once(
     request = request.with_header("Accept-Encoding", "gzip, deflate")
   }
 
+  // When a proxy is configured, plain HTTP is sent in absolute-form and the
+  // proxy credentials are attached. HTTPS tunnels authenticate during CONNECT,
+  // so the header is only added here for non-tunnelled requests.
+  let absolute_form = self.connector.uses_absolute_form(request.url)
+  if absolute_form {
+    if request.get_header("Proxy-Authorization") is None {
+      match self.connector.proxy_authorization() {
+        Some(value) => request = request.with_header("Proxy-Authorization", value)
+        None => ()
+      }
+    }
+  }
+
   // Encode and send request
-  match codec.encode_request(request) {
+  match codec.encode_request(request, absolute_form~) {
     Ok(_) => ()
     Err(err) => {
       lease.release(false)

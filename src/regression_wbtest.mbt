@@ -641,6 +641,23 @@ pub impl Dialer for RegressionQueueDialer with fn resolve(self : RegressionQueue
   Ok(@list.List([host]))
 }
 
+struct RegressionProxyDialer {
+  stream : &Stream
+  mut host : String
+  mut port : Int
+}
+
+pub impl Dialer for RegressionProxyDialer with fn dial_tcp(self : RegressionProxyDialer, host : String, port : Int) -> Result[&Stream, NetError] {
+  self.host = host
+  self.port = port
+  Ok(self.stream)
+}
+
+pub impl Dialer for RegressionProxyDialer with fn resolve(self : RegressionProxyDialer, host : String) -> Result[List[String], NetError] {
+  let _ = self
+  Ok(@list.List([host]))
+}
+
 ///|
 test "HEAD response body is not consumed" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhelloNEXT"
@@ -2159,3 +2176,105 @@ test "connector exposes a configurable idle timeout" {
   assert_eq(connector.with_idle_timeout(5000).idle_timeout(), 5000)
   assert_eq(connector.with_idle_timeout(-1).idle_timeout(), 0)
 }
+
+///|
+test "Proxy::new parses URL and credentials" {
+  let proxy = Proxy::new("http://user:secret@proxy.example:3128").unwrap()
+  assert_eq(proxy.authority(), "proxy.example:3128")
+  assert_eq(proxy.authorization(), Some("Basic " + @base64.encode(@utf8.encode("user:secret"))))
+  let plain = Proxy::new("http://proxy.example").unwrap()
+  assert_eq(plain.authority(), "proxy.example")
+  assert_true(plain.authorization() is None)
+}
+
+///|
+test "Proxy::new rejects non-http schemes and bad ports" {
+  assert_true(Proxy::new("https://proxy.example:443") is Err(InvalidUrl(_)))
+  assert_true(Proxy::new("http://proxy.example:0") is Err(_))
+  assert_true(Proxy::new("http://proxy.example:70000") is Err(_))
+}
+
+///|
+test "Proxy::new_with_basic_auth encodes credentials" {
+  let proxy = Proxy::new_with_basic_auth("127.0.0.1", 8080, "u", "p").unwrap()
+  assert_eq(proxy.authority(), "127.0.0.1:8080")
+  assert_eq(proxy.authorization(), Some("Basic " + @base64.encode(@utf8.encode("u:p"))))
+}
+
+///|
+test "plain HTTP through a proxy uses absolute-form and proxy auth" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+  let stream = regression_mock_stream(raw, 4096, 4096)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let options = ClientOptions::new().with_follow_redirects(false)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let proxy = Proxy::new("http://user:secret@proxy.example:3128").unwrap()
+  let client = client.with_proxy(proxy)
+  let url = Url::parse("http://example.com/path?x=1").unwrap()
+  let response = client.request(Request::new(GET, url)).unwrap()
+  assert_eq(response.text().unwrap(), "ok")
+  assert_eq(dialer.count, 1)
+  let wire = @utf8.decode(stream.output.to_bytes()[:])
+  assert_true(wire.contains("GET http://example.com/path?x=1 HTTP/1.1\r\n"))
+  assert_true(wire.contains("Proxy-Authorization: Basic " + @base64.encode(@utf8.encode("user:secret"))))
+}
+
+///|
+test "plain HTTP through a proxy dials the proxy host" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+  let stream = regression_mock_stream(raw, 4096, 4096)
+  let dialer = RegressionProxyDialer::{ stream, host: "", port: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_proxy(
+    Proxy::new("http://proxy.example:3128").unwrap(),
+  )
+  let url = Url::parse("http://example.com/").unwrap()
+  let _ = connector.connect(url).unwrap()
+  assert_eq(dialer.host, "proxy.example")
+  assert_eq(dialer.port, 3128)
+}
+
+///|
+test "HTTPS through a proxy opens a CONNECT tunnel before TLS" {
+  let raw = "HTTP/1.1 200 Connection Established\r\n\r\n"
+  let stream = regression_mock_stream(raw, 4096, 4096)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_proxy(
+    Proxy::new("http://user:secret@proxy.example:3128").unwrap(),
+  )
+  let url = Url::parse("https://example.com:8443/").unwrap()
+  let _ = connector.connect(url).unwrap()
+  let wire = @utf8.decode(stream.output.to_bytes()[:])
+  assert_true(wire.has_prefix("CONNECT example.com:8443 HTTP/1.1\r\n"))
+  assert_true(wire.contains("Host: example.com:8443\r\n"))
+  assert_true(wire.contains("Proxy-Authorization: Basic " + @base64.encode(@utf8.encode("user:secret"))))
+}
+
+///|
+test "failed proxy CONNECT returns an error" {
+  let raw = "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n"
+  let stream = regression_mock_stream(raw, 4096, 4096)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_proxy(
+    Proxy::new("http://proxy.example:3128").unwrap(),
+  )
+  let url = Url::parse("https://example.com/").unwrap()
+  assert_true(connector.connect(url) is Err(_))
+  assert_false(stream.is_open)
+}
+
+///|
+test "replacing the proxy closes the old pool and isolates keys" {
+  let first = regression_mock_stream("", 1, 0)
+  let second = regression_mock_stream("", 1, 0)
+  let streams : Array[&Stream] = [first, second]
+  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let url = Url::parse("http://example.com/").unwrap()
+  let _ = connector.connect(url).unwrap()
+  let proxied = connector.with_proxy(Proxy::new("http://proxy.example:3128").unwrap())
+  assert_false(first.is_open)
+  let _ = proxied.connect(url).unwrap()
+  assert_eq(dialer.index, 2)
+}
+

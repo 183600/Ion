@@ -11,6 +11,7 @@ fn print_usage() -> Unit {
   println("Usage: feather <url>                    send a GET request")
   println("       feather <method> <url> [body]    send a request with the given method")
   println("       FEATHER_URL=<url> feather         send a GET request to FEATHER_URL")
+  println("       FEATHER_PROXY=<url> feather     route requests through an HTTP proxy")
   println("Methods: get, post, put, delete, head, options, patch")
 }
 
@@ -31,7 +32,20 @@ fn print_response(response : Response) -> Unit {
 }
 
 fn run_request(method : HttpMethod, url : String, body : String) -> Bool {
-  let client = UnifiedClient::new()
+  let mut client = UnifiedClient::new()
+  match @env.get_env_var("FEATHER_PROXY") {
+    Some(value) => if value.length() > 0 {
+      match client.with_proxy_url(value) {
+        Ok(updated) => client = updated
+        Err(err) => {
+          report(err)
+          let _ = client.close_all()
+          return false
+        }
+      }
+    }
+    None => ()
+  }
   let succeeded = if method == GET && body.length() == 0 {
     match client.get(url) {
       Ok(response) => {

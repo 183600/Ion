@@ -369,9 +369,26 @@ fn write_chunked_body(stream : &Stream, body : Bytes) -> Result[Unit, NetError] 
   write_all(stream, @utf8.encode("0\r\n\r\n"))
 }
 
-/// Encode HTTP request to HTTP/1.1 format
-pub fn H1Codec::encode_request(self : H1Codec, req : Request) -> Result[Unit, HttpError] {
-  let target = req.url.request_target()
+/// Encode HTTP request to HTTP/1.1 format.
+///
+/// `absolute_form` selects the request-target form: `false` (the default) sends
+/// origin-form (`path?query`) for direct connections, `true` sends
+/// absolute-form (`http://host/path`) as required when talking to a forward
+/// proxy over plain HTTP (RFC 9112 §3.2.2).
+pub fn H1Codec::encode_request(
+  self : H1Codec,
+  req : Request,
+  absolute_form? : Bool,
+) -> Result[Unit, HttpError] {
+  let target = if absolute_form.unwrap_or(false) {
+    if req.url.scheme.to_lower() == "http" {
+      req.url.origin() + req.url.request_target()
+    } else {
+      req.url.request_target()
+    }
+  } else {
+    req.url.request_target()
+  }
   if !valid_request_target(target) {
     return Err(InvalidUrl("Invalid request target"))
   }

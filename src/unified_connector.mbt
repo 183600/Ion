@@ -71,6 +71,7 @@ pub struct Connector {
   dialer : &Dialer
   tls_provider : &TlsProvider
   tls_config : TlsConfig?
+  proxy : Proxy?
   timeout_ms : Int
   mut max_connections_per_host : Int
   pool : @ref.Ref[ConnectionPoolState]
@@ -161,6 +162,7 @@ pub fn Connector::new(dialer : &Dialer, tls_provider : &TlsProvider) -> Connecto
     dialer,
     tls_provider,
     tls_config: None,
+    proxy: None,
     timeout_ms: 30000,
     max_connections_per_host: 0,
     pool: @ref.Ref(ConnectionPoolState::new()),
@@ -182,9 +184,39 @@ pub fn Connector::with_tls_config(self : Connector, config : TlsConfig) -> Conne
     dialer: self.dialer,
     tls_provider: self.tls_provider,
     tls_config: Some(config),
+    proxy: self.proxy,
     timeout_ms: self.timeout_ms,
     max_connections_per_host: self.max_connections_per_host,
     pool: @ref.Ref(ConnectionPoolState::new()),
+  }
+}
+
+/// Route every request through an HTTP proxy. Existing pooled connections were
+/// made directly, so they are closed and cannot be reused.
+pub fn Connector::with_proxy(self : Connector, proxy : Proxy) -> Connector {
+  let _ = self.close_all()
+  Connector::{
+    dialer: self.dialer,
+    tls_provider: self.tls_provider,
+    tls_config: self.tls_config,
+    proxy: Some(proxy),
+    timeout_ms: self.timeout_ms,
+    max_connections_per_host: self.max_connections_per_host,
+    pool: @ref.Ref(ConnectionPoolState::new()),
+  }
+}
+
+/// Whether requests for `url` must use absolute-form request targets (plain
+/// HTTP sent to a forward proxy).
+pub fn Connector::uses_absolute_form(self : Connector, url : Url) -> Bool {
+  self.proxy is Some(_) && url.scheme.to_lower() == "http"
+}
+
+/// Proxy credentials for requests that travel through the proxy itself.
+pub fn Connector::proxy_authorization(self : Connector) -> String? {
+  match self.proxy {
+    Some(proxy) => proxy.authorization
+    None => None
   }
 }
 
@@ -231,8 +263,102 @@ pub fn Connector::idle_timeout(self : Connector) -> Int {
   self.pool.val.idle_timeout_ms
 }
 
-fn connection_key(url : Url) -> String {
-  url.scheme.to_lower() + "://" + url.host.to_lower() + ":" + url.port.to_string()
+fn Connector::connection_key(self : Connector, url : Url) -> String {
+  let origin = url.scheme.to_lower() + "://" + url.host.to_lower() + ":" + url.port.to_string()
+  match self.proxy {
+    Some(proxy) =>
+      "proxy://" +
+      proxy.url.host.to_lower() +
+      ":" +
+      proxy.url.port.to_string() +
+      "|" +
+      origin
+    None => origin
+  }
+}
+
+fn read_connect_response(stream : &Stream) -> Result[Unit, HttpError] {
+  let head = Buffer(size_hint=128)
+  let limit = 16384
+  while head.length() <= limit {
+    let chunk = Buffer(size_hint=1)
+    let count = match stream.read(chunk) {
+      Ok(count) => count
+      Err(err) => return Err(NetworkError(err))
+    }
+    if count <= 0 {
+      return Err(NetworkError(ConnectionFailed(
+        "proxy closed the connection during CONNECT",
+      )))
+    }
+    head.write_bytes(chunk.to_bytes())
+    let data = head.to_bytes()
+    if data.length() >= 4 {
+      let end = data.length() - 1
+      if data[end - 3] == b'\r' && data[end - 2] == b'\n' &&
+        data[end - 1] == b'\r' && data[end] == b'\n' {
+        let text = @utf8.decode_lossy(data[:])
+        let line_end = match text.find("\r\n") {
+          Some(index) => index
+          None => return Err(ProtocolError("Invalid proxy CONNECT response"))
+        }
+        let status_line = text[0:line_end].to_owned()
+        let first_space = match status_line.find(" ") {
+          Some(index) => index
+          None => return Err(ProtocolError("Invalid proxy CONNECT response"))
+        }
+        let mut start = first_space
+        while start < status_line.length() &&
+          status_line.get_char(start) == Some(' ') {
+          start = start + 1
+        }
+        let mut end = start
+        while end < status_line.length() &&
+          status_line.get_char(end) != Some(' ') {
+          end = end + 1
+        }
+        let status_text = status_line[start:end].to_owned()
+        if end - start != 3 || !is_decimal_digits(status_text) {
+          return Err(ProtocolError("Invalid proxy CONNECT response"))
+        }
+        let status = try {
+          @string.parse_int(status_text[:])
+        } catch {
+          _ => return Err(ProtocolError("Invalid proxy CONNECT response"))
+        }
+        if status < 200 || status > 299 {
+          return Err(ProtocolError(
+            "proxy CONNECT failed with status " + status.to_string(),
+          ))
+        }
+        return Ok(())
+      }
+    }
+  }
+  Err(ProtocolError("proxy CONNECT response headers too large"))
+}
+
+fn establish_tunnel(
+  stream : &Stream,
+  url : Url,
+  proxy : Proxy,
+) -> Result[Unit, HttpError] {
+  let authority = url.authority()
+  let mut request = "CONNECT " + authority + " HTTP/1.1\r\nHost: " + authority + "\r\n"
+  match proxy.authorization {
+    Some(value) => request = request + "Proxy-Authorization: " + value + "\r\n"
+    None => ()
+  }
+  request = request + "\r\n"
+  match write_all(stream, @utf8.encode(request)) {
+    Ok(_) => ()
+    Err(err) => return Err(NetworkError(err))
+  }
+  match stream.flush() {
+    Ok(_) => ()
+    Err(err) => return Err(NetworkError(err))
+  }
+  read_connect_response(stream)
 }
 
 /// Connect to a URL (either HTTP or HTTPS)
@@ -261,7 +387,17 @@ fn Connector::connect_impl(
     return Err(InvalidUrl("Invalid port number"))
   }
 
-  let conn_key = connection_key(url)
+  let conn_key = self.connection_key(url)
+
+  // Validate proxy settings before opening any socket.
+  match self.proxy {
+    Some(proxy) => {
+      if !valid_tcp_host(proxy.url.host) || !valid_tcp_port(proxy.url.port) {
+        return Err(InvalidUrl("Invalid proxy address"))
+      }
+    }
+    None => ()
+  }
 
   // Validate TLS settings before opening a socket. The connection host
   // overrides any server name from the shared configuration.
@@ -291,8 +427,12 @@ fn Connector::connect_impl(
     )))
   }
 
-  // Dial TCP connection
-  let raw_stream = match self.dialer.dial_tcp(host, port) {
+  // Dial the proxy when one is configured, otherwise dial the origin.
+  let (dial_host, dial_port) = match self.proxy {
+    Some(proxy) => (proxy.url.host, proxy.url.port)
+    None => (host, port)
+  }
+  let raw_stream = match self.dialer.dial_tcp(dial_host, dial_port) {
     Ok(stream) => stream
     Err(err) => return Err(NetworkError(err))
   }
@@ -303,6 +443,20 @@ fn Connector::connect_impl(
     Err(err) => {
       let _ = raw_stream.close()
       return Err(NetworkError(err))
+    }
+  }
+
+  // For HTTPS through a proxy, open a CONNECT tunnel before starting TLS.
+  if scheme == "https" {
+    match self.proxy {
+      Some(proxy) => match establish_tunnel(raw_stream, url, proxy) {
+        Ok(_) => ()
+        Err(err) => {
+          let _ = raw_stream.close()
+          return Err(err)
+        }
+      }
+      None => ()
     }
   }
 
@@ -356,7 +510,7 @@ pub fn Connector::checkout(
   self : Connector,
   url : Url,
 ) -> Result[(&Stream, ConnectionLease), HttpError] {
-  let conn_key = connection_key(url)
+  let conn_key = self.connection_key(url)
   let (stream, reused) = match self.connect_impl(url, false) {
     Ok(connection) => connection
     Err(err) => return Err(err)
@@ -374,7 +528,7 @@ pub fn Connector::checkout(
 
 /// Close a connection and remove from pool
 pub fn Connector::close(self : Connector, url : Url) -> Result[Unit, HttpError] {
-  let conn_key = connection_key(url)
+  let conn_key = self.connection_key(url)
 
   match self.pool.val.idle.get(conn_key) {
     Some(entries) => {
