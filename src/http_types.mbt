@@ -166,7 +166,9 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
 
   let mut host = host_port
   let mut port_str : Option[String] = None
+  let mut bracketed = false
   if host_port.has_prefix("[") {
+    bracketed = true
     let close = match find_char(host_port, ']') {
       Some(index) => index
       None => return Err(InvalidUrl("Invalid IPv6 host"))
@@ -193,7 +195,7 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
   if host.length() == 0 {
     return Err(InvalidUrl("URL has no host"))
   }
-  if host.contains(":") {
+  if !bracketed && host.contains(":") {
     return Err(InvalidUrl("Invalid unbracketed IPv6 host"))
   }
 

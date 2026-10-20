@@ -85,7 +85,7 @@ pub fn H1Codec::encode_request(self : H1Codec, req : Request) -> Result[Unit, Ht
   headers_str += "\r\n"
 
   // Write request line and headers
-  let header_data = (req_line + headers_str).to_bytes()
+  let header_data = @utf8.encode(req_line + headers_str)
   match write_all(self.stream, header_data) {
     Ok(_) => ()
     Err(err) => return Err(NetworkError(err))
@@ -136,7 +136,10 @@ fn read_stream_line(stream : &Stream) -> Result[String, NetError] {
 }
 
 /// Decode HTTP response from HTTP/1.1 format
-pub fn H1Codec::decode_response(self : H1Codec) -> Result[Response, HttpError] {
+pub fn H1Codec::decode_response(
+  self : H1Codec,
+  head? : Bool = false,
+) -> Result[Response, HttpError] {
   // Read response line
   let response_line = match read_stream_line(self.stream) {
     Ok(line) => line
@@ -184,6 +187,8 @@ pub fn H1Codec::decode_response(self : H1Codec) -> Result[Response, HttpError] {
   let response_stream : &Stream = ResponseStream::{
     stream: self.stream,
     headers,
+    status,
+    head,
     body: [],
     offset: 0,
     loaded: false,
@@ -197,6 +202,8 @@ pub fn H1Codec::decode_response(self : H1Codec) -> Result[Response, HttpError] {
 struct ResponseStream {
   stream : &Stream
   headers : Headers
+  status : Int
+  head : Bool
   body : Array[Byte]
   mut offset : Int
   mut loaded : Bool
@@ -310,6 +317,12 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
   }
   self.loaded = true
 
+  // Responses to HEAD and 1xx/204/304 responses never carry a body.
+  if self.head || self.status == 204 || self.status == 304 ||
+    (self.status >= 100 && self.status < 200) {
+    return Ok(())
+  }
+
   let transfer_encoding = self.headers.get("Transfer-Encoding")
   let chunked = match transfer_encoding {
     Some(value) => value.to_lower().contains("chunked")
@@ -321,15 +334,26 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
   } else {
     match self.headers.get("Content-Length") {
       Some(value) => {
-        let length = try {
-          @string.parse_int(value.trim()[:])
+        let parsed = try {
+          Some(@string.parse_int(value.trim()[:]))
         } catch {
-          _ => return Err(NetError::ReadError("invalid Content-Length"))
+          _ => None
         }
-        if length < 0 {
-          return Err(NetError::ReadError("invalid Content-Length"))
+        match parsed {
+          Some(length) => {
+            if length < 0 {
+              let err = NetError::ReadError("invalid Content-Length")
+              self.error = Some(err)
+              return Err(err)
+            }
+            append_exact(self.stream, length, self.body)
+          }
+          None => {
+            let err = NetError::ReadError("invalid Content-Length")
+            self.error = Some(err)
+            return Err(err)
+          }
         }
-        append_exact(self.stream, length, self.body)
       }
       None => read_until_eof(self.stream, self.body)
     }

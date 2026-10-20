@@ -22,14 +22,14 @@ test "RootStore operations" {
   let store = RootStore::new()
   assert_eq(store.certificates.length(), 0)
   
-  let cert = "mock certificate".to_bytes()
+  let cert = @utf8.encode("mock certificate")
   let new_store = store.add_certificate(cert)
   assert_eq(new_store.certificates.length(), 1)
 }
 
 test "ClientCert creation" {
-  let cert = "certificate".to_bytes()
-  let key = "private key".to_bytes()
+  let cert = @utf8.encode("certificate")
+  let key = @utf8.encode("private key")
   let client_cert = ClientCert::{ certificate: cert, private_key: key }
   
   assert_eq(client_cert.certificate, cert)

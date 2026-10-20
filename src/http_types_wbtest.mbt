@@ -75,7 +75,7 @@ test "Request creation" {
 
 test "Request with header and body" {
   let url = Url::new("https", "example.com", 443)
-  let body = "test data".to_bytes()
+  let body = @utf8.encode("test data")
   let request = Request::new(POST, url)
     .with_header("Content-Type", "application/json")
     .with_body(body)

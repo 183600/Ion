@@ -84,6 +84,55 @@ fn url_authority(url : Url) -> String {
   }
 }
 
+fn normalize_path_and_suffix(target : String) -> String {
+  let mut path_end = target.length()
+  match target.find("?") {
+    Some(index) => if index < path_end {
+      path_end = index
+    }
+    None => ()
+  }
+  match target.find("#") {
+    Some(index) => if index < path_end {
+      path_end = index
+    }
+    None => ()
+  }
+  let path = target.substring(start=0, end=path_end)
+  let suffix = target.substring(start=path_end)
+  let trailing = path.has_suffix("/") || path.has_suffix("/.") ||
+    path.has_suffix("/..") || path == "." || path == ".."
+  let segments = path.split("/").collect()
+  let normalized : Array[String] = []
+  for segment in segments {
+    match segment {
+      "." | "" => ()
+      ".." => if normalized.length() > 0 {
+        normalized.unsafe_pop_back()
+      }
+      _ => normalized.push(segment.to_string())
+    }
+  }
+  let joined = normalized.join("/")
+  let result = if joined.length() == 0 {
+    "/"
+  } else if trailing {
+    "/" + joined + "/"
+  } else {
+    "/" + joined
+  }
+  result + suffix
+}
+
+fn base_without_fragment(base : Url) -> String {
+  let base_str = base.scheme + "://" + url_authority(base) + base.path
+  if base.query.length() > 0 {
+    base_str + "?" + base.query
+  } else {
+    base_str
+  }
+}
+
 fn resolve_redirect_url(base : Url, location : String) -> Result[Url, HttpError] {
   let location = location.trim().to_string()
   let lower = location.to_lower()
@@ -91,8 +140,11 @@ fn resolve_redirect_url(base : Url, location : String) -> Result[Url, HttpError]
     location
   } else if location.has_prefix("//") {
     base.scheme + ":" + location
+  } else if location.has_prefix("#") {
+    base_without_fragment(base) + location
   } else if location.has_prefix("/") {
-    base.scheme + "://" + url_authority(base) + location
+    base.scheme + "://" + url_authority(base) +
+    normalize_path_and_suffix(location)
   } else if location.has_prefix("?") {
     base.scheme + "://" + url_authority(base) + base.path + location
   } else if location.length() == 0 {
@@ -102,7 +154,8 @@ fn resolve_redirect_url(base : Url, location : String) -> Result[Url, HttpError]
       Some(index) => base.path.substring(start=0, end=index + 1)
       None => "/"
     }
-    base.scheme + "://" + url_authority(base) + directory + location
+    base.scheme + "://" + url_authority(base) +
+    normalize_path_and_suffix(directory + location)
   }
   Url::parse(full)
 }
@@ -250,7 +303,7 @@ pub fn UnifiedClient::get(self : UnifiedClient, url : String) -> Result[Response
     Ok(url) => url
     Err(err) => return Err(err)
   }
-  let req = Request::new(GET, parsed_url)
+  let req = Request::new(GET, parsed_url).with_timeout(self.options.timeout_ms)
   self.redirect_count = 0
   self.do_request(req)
 }
@@ -261,7 +314,7 @@ pub fn UnifiedClient::post(self : UnifiedClient, url : String, body : Bytes) -> 
     Ok(url) => url
     Err(err) => return Err(err)
   }
-  let req = Request::new(POST, parsed_url).with_body(body)
+  let req = Request::new(POST, parsed_url).with_body(body).with_timeout(self.options.timeout_ms)
   self.redirect_count = 0
   self.do_request(req)
 }
@@ -272,7 +325,7 @@ pub fn UnifiedClient::put(self : UnifiedClient, url : String, body : Bytes) -> R
     Ok(url) => url
     Err(err) => return Err(err)
   }
-  let req = Request::new(PUT, parsed_url).with_body(body)
+  let req = Request::new(PUT, parsed_url).with_body(body).with_timeout(self.options.timeout_ms)
   self.redirect_count = 0
   self.do_request(req)
 }
@@ -283,7 +336,7 @@ pub fn UnifiedClient::delete(self : UnifiedClient, url : String) -> Result[Respo
     Ok(url) => url
     Err(err) => return Err(err)
   }
-  let req = Request::new(DELETE, parsed_url)
+  let req = Request::new(DELETE, parsed_url).with_timeout(self.options.timeout_ms)
   self.redirect_count = 0
   self.do_request(req)
 }
