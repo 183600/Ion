@@ -219,6 +219,31 @@ test "request encoding rejects header injection" {
 }
 
 ///|
+test "encode rejects request-target and host injection" {
+  let stream = regression_mock_stream("", 0, 0)
+  let codec = H1Codec::new(stream)
+  let injected_path = Url::{
+    scheme: "http",
+    host: "example.com",
+    port: 80,
+    path: "/a\r\nX-Injected: yes",
+    query: "",
+    fragment: "",
+  }
+  assert_true(codec.encode_request(Request::new(GET, injected_path)) is Err(_))
+  let injected_host = Url::{
+    scheme: "http",
+    host: "example.com\r\nX-Injected: yes",
+    port: 80,
+    path: "/",
+    query: "",
+    fragment: "",
+  }
+  assert_true(codec.encode_request(Request::new(GET, injected_host)) is Err(_))
+  assert_eq(stream.output.to_bytes().length(), 0)
+}
+
+///|
 test "response body honors Content-Length" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nX-Test: Yes\r\n\r\nhelloEXTRA"
   let stream = regression_mock_stream(raw, 1, 0)

@@ -176,6 +176,31 @@ fn valid_header_value(value : String) -> Bool {
   true
 }
 
+fn valid_request_target(value : String) -> Bool {
+  if value.length() == 0 {
+    return false
+  }
+  for ch in value {
+    if ch <= ' ' || ch == '\u{7f}' || ch == '#' {
+      return false
+    }
+  }
+  true
+}
+
+fn valid_host(value : String) -> Bool {
+  if value.length() == 0 {
+    return false
+  }
+  for ch in value {
+    if ch <= ' ' || ch == '\u{7f}' || ch == '/' || ch == '?' || ch == '#' ||
+      ch == '@' {
+      return false
+    }
+  }
+  true
+}
+
 fn header_has_token(value : String, token : String) -> Bool {
   let token = token.to_lower()
   for part in value.split(",") {
@@ -194,6 +219,12 @@ pub fn H1Codec::encode_request(self : H1Codec, req : Request) -> Result[Unit, Ht
     path + "?" + req.url.query
   } else {
     path
+  }
+  if !valid_request_target(target) {
+    return Err(InvalidUrl("Invalid request target"))
+  }
+  if !valid_host(req.url.host) {
+    return Err(InvalidUrl("Invalid host"))
   }
   let req_line = req.method.to_string() + " " + target + " HTTP/1.1\r\n"
 
