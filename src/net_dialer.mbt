@@ -27,6 +27,7 @@ fn valid_tcp_port(port : Int) -> Bool {
   port >= 1 && port <= 65535
 }
 
+#cfg(target="native")
 fn decode_ipv6_zone(value : String) -> String {
   match value.find("%") {
     Some(index) => {
@@ -40,6 +41,7 @@ fn decode_ipv6_zone(value : String) -> String {
   value
 }
 
+#cfg(target="native")
 fn tcp_dial_host(host : String) -> String {
   let inner = if host.has_prefix("[") && host.has_suffix("]") {
     host[1:host.length() - 1].to_owned()
