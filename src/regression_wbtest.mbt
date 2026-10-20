@@ -302,6 +302,16 @@ test "Connection close responses are removed from reuse" {
 }
 
 ///|
+test "response status line must use the HTTP protocol" {
+  let raw = "BOGUS 200 OK\r\nContent-Length: 0\r\n\r\n"
+  let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+  assert_true(codec.decode_response() is Err(_))
+  let raw2 = "HTTP/1.1 0200 OK\r\nContent-Length: 0\r\n\r\n"
+  let codec2 = H1Codec::new(regression_mock_stream(raw2, 0, 0))
+  assert_true(codec2.decode_response() is Err(_))
+}
+
+///|
 test "truncated response headers are rejected" {
   let raw = "HTTP/1.1 204 No Content\r\n"
   let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))

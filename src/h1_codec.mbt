@@ -308,6 +308,9 @@ pub fn H1Codec::decode_response(
     Ok(None) => return Err(ProtocolError("Invalid response line"))
     Err(err) => return Err(NetworkError(err))
   }
+  if !response_line.has_prefix("HTTP/") {
+    return Err(ProtocolError("Invalid response line"))
+  }
   let first_space = match response_line.find(" ") {
     Some(index) => index
     None => return Err(ProtocolError("Invalid response line"))
@@ -322,7 +325,7 @@ pub fn H1Codec::decode_response(
     response_line.get_char(status_end) != Some(' ') {
     status_end = status_end + 1
   }
-  if status_start == status_end {
+  if status_end - status_start != 3 {
     return Err(ProtocolError("Invalid status code"))
   }
   let status = try {
