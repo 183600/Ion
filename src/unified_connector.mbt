@@ -110,7 +110,13 @@ pub fn Connector::with_timeout(self : Connector, timeout_ms : Int) -> Connector 
 /// configuration, so they must not be reused.
 pub fn Connector::with_tls_config(self : Connector, config : TlsConfig) -> Connector {
   let _ = self.close_all()
-  Connector::{ ..self, tls_config: Some(config) }
+  Connector::{
+    dialer: self.dialer,
+    tls_provider: self.tls_provider,
+    tls_config: Some(config),
+    timeout_ms: self.timeout_ms,
+    pool: @ref.Ref(ConnectionPoolState::new()),
+  }
 }
 
 fn connection_key(url : Url) -> String {
