@@ -357,6 +357,51 @@ test "Connection close responses are removed from reuse" {
 }
 
 ///|
+test "response bodies are read in bounded chunks" {
+  let body = "a".repeat(20000)
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 20000\r\n\r\n" + body
+  let stream = regression_mock_stream(raw, 512, 0)
+  let codec = H1Codec::new(stream)
+  let response = codec.decode_response().unwrap()
+  let buf = @buffer.new(size_hint=8192)
+  assert_eq(response.body.read(buf).unwrap(), 8192)
+  assert_true(stream.offset < raw.length())
+  let rest = response.read_body().unwrap()
+  assert_eq(rest.length(), 20000 - 8192)
+  assert_eq(stream.offset, raw.length())
+}
+
+///|
+test "prefetched response bytes prevent unsafe connection reuse" {
+  let first_stream = regression_mock_stream(
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nokHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi",
+    0,
+    0,
+  )
+  let second_stream = regression_mock_stream(
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi",
+    0,
+    0,
+  )
+  let streams : Array[&Stream] = [first_stream, second_stream]
+  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let options = ClientOptions::new().with_follow_redirects(false)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let url = Url::parse("http://example.com/").unwrap()
+
+  let first = client.request(Request::new(GET, url)).unwrap()
+  let first_buf = @buffer.new(size_hint=8)
+  assert_eq(first.body.read(first_buf).unwrap(), 2)
+  assert_eq(first_buf.to_bytes(), @utf8.encode("ok"))
+  assert_true(!first_stream.is_open)
+
+  let second = client.request(Request::new(GET, url)).unwrap()
+  assert_eq(second.text().unwrap(), "hi")
+  assert_eq(dialer.index, 2)
+}
+
+///|
 test "response status line must use the HTTP protocol" {
   let raw = "BOGUS 200 OK\r\nContent-Length: 0\r\n\r\n"
   let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))

@@ -20,6 +20,8 @@ pub fn default_tls_provider() -> MockTlsProvider
 // Types and methods
 type ActiveConnection
 
+type ChunkReadState
+
 pub struct ClientCert {
   certificate : Bytes
   private_key : Bytes
@@ -172,6 +174,8 @@ pub fn Response::new_with_version(String, Int32, Headers, &Stream) -> Self
 pub fn Response::read_body(Self) -> Result[Bytes, HttpError]
 pub fn Response::read_body_with_limit(Self, Int32) -> Result[Bytes, HttpError]
 pub fn Response::text(Self) -> Result[String, HttpError]
+
+type ResponseBodyMode
 
 type ResponseHead
 

@@ -118,50 +118,51 @@ fn StreamReader::read_exact(
   Ok(())
 }
 
-fn StreamReader::read_to_eof(
+fn StreamReader::read_some(
   self : StreamReader,
-  output : Array[Byte],
+  output : Buffer,
   max_bytes : Int,
-) -> Result[Unit, NetError] {
-  while true {
-    if self.pending_offset < self.pending.length() {
-      let mut i = self.pending_offset
-      while i < self.pending.length() {
-        if output.length() >= max_bytes {
-          return Err(NetError::ReadError("response body too large"))
-        }
-        output.push(self.pending[i])
-        i = i + 1
-      }
-      self.pending = b""
-      self.pending_offset = 0
-      continue
-    }
-    let buf = Buffer(size_hint=4096)
-    let count = match self.stream.read(buf) {
-      Ok(count) => count
-      Err(err) => return Err(err)
-    }
-    if count < 0 {
-      return Err(NetError::ReadError("invalid read count"))
-    }
-    if count == 0 {
-      return Ok(())
-    }
-    let bytes = buf.to_bytes()
-    if bytes.length() == 0 {
-      return Err(NetError::ReadError("stream returned no data"))
-    }
+) -> Result[Int, NetError] {
+  if max_bytes <= 0 {
+    return Ok(0)
+  }
+  if self.pending_offset < self.pending.length() {
+    let available = self.pending.length() - self.pending_offset
+    let take = if available < max_bytes { available } else { max_bytes }
     let mut i = 0
-    while i < bytes.length() {
-      if output.length() >= max_bytes {
-        return Err(NetError::ReadError("response body too large"))
-      }
-      output.push(bytes[i])
+    while i < take {
+      output.write_byte(self.pending[self.pending_offset + i])
       i = i + 1
     }
+    self.pending_offset = self.pending_offset + take
+    return Ok(take)
   }
-  Ok(())
+
+  self.pending = b""
+  self.pending_offset = 0
+  let hint = if max_bytes > 8192 { 8192 } else { max_bytes }
+  let buf = Buffer(size_hint=hint)
+  let count = match self.stream.read(buf) {
+    Ok(count) => count
+    Err(err) => return Err(err)
+  }
+  if count < 0 {
+    return Err(NetError::ReadError("invalid read count"))
+  }
+  if count == 0 {
+    return Ok(0)
+  }
+  let bytes = buf.to_bytes()
+  if bytes.length() == 0 {
+    return Err(NetError::ReadError("stream returned no data"))
+  }
+  let take = if bytes.length() < max_bytes { bytes.length() } else { max_bytes }
+  output.write_bytes(bytes.exact_view(start=0, end=take))
+  if take < bytes.length() {
+    self.pending = bytes
+    self.pending_offset = take
+  }
+  Ok(take)
 }
 
 fn write_all(stream : &Stream, data : Bytes) -> Result[Unit, NetError] {
@@ -627,9 +628,12 @@ pub fn H1Codec::decode_response(
       status: response_head.status,
       head: is_head,
       max_body_bytes: self.max_body_bytes,
-      body: [],
-      offset: 0,
-      loaded: false,
+      body_mode: BodyUnknown,
+      remaining: 0,
+      total_read: 0,
+      chunk_state: ChunkSize,
+      close_after_body: false,
+      prepared: false,
       error: None,
       is_open: true,
       on_complete: self.on_complete,
@@ -647,6 +651,19 @@ pub fn H1Codec::decode_response(
   Err(ProtocolError("Invalid response"))
 }
 
+enum ResponseBodyMode {
+  BodyUnknown
+  BodyNone
+  BodyFixed
+  BodyChunked
+  BodyUntilEof
+}
+
+enum ChunkReadState {
+  ChunkSize
+  ChunkData
+}
+
 /// Response stream for reading HTTP response body
 struct ResponseStream {
   reader : StreamReader
@@ -655,9 +672,12 @@ struct ResponseStream {
   status : Int
   head : Bool
   max_body_bytes : Int
-  body : Array[Byte]
-  mut offset : Int
-  mut loaded : Bool
+  mut body_mode : ResponseBodyMode
+  mut remaining : Int
+  mut total_read : Int
+  mut chunk_state : ChunkReadState
+  mut close_after_body : Bool
+  mut prepared : Bool
   mut error : NetError?
   mut is_open : Bool
   on_complete : ((Bool) -> Unit)?
@@ -675,78 +695,57 @@ fn ResponseStream::complete(self : ResponseStream, reusable : Bool) -> Unit {
   }
 }
 
-fn read_chunked_body(
-  reader : StreamReader,
-  output : Array[Byte],
-  max_bytes : Int,
-) -> Result[Unit, NetError] {
+fn read_chunk_size(reader : StreamReader) -> Result[Int, NetError] {
+  let line = match read_line(reader) {
+    Ok(Some(line)) => line
+    Ok(None) => return Err(NetError::ReadError("unexpected end of chunked body"))
+    Err(err) => return Err(err)
+  }
+  let size_text = match line.find(";") {
+    Some(index) => line[0:index].to_owned()
+    None => line
+  }
+  let size_text = size_text.trim().to_owned()
+  if !is_hex_digits(size_text) {
+    return Err(NetError::ReadError("invalid chunk size"))
+  }
+  let size = try {
+    @string.parse_int(size_text[:], base=16)
+  } catch {
+    _ => return Err(NetError::ReadError("invalid chunk size"))
+  }
+  if size < 0 {
+    return Err(NetError::ReadError("invalid chunk size"))
+  }
+  Ok(size)
+}
+
+fn consume_chunk_trailers(reader : StreamReader) -> Result[Unit, NetError] {
+  let mut trailer_count = 0
   while true {
-    let line = match read_line(reader) {
-      Ok(Some(line)) => line
-      Ok(None) => return Err(NetError::ReadError("unexpected end of chunked body"))
+    let trailer = match read_line(reader) {
+      Ok(Some(trailer)) => trailer
+      Ok(None) => return Err(NetError::ReadError("unexpected end of chunked trailers"))
       Err(err) => return Err(err)
     }
-    let size_text = match line.find(";") {
-      Some(index) => line[0:index].to_owned()
-      None => line
-    }
-    let size_text = size_text.trim().to_owned()
-    if !is_hex_digits(size_text) {
-      return Err(NetError::ReadError("invalid chunk size"))
-    }
-    let size = try {
-      @string.parse_int(size_text[:], base=16)
-    } catch {
-      _ => return Err(NetError::ReadError("invalid chunk size"))
-    }
-    if size < 0 {
-      return Err(NetError::ReadError("invalid chunk size"))
-    }
-    if size == 0 {
-      // Consume optional trailers until the final empty line.
-      let mut trailer_count = 0
-      while true {
-        let trailer = match read_line(reader) {
-          Ok(Some(trailer)) => trailer
-          Ok(None) => return Err(NetError::ReadError("unexpected end of chunked trailers"))
-          Err(err) => return Err(err)
-        }
-        if trailer.length() == 0 {
-          break
-        }
-        if trailer.get_char(0) == Some(' ') || trailer.get_char(0) == Some('\t') {
-          return Err(NetError::ReadError("invalid chunked trailer"))
-        }
-        trailer_count = trailer_count + 1
-        if trailer_count > MAX_RESPONSE_HEADERS {
-          return Err(NetError::ReadError("too many chunked trailers"))
-        }
-        let colon_idx = match trailer.find(":") {
-          Some(index) => index
-          None => return Err(NetError::ReadError("invalid chunked trailer"))
-        }
-        let name = trailer[0:colon_idx].to_owned()
-        let value = trailer[colon_idx + 1:].to_owned().trim().to_owned()
-        if !valid_header_name(name) || !valid_header_value(value) {
-          return Err(NetError::ReadError("invalid chunked trailer"))
-        }
-      }
+    if trailer.length() == 0 {
       return Ok(())
     }
-    if output.length() > max_bytes - size {
-      return Err(NetError::ReadError("response body too large"))
+    if trailer.get_char(0) == Some(' ') || trailer.get_char(0) == Some('\t') {
+      return Err(NetError::ReadError("invalid chunked trailer"))
     }
-    match reader.read_exact(size, output) {
-      Ok(_) => ()
-      Err(err) => return Err(err)
+    trailer_count = trailer_count + 1
+    if trailer_count > MAX_RESPONSE_HEADERS {
+      return Err(NetError::ReadError("too many chunked trailers"))
     }
-    let terminator : Array[Byte] = []
-    match reader.read_exact(2, terminator) {
-      Ok(_) => ()
-      Err(err) => return Err(err)
+    let colon_idx = match trailer.find(":") {
+      Some(index) => index
+      None => return Err(NetError::ReadError("invalid chunked trailer"))
     }
-    if terminator.length() != 2 || terminator[0] != b'\r' || terminator[1] != b'\n' {
-      return Err(NetError::ReadError("invalid chunk terminator"))
+    let name = trailer[0:colon_idx].to_owned()
+    let value = trailer[colon_idx + 1:].to_owned().trim().to_owned()
+    if !valid_header_name(name) || !valid_header_value(value) {
+      return Err(NetError::ReadError("invalid chunked trailer"))
     }
   }
   Ok(())
@@ -800,86 +799,71 @@ fn response_content_length(headers : Headers) -> Result[Option[Int], NetError] {
   Ok(result)
 }
 
-fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
-  if self.loaded {
-    return match self.error {
-      Some(err) => Err(err)
-      None => Ok(())
-    }
+fn ResponseStream::fail(self : ResponseStream, err : NetError) -> NetError {
+  let _ = self.reader.stream.close()
+  self.error = Some(err)
+  self.complete(false)
+  err
+}
+
+fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
+  if self.prepared {
+    return Ok(())
   }
-  self.loaded = true
+  self.prepared = true
   let close_connection = headers_have_token(self.headers, "Connection", "close")
   let keep_alive = headers_have_token(self.headers, "Connection", "keep-alive")
   let close_by_default = self.version == "HTTP/1.0" && !keep_alive
+  self.close_after_body = close_connection || close_by_default
 
-  // Responses to HEAD and 1xx/204/304 responses never carry a body.
   if self.head || self.status == 204 || self.status == 205 || self.status == 304 ||
     (self.status >= 100 && self.status < 200) {
-    // A protocol switch cannot be reused for another HTTP request.
-    let reusable = !(self.status == 101 || close_connection || close_by_default)
+    let reusable = !(self.status == 101 || self.close_after_body) &&
+      self.reader.pending_offset >= self.reader.pending.length()
     if !reusable {
       let _ = self.reader.stream.close()
     }
+    self.body_mode = BodyNone
     self.complete(reusable)
     return Ok(())
   }
 
   let chunked = match response_is_chunked(self.headers) {
     Ok(value) => value
-    Err(err) => {
-      let _ = self.reader.stream.close()
-      self.error = Some(err)
-      self.complete(false)
-      return Err(err)
-    }
+    Err(err) => return Err(self.fail(err))
   }
   let content_length = match response_content_length(self.headers) {
     Ok(value) => value
-    Err(err) => {
-      let _ = self.reader.stream.close()
-      self.error = Some(err)
-      self.complete(false)
-      return Err(err)
+    Err(err) => return Err(self.fail(err))
+  }
+  if chunked {
+    self.body_mode = BodyChunked
+    return Ok(())
+  }
+  match content_length {
+    Some(length) => {
+      if length > self.max_body_bytes {
+        return Err(self.fail(NetError::ReadError("response body too large")))
+      }
+      self.remaining = length
+      self.body_mode = BodyFixed
+    }
+    None => {
+      self.body_mode = BodyUntilEof
+      self.close_after_body = true
     }
   }
+  Ok(())
+}
 
-  let mut close_after_load = false
-  let result = if chunked {
-    read_chunked_body(self.reader, self.body, self.max_body_bytes)
+fn ResponseStream::finish(self : ResponseStream) -> Unit {
+  let reusable = !self.close_after_body &&
+    self.reader.pending_offset >= self.reader.pending.length()
+  if !reusable {
+    let _ = self.reader.stream.close()
+    self.complete(false)
   } else {
-    match content_length {
-      Some(length) => {
-        if length > self.max_body_bytes {
-          let err = NetError::ReadError("response body too large")
-          let _ = self.reader.stream.close()
-          self.error = Some(err)
-          self.complete(false)
-          return Err(err)
-        }
-        self.reader.read_exact(length, self.body)
-      }
-      None => {
-        close_after_load = true
-        self.reader.read_to_eof(self.body, self.max_body_bytes)
-      }
-    }
-  }
-
-  match result {
-    Ok(_) => {
-      let reusable = !(close_after_load || close_connection || close_by_default)
-      if !reusable {
-        let _ = self.reader.stream.close()
-      }
-      self.complete(reusable)
-      Ok(())
-    }
-    Err(err) => {
-      let _ = self.reader.stream.close()
-      self.error = Some(err)
-      self.complete(false)
-      Err(err)
-    }
+    self.complete(true)
   }
 }
 
@@ -887,23 +871,121 @@ pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buf
   if !self.is_open {
     return Err(NetError::Closed)
   }
-  match self.load() {
-    Ok(_) => ()
-    Err(err) => return Err(err)
+  match self.error {
+    Some(err) => return Err(err)
+    None => ()
   }
-
-  let remaining = self.body.length() - self.offset
-  if remaining <= 0 {
+  if self.completed {
     return Ok(0)
   }
-  let count = if remaining > 8192 { 8192 } else { remaining }
-  let mut i = 0
-  while i < count {
-    buf.write_byte(self.body[self.offset + i])
-    i = i + 1
+  if !self.prepared {
+    match self.prepare() {
+      Ok(_) => ()
+      Err(err) => return Err(err)
+    }
   }
-  self.offset = self.offset + count
-  Ok(count)
+  if self.completed {
+    return Ok(0)
+  }
+
+  let limit = 8192
+  let mut produced = 0
+  while produced < limit {
+    match self.body_mode {
+      BodyNone | BodyUnknown => break
+      BodyFixed => {
+        if self.remaining == 0 {
+          self.finish()
+          break
+        }
+        let want = if self.remaining < limit - produced {
+          self.remaining
+        } else {
+          limit - produced
+        }
+        let count = match self.reader.read_some(buf, want) {
+          Ok(count) => count
+          Err(err) => return Err(self.fail(err))
+        }
+        if count == 0 {
+          return Err(self.fail(NetError::ReadError("unexpected end of response body")))
+        }
+        self.remaining = self.remaining - count
+        self.total_read = self.total_read + count
+        produced = produced + count
+      }
+      BodyUntilEof => {
+        let count = match self.reader.read_some(buf, limit - produced) {
+          Ok(count) => count
+          Err(err) => return Err(self.fail(err))
+        }
+        if count == 0 {
+          let _ = self.reader.stream.close()
+          self.complete(false)
+          break
+        }
+        if self.total_read > self.max_body_bytes - count {
+          return Err(self.fail(NetError::ReadError("response body too large")))
+        }
+        self.total_read = self.total_read + count
+        produced = produced + count
+      }
+      BodyChunked => {
+        match self.chunk_state {
+          ChunkSize => {
+            let size = match read_chunk_size(self.reader) {
+              Ok(size) => size
+              Err(err) => return Err(self.fail(err))
+            }
+            if size == 0 {
+              match consume_chunk_trailers(self.reader) {
+                Ok(_) => ()
+                Err(err) => return Err(self.fail(err))
+              }
+              self.finish()
+              break
+            }
+            if size > self.max_body_bytes - self.total_read {
+              return Err(self.fail(NetError::ReadError("response body too large")))
+            }
+            self.remaining = size
+            self.chunk_state = ChunkData
+          }
+          ChunkData => {
+            if self.remaining == 0 {
+              let terminator : Array[Byte] = []
+              match self.reader.read_exact(2, terminator) {
+                Ok(_) => ()
+                Err(err) => return Err(self.fail(err))
+              }
+              if terminator.length() != 2 || terminator[0] != b'\r' ||
+                terminator[1] != b'\n' {
+                return Err(self.fail(NetError::ReadError("invalid chunk terminator")))
+              }
+              self.chunk_state = ChunkSize
+              continue
+            }
+            let want = if self.remaining < limit - produced {
+              self.remaining
+            } else {
+              limit - produced
+            }
+            let count = match self.reader.read_some(buf, want) {
+              Ok(count) => count
+              Err(err) => return Err(self.fail(err))
+            }
+            if count == 0 {
+              return Err(self.fail(NetError::ReadError("unexpected end of chunked body")))
+            }
+            self.remaining = self.remaining - count
+            self.total_read = self.total_read + count
+            produced = produced + count
+          }
+        }
+      }
+    }
+  }
+  Ok(produced)
 }
 
 pub impl Stream for ResponseStream with fn write(self : ResponseStream, buf : Buffer) -> Result[Int, NetError] {
