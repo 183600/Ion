@@ -246,7 +246,7 @@ fn drain_response(response : Response) -> Result[Unit, HttpError] {
 /// Internal request implementation with redirect handling
 fn UnifiedClient::do_request(self : UnifiedClient, req : Request) -> Result[Response, HttpError] {
   // Connect to the server
-  let stream = match self.connector.connect(req.url) {
+  let (stream, lease) = match self.connector.checkout(req.url) {
     Ok(stream) => stream
     Err(err) => return Err(err)
   }
@@ -266,7 +266,10 @@ fn UnifiedClient::do_request(self : UnifiedClient, req : Request) -> Result[Resp
   }
 
   // Create codec
-  let codec = H1Codec::new(stream)
+  let codec = H1Codec::new_with_completion(
+    stream,
+    fn(reusable) { lease.release(reusable) },
+  )
 
   // Add User-Agent header if not present
   let mut request = req

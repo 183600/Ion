@@ -5,6 +5,7 @@ import {
   "moonbitlang/core/buffer",
   "moonbitlang/core/debug",
   "moonbitlang/core/list",
+  "moonbitlang/core/ref",
 }
 
 // Values
@@ -17,6 +18,8 @@ pub fn default_tls_provider() -> MockTlsProvider
 // Errors
 
 // Types and methods
+type ActiveConnection
+
 pub struct ClientCert {
   certificate : Bytes
   private_key : Bytes
@@ -35,13 +38,18 @@ pub fn ClientOptions::with_max_redirects(Self, Int32) -> Self
 pub fn ClientOptions::with_timeout(Self, Int32) -> Self
 pub fn ClientOptions::with_user_agent(Self, String) -> Self
 
+type ConnectionLease
+
+type ConnectionPoolState
+
 pub struct Connector {
   dialer : &Dialer
   tls_provider : &TlsProvider
   tls_config : TlsConfig?
   timeout_ms : Int32
-  mut connection_pool : Map[String, &Stream]
+  pool : @ref.Ref[ConnectionPoolState]
 }
+pub fn Connector::checkout(Self, Url) -> Result[(&Stream, ConnectionLease), HttpError]
 pub fn Connector::close(Self, Url) -> Result[Unit, HttpError]
 pub fn Connector::close_all(Self) -> Result[Unit, HttpError]
 pub fn Connector::connect(Self, Url) -> Result[&Stream, HttpError]
@@ -54,10 +62,12 @@ pub struct H1Codec {
   reader : StreamReader
   mut last_is_head : Bool
   max_body_bytes : Int32
+  on_complete : ((Bool) -> Unit)?
 }
 pub fn H1Codec::decode_response(Self, head? : Bool) -> Result[Response, HttpError]
 pub fn H1Codec::encode_request(Self, Request) -> Result[Unit, HttpError]
 pub fn H1Codec::new(&Stream) -> Self
+pub fn H1Codec::new_with_completion(&Stream, (Bool) -> Unit) -> Self
 pub fn H1Codec::new_with_limit(&Stream, Int32) -> Self
 
 pub struct Header {

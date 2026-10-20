@@ -553,6 +553,27 @@ pub impl Dialer for RegressionMockDialer with fn resolve(self : RegressionMockDi
   Ok(@list.List([host]))
 }
 
+struct RegressionQueueDialer {
+  streams : Array[&Stream]
+  mut index : Int
+}
+
+pub impl Dialer for RegressionQueueDialer with fn dial_tcp(self : RegressionQueueDialer, host : String, port : Int) -> Result[&Stream, NetError] {
+  let _ = host
+  let _ = port
+  if self.index >= self.streams.length() {
+    return Err(NetError::ConnectionFailed("no scripted stream"))
+  }
+  let stream = self.streams[self.index]
+  self.index = self.index + 1
+  Ok(stream)
+}
+
+pub impl Dialer for RegressionQueueDialer with fn resolve(self : RegressionQueueDialer, host : String) -> Result[List[String], NetError] {
+  let _ = self
+  Ok(@list.List([host]))
+}
+
 ///|
 test "HEAD response body is not consumed" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhelloNEXT"
@@ -664,6 +685,116 @@ test "HttpClient convenience methods parse URLs" {
   let bad = trait_client.get("not a url")
   assert_true(bad is Err(_))
   assert_eq(client.calls, 1)
+}
+
+///|
+test "client reuses a connection after a fully read response" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nokHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"
+  let stream = regression_mock_stream(raw, 1, 0)
+  let streams : Array[&Stream] = [stream]
+  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let options = ClientOptions::new().with_follow_redirects(false)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let url = Url::parse("http://example.com/").unwrap()
+
+  let first = client.request(Request::new(GET, url)).unwrap()
+  let first_buf = @buffer.new(size_hint=8)
+  assert_eq(first.body.read(first_buf).unwrap(), 2)
+  assert_eq(first_buf.to_bytes(), @utf8.encode("ok"))
+
+  let second = client.request(Request::new(GET, url)).unwrap()
+  let second_buf = @buffer.new(size_hint=8)
+  assert_eq(second.body.read(second_buf).unwrap(), 2)
+  assert_eq(second_buf.to_bytes(), @utf8.encode("hi"))
+  assert_eq(dialer.index, 1)
+}
+
+///|
+test "closing a fully read response keeps its pooled connection" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nokHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"
+  let stream = regression_mock_stream(raw, 1, 0)
+  let streams : Array[&Stream] = [stream]
+  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let options = ClientOptions::new().with_follow_redirects(false)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let url = Url::parse("http://example.com/").unwrap()
+
+  let first = client.request(Request::new(GET, url)).unwrap()
+  let first_buf = @buffer.new(size_hint=8)
+  assert_eq(first.body.read(first_buf).unwrap(), 2)
+  assert_true(first.body.close() is Ok(_))
+  assert_true(stream.is_open)
+
+  let second = client.request(Request::new(GET, url)).unwrap()
+  let second_buf = @buffer.new(size_hint=8)
+  assert_eq(second.body.read(second_buf).unwrap(), 2)
+  assert_eq(second_buf.to_bytes(), @utf8.encode("hi"))
+  assert_eq(dialer.index, 1)
+}
+
+///|
+test "unread response body is not reused for the next request" {
+  let first_stream = regression_mock_stream(
+    "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello",
+    1,
+    0,
+  )
+  let second_stream = regression_mock_stream(
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
+    1,
+    0,
+  )
+  let streams : Array[&Stream] = [first_stream, second_stream]
+  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let options = ClientOptions::new().with_follow_redirects(false)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let url = Url::parse("http://example.com/").unwrap()
+
+  let first = client.request(Request::new(GET, url)).unwrap()
+  assert_eq(first.status, 200)
+  let second = client.request(Request::new(GET, url)).unwrap()
+  assert_eq(second.status, 200)
+  let body_buf = @buffer.new(size_hint=8)
+  assert_eq(second.body.read(body_buf).unwrap(), 2)
+  assert_eq(body_buf.to_bytes(), @utf8.encode("ok"))
+  assert_eq(dialer.index, 2)
+
+  let _ = client.close_all()
+  assert_true(!first_stream.is_open)
+  assert_true(!second_stream.is_open)
+}
+
+///|
+test "closing an unread response releases its connection" {
+  let first_stream = regression_mock_stream(
+    "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello",
+    1,
+    0,
+  )
+  let second_stream = regression_mock_stream(
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
+    1,
+    0,
+  )
+  let streams : Array[&Stream] = [first_stream, second_stream]
+  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let options = ClientOptions::new().with_follow_redirects(false)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let url = Url::parse("http://example.com/").unwrap()
+
+  let first = client.request(Request::new(GET, url)).unwrap()
+  assert_true(first.body.close() is Ok(_))
+  assert_true(!first_stream.is_open)
+
+  let second = client.request(Request::new(GET, url)).unwrap()
+  let body_buf = @buffer.new(size_hint=8)
+  assert_eq(second.body.read(body_buf).unwrap(), 2)
+  assert_eq(body_buf.to_bytes(), @utf8.encode("ok"))
+  assert_eq(dialer.index, 2)
 }
 
 ///|

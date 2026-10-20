@@ -4,6 +4,7 @@ pub struct H1Codec {
   reader : StreamReader
   mut last_is_head : Bool
   max_body_bytes : Int
+  on_complete : ((Bool) -> Unit)?
 }
 
 const DEFAULT_MAX_BODY_BYTES : Int = 67108864
@@ -13,12 +14,28 @@ pub fn H1Codec::new(stream : &Stream) -> H1Codec {
 }
 
 pub fn H1Codec::new_with_limit(stream : &Stream, max_body_bytes : Int) -> H1Codec {
+  H1Codec::make(stream, max_body_bytes, None)
+}
+
+pub fn H1Codec::new_with_completion(
+  stream : &Stream,
+  on_complete : (Bool) -> Unit,
+) -> H1Codec {
+  H1Codec::make(stream, DEFAULT_MAX_BODY_BYTES, Some(on_complete))
+}
+
+fn H1Codec::make(
+  stream : &Stream,
+  max_body_bytes : Int,
+  on_complete : ((Bool) -> Unit)?,
+) -> H1Codec {
   let limit = if max_body_bytes < 0 { 0 } else { max_body_bytes }
   H1Codec::{
     stream,
     reader: StreamReader::new(stream),
     last_is_head: false,
     max_body_bytes: limit,
+    on_complete,
   }
 }
 
@@ -615,6 +632,8 @@ pub fn H1Codec::decode_response(
       loaded: false,
       error: None,
       is_open: true,
+      on_complete: self.on_complete,
+      completed: false,
     }
 
     self.last_is_head = false
@@ -641,6 +660,19 @@ struct ResponseStream {
   mut loaded : Bool
   mut error : NetError?
   mut is_open : Bool
+  on_complete : ((Bool) -> Unit)?
+  mut completed : Bool
+}
+
+fn ResponseStream::complete(self : ResponseStream, reusable : Bool) -> Unit {
+  if self.completed {
+    return
+  }
+  self.completed = true
+  match self.on_complete {
+    Some(callback) => callback(reusable)
+    None => ()
+  }
 }
 
 fn read_chunked_body(
@@ -784,9 +816,11 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
   if self.head || self.status == 204 || self.status == 205 || self.status == 304 ||
     (self.status >= 100 && self.status < 200) {
     // A protocol switch cannot be reused for another HTTP request.
-    if self.status == 101 || close_connection || close_by_default {
+    let reusable = !(self.status == 101 || close_connection || close_by_default)
+    if !reusable {
       let _ = self.reader.stream.close()
     }
+    self.complete(reusable)
     return Ok(())
   }
 
@@ -795,6 +829,7 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
     Err(err) => {
       let _ = self.reader.stream.close()
       self.error = Some(err)
+      self.complete(false)
       return Err(err)
     }
   }
@@ -803,6 +838,7 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
     Err(err) => {
       let _ = self.reader.stream.close()
       self.error = Some(err)
+      self.complete(false)
       return Err(err)
     }
   }
@@ -817,6 +853,7 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
           let err = NetError::ReadError("response body too large")
           let _ = self.reader.stream.close()
           self.error = Some(err)
+          self.complete(false)
           return Err(err)
         }
         self.reader.read_exact(length, self.body)
@@ -830,14 +867,17 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
 
   match result {
     Ok(_) => {
-      if close_after_load || close_connection || close_by_default {
+      let reusable = !(close_after_load || close_connection || close_by_default)
+      if !reusable {
         let _ = self.reader.stream.close()
       }
+      self.complete(reusable)
       Ok(())
     }
     Err(err) => {
       let _ = self.reader.stream.close()
       self.error = Some(err)
+      self.complete(false)
       Err(err)
     }
   }
@@ -886,7 +926,17 @@ pub impl Stream for ResponseStream with fn close(self : ResponseStream) -> Resul
     return Ok(())
   }
   self.is_open = false
-  self.reader.stream.close()
+  if self.completed && self.on_complete is Some(_) {
+    return Ok(())
+  }
+  match self.on_complete {
+    Some(callback) => {
+      self.completed = true
+      callback(false)
+      Ok(())
+    }
+    None => self.reader.stream.close()
+  }
 }
 
 pub impl Stream for ResponseStream with fn set_timeout(self : ResponseStream, timeout_ms : Int) -> Result[Unit, NetError] {
