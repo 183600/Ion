@@ -211,7 +211,7 @@ pub impl Stream for NativeTlsStream with fn read(
         TlsIoData => continue
         TlsIoClosed => return Ok(0)
         TlsIoTimeout => return Err(NetError::Timeout)
-        TlsIoFailure(_) => return Err(NetError::ReadError("TLS read failed"))
+        TlsIoFailure(message) => return Err(NetError::ReadError(message))
       }
     }
     if count == -2 {

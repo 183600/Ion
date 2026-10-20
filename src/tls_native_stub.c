@@ -74,6 +74,10 @@ FeatherTls *feather_tls_new(
     return tls;
   }
 
+#ifdef SSL_OP_IGNORE_UNEXPECTED_EOF
+  SSL_CTX_set_options(tls->ctx, SSL_OP_IGNORE_UNEXPECTED_EOF);
+#endif
+
   int version = min_version == 0 ? TLS1_2_VERSION : TLS1_3_VERSION;
   if (SSL_CTX_set_min_proto_version(tls->ctx, version) != 1) {
     feather_tls_record_error(tls);
@@ -228,6 +232,9 @@ int32_t feather_tls_read(FeatherTls *tls, moonbit_bytes_t buffer, int32_t capaci
     return -2;
   }
   if (error == SSL_ERROR_ZERO_RETURN) {
+    return 0;
+  }
+  if (error == SSL_ERROR_SYSCALL && result == 0 && ERR_peek_error() == 0) {
     return 0;
   }
   feather_tls_record_error(tls);
