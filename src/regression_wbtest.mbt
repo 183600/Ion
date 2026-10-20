@@ -913,6 +913,41 @@ test "closing one response keeps another pooled connection for the same origin" 
 }
 
 ///|
+test "a failed request keeps other pooled connections for the same origin" {
+  let first_stream = regression_mock_stream(
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nA1HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nA2",
+    1,
+    0,
+  )
+  let second_stream = regression_mock_stream(
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nB1BOGUS RESPONSE\r\n\r\n",
+    1,
+    0,
+  )
+  let third_stream = regression_mock_stream(
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nC1",
+    0,
+    0,
+  )
+  let streams : Array[&Stream] = [first_stream, second_stream, third_stream]
+  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let options = ClientOptions::new().with_follow_redirects(false)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let url = Url::parse("http://example.com/").unwrap()
+
+  let first = client.request(Request::new(GET, url)).unwrap()
+  let second = client.request(Request::new(GET, url)).unwrap()
+  assert_eq(dialer.index, 2)
+  assert_eq(first.read_body().unwrap(), b"A1")
+  assert_eq(second.read_body().unwrap(), b"B1")
+
+  let third = client.request(Request::new(GET, url)).unwrap()
+  assert_eq(third.read_body().unwrap(), b"A2")
+  assert_eq(dialer.index, 2)
+}
+
+///|
 test "closing an unread response releases its connection" {
   let first_stream = regression_mock_stream(
     "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello",

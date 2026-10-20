@@ -279,7 +279,7 @@ fn UnifiedClient::do_request_once(
   match stream.set_timeout(timeout_ms) {
     Ok(_) => ()
     Err(err) => {
-      let _ = self.connector.close(req.url)
+      lease.release(false)
       if allow_retry && lease.reused && request_can_be_retried(req.method) {
         return self.do_request_once(req, false)
       }
@@ -303,7 +303,7 @@ fn UnifiedClient::do_request_once(
   match codec.encode_request(request) {
     Ok(_) => ()
     Err(err) => {
-      let _ = self.connector.close(request.url)
+      lease.release(false)
       if allow_retry && lease.reused && request_can_be_retried(request.method) &&
         err is NetworkError(_) {
         return self.do_request_once(req, false)
@@ -316,7 +316,7 @@ fn UnifiedClient::do_request_once(
   let response = match codec.decode_response(head=request.method == HEAD) {
     Ok(response) => response
     Err(err) => {
-      let _ = self.connector.close(request.url)
+      lease.release(false)
       if allow_retry && lease.reused && request_can_be_retried(request.method) {
         return self.do_request_once(req, false)
       }
@@ -342,7 +342,7 @@ fn UnifiedClient::do_request_once(
     }
 
     if self.redirect_count >= self.options.max_redirects {
-      let _ = self.connector.close(request.url)
+      let _ = response.body.close()
       return Err(RedirectLimitExceeded)
     }
 
@@ -350,7 +350,7 @@ fn UnifiedClient::do_request_once(
     match drain_response(response) {
       Ok(_) => ()
       Err(_) => {
-        let _ = self.connector.close(request.url)
+        let _ = response.body.close()
       }
     }
 
