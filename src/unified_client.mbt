@@ -164,10 +164,14 @@ pub fn UnifiedClient::with_tls_config(
   config : TlsConfig,
 ) -> UnifiedClient {
   let _ = self.connector.close_all()
-  let connector = Connector::new(
+  let mut connector = Connector::new(
     self.connector.dialer,
     self.connector.tls_provider,
   ).with_timeout(self.connector.timeout_ms).with_tls_config(config)
+  match self.connector.proxy {
+    Some(proxy) => connector = connector.with_proxy(proxy)
+    None => ()
+  }
   UnifiedClient::{
     connector,
     options: self.options,
@@ -180,10 +184,14 @@ pub fn UnifiedClient::with_tls_config(
 /// directly.
 pub fn UnifiedClient::with_proxy(self : UnifiedClient, proxy : Proxy) -> UnifiedClient {
   let _ = self.connector.close_all()
-  let connector = Connector::new(
+  let mut connector = Connector::new(
     self.connector.dialer,
     self.connector.tls_provider,
   ).with_timeout(self.connector.timeout_ms).with_proxy(proxy)
+  match self.connector.tls_config {
+    Some(config) => connector = connector.with_tls_config(config)
+    None => ()
+  }
   UnifiedClient::{
     connector,
     options: self.options,

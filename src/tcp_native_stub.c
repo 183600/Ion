@@ -20,6 +20,44 @@
 
 #define FEATHER_GAI_BASE 10000
 
+MOONBIT_FFI_EXPORT
+int32_t feather_read_file(moonbit_bytes_t path, moonbit_bytes_t output, int32_t capacity) {
+  int32_t path_len = Moonbit_array_length(path);
+  if (path_len <= 0 || path_len >= 4096) {
+    return -EINVAL;
+  }
+  char name[4096];
+  memcpy(name, path, (size_t)path_len);
+  name[path_len] = '\0';
+  FILE *file = fopen(name, "rb");
+  if (file == NULL) {
+    return -errno;
+  }
+  if (fseek(file, 0, SEEK_END) != 0) {
+    int error = errno;
+    fclose(file);
+    return -error;
+  }
+  long size = ftell(file);
+  if (size < 0) {
+    int error = errno;
+    fclose(file);
+    return -error;
+  }
+  if (size > capacity) {
+    fclose(file);
+    return -ENOSPC;
+  }
+  rewind(file);
+  size_t read = fread(output, 1, (size_t)size, file);
+  int error = ferror(file);
+  fclose(file);
+  if (error) {
+    return -EIO;
+  }
+  return (int32_t)read;
+}
+
 static int feather_set_timeout(int fd, int32_t timeout_ms) {
   struct timeval tv;
   if (timeout_ms <= 0) {

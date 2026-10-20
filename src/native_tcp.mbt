@@ -22,6 +22,10 @@ extern "C" fn feather_tcp_local_addr(fd : Int, output : Bytes, capacity : Int) -
 #borrow(output)
 extern "C" fn feather_tcp_resolve(host : Bytes, output : Bytes, capacity : Int) -> Int = "feather_tcp_resolve"
 
+#borrow(path)
+#borrow(output)
+extern "C" fn feather_read_file(path : Bytes, output : Bytes, capacity : Int) -> Int = "feather_read_file"
+
 const NATIVE_TCP_READ_CHUNK : Int = 8192
 
 fn native_tcp_error(code : Int, operation : String) -> NetError {

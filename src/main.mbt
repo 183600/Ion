@@ -12,7 +12,56 @@ fn print_usage() -> Unit {
   println("       feather <method> <url> [body]    send a request with the given method")
   println("       FEATHER_URL=<url> feather         send a GET request to FEATHER_URL")
   println("       FEATHER_PROXY=<url> feather     route requests through an HTTP proxy")
+  println("       FEATHER_CA=<pem file> feather   trust an extra CA certificate bundle")
+  println("       FEATHER_INSECURE=1 feather      DISABLE TLS verification (unsafe)")
   println("Methods: get, post, put, delete, head, options, patch")
+}
+
+/// Read a whole file as bytes, returning None when it cannot be read.
+#cfg(target="native")
+fn read_file(path : String) -> Bytes? {
+  let capacity = 4 * 1024 * 1024
+  let output = Bytes::new(capacity)
+  let length = feather_read_file(@utf8.encode(path), output, capacity)
+  if length < 0 {
+    return None
+  }
+  Some(output.exact_view(start=0, end=length).to_owned())
+}
+
+#cfg(not(target="native"))
+fn read_file(path : String) -> Bytes? {
+  let _ = path
+  None
+}
+
+/// Build the TLS configuration from the FEATHER_CA / FEATHER_INSECURE
+/// environment variables, if either is set.
+fn env_tls_config() -> TlsConfig? {
+  let insecure = match @env.get_env_var("FEATHER_INSECURE") {
+    Some(value) => value == "1" || value.to_lower() == "true"
+    None => false
+  }
+  let ca_path = match @env.get_env_var("FEATHER_CA") {
+    Some(value) => if value.length() > 0 { Some(value) } else { None }
+    None => None
+  }
+  if !insecure && ca_path is None {
+    return None
+  }
+  let mut config = TlsConfig::new("")
+  if insecure {
+    println("WARNING: TLS certificate verification is disabled!")
+    config = config.with_verify_mode(SkipVerification)
+  }
+  match ca_path {
+    Some(path) => match read_file(path) {
+      Some(pem) => config = config.with_root_store(RootStore::new().add_certificate(pem))
+      None => println("warning: could not read CA bundle: " + path)
+    }
+    None => ()
+  }
+  Some(config)
 }
 
 fn report(err : HttpError) -> Unit {
@@ -33,6 +82,10 @@ fn print_response(response : Response) -> Unit {
 
 fn run_request(method : HttpMethod, url : String, body : String) -> Bool {
   let mut client = UnifiedClient::new()
+  match env_tls_config() {
+    Some(config) => client = client.with_tls_config(config)
+    None => ()
+  }
   match @env.get_env_var("FEATHER_PROXY") {
     Some(value) => if value.length() > 0 {
       match client.with_proxy_url(value) {

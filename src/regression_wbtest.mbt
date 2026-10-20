@@ -2278,3 +2278,35 @@ test "replacing the proxy closes the old pool and isolates keys" {
   assert_eq(dialer.index, 2)
 }
 
+///|
+test "client preserves TLS configuration when a proxy is added" {
+  let raw = "HTTP/1.1 200 Connection Established\r\n\r\n"
+  let stream = regression_mock_stream(raw, 4096, 4096)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+    .with_tls_config(TlsConfig::new("example.com"))
+  let client = client.with_proxy(Proxy::new("http://proxy.example:3128").unwrap())
+  assert_true(client.connector.tls_config is Some(_))
+  assert_true(client.connector.proxy is Some(_))
+}
+
+///|
+test "client preserves proxy when TLS configuration is replaced" {
+  let connector = Connector::new(TcpDialer::new(), MockTlsProvider::new("test"))
+  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+    .with_proxy(Proxy::new("http://proxy.example:3128").unwrap())
+  let client = client.with_tls_config(TlsConfig::new("example.com"))
+  assert_true(client.connector.tls_config is Some(_))
+  assert_true(client.connector.proxy is Some(_))
+}
+
+///|
+test "with_proxy_url parses and applies a proxy string" {
+  let connector = Connector::new(TcpDialer::new(), MockTlsProvider::new("test"))
+  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+  assert_true(client.with_proxy_url("http://proxy.example:8080") is Ok(_))
+  assert_true(client.with_proxy_url("ftp://proxy.example") is Err(_))
+}
+
+
