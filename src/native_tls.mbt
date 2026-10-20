@@ -100,56 +100,81 @@ fn native_tls_root_bytes(store : RootStore) -> Bytes {
   buffer.to_bytes()
 }
 
+enum NativeTlsIo {
+  TlsIoData
+  TlsIoClosed
+  TlsIoTimeout
+  TlsIoFailure(String)
+}
+
 fn native_tls_flush(
   tls : NativeTlsHandle,
   underlying : &Stream,
-) -> Result[Unit, TlsError] {
+) -> NativeTlsIo {
   let buffer = Bytes::new(NATIVE_TLS_BUFFER_SIZE)
   while true {
     let count = feather_tls_receive_pending(tls, buffer, NATIVE_TLS_BUFFER_SIZE)
     if count < 0 {
-      return Err(native_tls_error(tls, "TLS write failed"))
+      return TlsIoFailure(native_tls_error_message(tls))
     }
     if count == 0 {
-      return Ok(())
+      return TlsIoData
     }
     let data = buffer.exact_view(start=0, end=count).to_owned()
     match write_all(underlying, data) {
       Ok(_) => ()
       Err(err) => match err {
-        Timeout => return Err(IoError("TLS write timed out"))
-        _ => return Err(IoError("TLS write failed"))
+        Timeout => return TlsIoTimeout
+        Closed => return TlsIoClosed
+        _ => return TlsIoFailure("TLS write failed")
       }
     }
   }
-  Err(IoError("TLS flush did not converge"))
+  TlsIoFailure("TLS flush did not converge")
 }
 
 fn native_tls_feed(
   tls : NativeTlsHandle,
   underlying : &Stream,
-) -> Result[Bool, TlsError] {
+) -> NativeTlsIo {
   let buffer = Buffer(size_hint=4096)
   let count = match underlying.read(buffer) {
     Ok(count) => count
     Err(err) => match err {
-      Timeout => return Err(IoError("TLS read timed out"))
-      Closed => return Ok(false)
-      _ => return Err(IoError("TLS read failed"))
+      Timeout => return TlsIoTimeout
+      Closed => return TlsIoClosed
+      _ => return TlsIoFailure("TLS read failed")
     }
   }
   if count <= 0 {
-    return Ok(false)
+    return TlsIoClosed
   }
   let data = buffer.to_bytes()
   if data.length() == 0 {
-    return Err(IoError("TLS stream returned no data"))
+    return TlsIoFailure("TLS stream returned no data")
   }
   let written = feather_tls_send_input(tls, data, data.length())
   if written != data.length() {
-    return Err(IoError("TLS failed to buffer encrypted input"))
+    return TlsIoFailure("TLS failed to buffer encrypted input")
   }
-  Ok(true)
+  TlsIoData
+}
+
+fn native_tls_flush_error(result : NativeTlsIo) -> TlsError {
+  match result {
+    TlsIoTimeout => IoError("TLS write timed out")
+    TlsIoFailure(message) => IoError(message)
+    _ => IoError("TLS write failed")
+  }
+}
+
+fn native_tls_feed_error(result : NativeTlsIo) -> TlsError {
+  match result {
+    TlsIoTimeout => IoError("TLS read timed out")
+    TlsIoClosed => HandshakeFailed("TLS connection closed during handshake")
+    TlsIoFailure(message) => IoError(message)
+    TlsIoData => IoError("TLS read failed")
+  }
 }
 
 /// A TLS stream backed by OpenSSL.
@@ -178,19 +203,22 @@ pub impl Stream for NativeTlsStream with fn read(
     }
     if count == -1 {
       match native_tls_flush(self.tls, self.underlying) {
-        Ok(_) => ()
-        Err(_) => return Err(NetError::ReadError("TLS flush failed"))
+        TlsIoData => ()
+        TlsIoTimeout => return Err(NetError::Timeout)
+        _ => return Err(NetError::ReadError("TLS flush failed"))
       }
       match native_tls_feed(self.tls, self.underlying) {
-        Ok(true) => continue
-        Ok(false) => return Ok(0)
-        Err(_) => return Err(NetError::ReadError("TLS read failed"))
+        TlsIoData => continue
+        TlsIoClosed => return Ok(0)
+        TlsIoTimeout => return Err(NetError::Timeout)
+        TlsIoFailure(_) => return Err(NetError::ReadError("TLS read failed"))
       }
     }
     if count == -2 {
       match native_tls_flush(self.tls, self.underlying) {
-        Ok(_) => continue
-        Err(_) => return Err(NetError::ReadError("TLS flush failed"))
+        TlsIoData => continue
+        TlsIoTimeout => return Err(NetError::Timeout)
+        _ => return Err(NetError::ReadError("TLS flush failed"))
       }
     }
     return Err(NetError::ReadError(native_tls_error_message(self.tls)))
@@ -212,22 +240,26 @@ pub impl Stream for NativeTlsStream with fn write(
     if count > 0 {
       offset = offset + count
       match native_tls_flush(self.tls, self.underlying) {
-        Ok(_) => ()
-        Err(_) => return Err(NetError::WriteError("TLS flush failed"))
+        TlsIoData => ()
+        TlsIoTimeout => return Err(NetError::Timeout)
+        _ => return Err(NetError::WriteError("TLS flush failed"))
       }
       continue
     }
     if count == -1 {
       match native_tls_feed(self.tls, self.underlying) {
-        Ok(true) => continue
-        Ok(false) => return Err(NetError::ReadError("TLS connection closed unexpectedly"))
-        Err(_) => return Err(NetError::WriteError("TLS read failed"))
+        TlsIoData => continue
+        TlsIoClosed =>
+          return Err(NetError::ReadError("TLS connection closed unexpectedly"))
+        TlsIoTimeout => return Err(NetError::Timeout)
+        TlsIoFailure(_) => return Err(NetError::WriteError("TLS read failed"))
       }
     }
     if count == -2 {
       match native_tls_flush(self.tls, self.underlying) {
-        Ok(_) => continue
-        Err(_) => return Err(NetError::WriteError("TLS flush failed"))
+        TlsIoData => continue
+        TlsIoTimeout => return Err(NetError::Timeout)
+        _ => return Err(NetError::WriteError("TLS flush failed"))
       }
     }
     return Err(NetError::WriteError(native_tls_error_message(self.tls)))
@@ -242,8 +274,9 @@ pub impl Stream for NativeTlsStream with fn flush(
     return Err(NetError::Closed)
   }
   match native_tls_flush(self.tls, self.underlying) {
-    Ok(_) => self.underlying.flush()
-    Err(_) => Err(NetError::WriteError("TLS flush failed"))
+    TlsIoData => self.underlying.flush()
+    TlsIoTimeout => Err(NetError::Timeout)
+    _ => Err(NetError::WriteError("TLS flush failed"))
   }
 }
 
@@ -341,8 +374,8 @@ pub impl TlsClientCtx for OpenSslTlsClientCtx with fn connect(
     steps = steps + 1
     let status = feather_tls_handshake(tls)
     match native_tls_flush(tls, underlying) {
-      Ok(_) => ()
-      Err(err) => return Err(err)
+      TlsIoData => ()
+      result => return Err(native_tls_flush_error(result))
     }
     if status == 1 {
       let alpn_buffer = Bytes::new(256)
@@ -359,9 +392,8 @@ pub impl TlsClientCtx for OpenSslTlsClientCtx with fn connect(
     }
     if status == 0 {
       match native_tls_feed(tls, underlying) {
-        Ok(true) => continue
-        Ok(false) => return Err(HandshakeFailed("TLS connection closed during handshake"))
-        Err(err) => return Err(err)
+        TlsIoData => continue
+        result => return Err(native_tls_feed_error(result))
       }
     }
     if status == 2 {
