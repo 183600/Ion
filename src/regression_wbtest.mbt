@@ -928,3 +928,84 @@ test "UnifiedClient convenience methods send the requested verb" {
   assert_true(wire.contains("OPTIONS /a HTTP/1.1"))
   assert_true(wire.contains("PATCH /a HTTP/1.1"))
 }
+
+struct ConfigCapturingTlsProvider {
+  mut last_config : TlsConfig?
+}
+
+pub impl TlsProvider for ConfigCapturingTlsProvider with fn new_client(self : ConfigCapturingTlsProvider, config : TlsConfig) -> Result[&TlsClientCtx, TlsError] {
+  self.last_config = Some(config)
+  match config.validate() {
+    Ok(_) => ()
+    Err(err) => return Err(err)
+  }
+  Ok(MockTlsClientCtx::{ config, is_connected: false })
+}
+
+///|
+test "connector rejects invalid schemes, hosts, and ports" {
+  let stream = regression_mock_stream("", 0, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  assert_true(
+    connector.connect(Url::new("ftp", "example.com", 21)) is Err(InvalidUrl(_)),
+  )
+  assert_true(
+    connector.connect(Url::new("http", "", 80)) is Err(InvalidUrl(_)),
+  )
+  assert_true(
+    connector.connect(Url::new("http", "example.com", 0)) is Err(InvalidUrl(_)),
+  )
+  assert_true(
+    connector.connect(Url::new("http", "example.com", 65536)) is Err(InvalidUrl(_)),
+  )
+  assert_eq(dialer.count, 0)
+}
+
+///|
+test "connector pool keys normalize host case" {
+  let stream = regression_mock_stream("", 0, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let first = Url::parse("http://Example.COM/path").unwrap()
+  let second = Url::parse("http://example.com/other").unwrap()
+  let _ = connector.connect(first).unwrap()
+  let _ = connector.connect(second).unwrap()
+  assert_eq(dialer.count, 1)
+}
+
+///|
+test "connector applies shared TLS configuration per host" {
+  let stream = regression_mock_stream("", 0, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let provider = ConfigCapturingTlsProvider::{ last_config: None }
+  let base = TlsConfig::new("ignored.example")
+    .with_min_version(Tls1_3)
+    .with_alpn(@list.List(["h2", "http/1.1"]))
+  let connector = Connector::new(dialer, provider).with_tls_config(base)
+  let url = Url::parse("https://secure.example:8443/").unwrap()
+  let _ = connector.connect(url).unwrap()
+  let captured = provider.last_config.unwrap()
+  assert_eq(captured.server_name, "secure.example")
+  assert_eq(captured.min_version, Tls1_3)
+  assert_eq(captured.alpn, @list.List(["h2", "http/1.1"]))
+}
+
+///|
+test "UnifiedClient exposes transport and TLS configuration" {
+  let stream = regression_mock_stream(
+    "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n",
+    1,
+    0,
+  )
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let provider = ConfigCapturingTlsProvider::{ last_config: None }
+  let client = UnifiedClient::with_transport(
+    dialer,
+    provider,
+    ClientOptions::new().with_follow_redirects(false),
+  ).with_tls_config(TlsConfig::new("base.example").with_min_version(Tls1_3))
+  let url = Url::parse("https://secure.example/").unwrap()
+  let _ = client.request(Request::new(GET, url)).unwrap()
+  assert_eq(provider.last_config.unwrap().server_name, "secure.example")
+}

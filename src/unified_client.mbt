@@ -65,6 +65,35 @@ pub fn UnifiedClient::with_options(options : ClientOptions) -> UnifiedClient {
   }
 }
 
+/// Build a client with an explicit dialer and TLS provider.
+pub fn UnifiedClient::with_transport(
+  dialer : &Dialer,
+  tls_provider : &TlsProvider,
+  options : ClientOptions,
+) -> UnifiedClient {
+  UnifiedClient::{
+    connector: Connector::new(dialer, tls_provider),
+    options,
+    redirect_count: 0,
+  }
+}
+
+/// Replace the TLS configuration used for HTTPS connections.
+pub fn UnifiedClient::with_tls_config(
+  self : UnifiedClient,
+  config : TlsConfig,
+) -> UnifiedClient {
+  let connector = Connector::new(
+    self.connector.dialer,
+    self.connector.tls_provider,
+  ).with_tls_config(config)
+  UnifiedClient::{
+    connector,
+    options: self.options,
+    redirect_count: 0,
+  }
+}
+
 pub impl HttpClient for UnifiedClient with fn request(self : UnifiedClient, req : Request) -> Result[Response, HttpError] {
   self.redirect_count = 0
   self.do_request(req)

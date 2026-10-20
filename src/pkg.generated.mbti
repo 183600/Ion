@@ -38,12 +38,14 @@ pub fn ClientOptions::with_user_agent(Self, String) -> Self
 pub struct Connector {
   dialer : &Dialer
   tls_provider : &TlsProvider
+  tls_config : TlsConfig?
   mut connection_pool : Map[String, &Stream]
 }
 pub fn Connector::close(Self, Url) -> Result[Unit, HttpError]
 pub fn Connector::close_all(Self) -> Result[Unit, HttpError]
 pub fn Connector::connect(Self, Url) -> Result[&Stream, HttpError]
 pub fn Connector::new(&Dialer, &TlsProvider) -> Self
+pub fn Connector::with_tls_config(Self, TlsConfig) -> Self
 
 pub struct H1Codec {
   stream : &Stream
@@ -190,6 +192,7 @@ pub fn TlsConfig::with_client_auth(Self, ClientCert) -> Self
 pub fn TlsConfig::with_key_log(Self, &KeyLogSink) -> Self
 pub fn TlsConfig::with_min_version(Self, TlsVersion) -> Self
 pub fn TlsConfig::with_root_store(Self, RootStore) -> Self
+pub fn TlsConfig::with_server_name(Self, String) -> Self
 pub fn TlsConfig::with_verify_mode(Self, VerifyMode) -> Self
 
 pub enum TlsError {
@@ -228,6 +231,8 @@ pub fn UnifiedClient::patch(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::post(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::put(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::with_options(ClientOptions) -> Self
+pub fn UnifiedClient::with_tls_config(Self, TlsConfig) -> Self
+pub fn UnifiedClient::with_transport(&Dialer, &TlsProvider, ClientOptions) -> Self
 pub impl HttpClient for UnifiedClient
 
 pub struct Url {

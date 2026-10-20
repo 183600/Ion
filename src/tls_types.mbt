@@ -71,6 +71,10 @@ pub fn TlsConfig::new(server_name : String) -> TlsConfig {
   }
 }
 
+pub fn TlsConfig::with_server_name(self : TlsConfig, server_name : String) -> TlsConfig {
+  TlsConfig::{ ..self, server_name }
+}
+
 pub fn TlsConfig::with_alpn(self : TlsConfig, alpn : List[String]) -> TlsConfig {
   TlsConfig::{ ..self, alpn }
 }
