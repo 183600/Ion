@@ -1073,3 +1073,27 @@ test "URL rejects unsafe host characters" {
   assert_true(Url::parse("http://exa_mple.example/") is Ok(_))
   assert_true(Url::parse("http://[2001:db8::1]/") is Ok(_))
 }
+///|
+test "request encoding rejects duplicate or malformed Host headers" {
+  let url = Url::parse("http://example.com/").unwrap()
+  let duplicate = H1Codec::new(regression_mock_stream("", 0, 0))
+  assert_true(
+    duplicate.encode_request(
+      Request::new(GET, url)
+        .with_header("Host", "example.com")
+        .with_header("Host", "other.example"),
+    ) is Err(InvalidHeader(_)),
+  )
+  let malformed = H1Codec::new(regression_mock_stream("", 0, 0))
+  assert_true(
+    malformed.encode_request(
+      Request::new(GET, url).with_header("Host", "bad host"),
+    ) is Err(InvalidHeader(_)),
+  )
+  let valid = H1Codec::new(regression_mock_stream("", 0, 0))
+  assert_true(
+    valid.encode_request(
+      Request::new(GET, url).with_header("Host", "example.com:8080"),
+    ) is Ok(_),
+  )
+}

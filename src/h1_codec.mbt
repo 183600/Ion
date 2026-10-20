@@ -211,7 +211,7 @@ fn valid_host(value : String) -> Bool {
   }
   for ch in value {
     if ch <= ' ' || ch == '\u{7f}' || ch == '/' || ch == '?' || ch == '#' ||
-      ch == '@' {
+      ch == '@' || ch == '\\' || ch == ',' {
       return false
     }
   }
@@ -319,6 +319,13 @@ pub fn H1Codec::encode_request(self : H1Codec, req : Request) -> Result[Unit, Ht
     if !valid_header_name(header.name) || !valid_header_value(header.value) {
       return Err(InvalidHeader(header.name))
     }
+  }
+  let host_values = req.headers.get_all("Host")
+  if host_values.length() > 1 {
+    return Err(InvalidHeader("Host"))
+  }
+  if host_values.length() == 1 && !valid_host(host_values.nth(0).unwrap()) {
+    return Err(InvalidHeader("Host"))
   }
 
   let content_length = match request_content_length(req.headers) {
