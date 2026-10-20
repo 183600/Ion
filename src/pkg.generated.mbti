@@ -63,6 +63,7 @@ pub struct H1Codec {
   stream : &Stream
   reader : StreamReader
   mut last_is_head : Bool
+  mut close_after_request : Bool
   max_body_bytes : Int32
   on_complete : ((Bool) -> Unit)?
 }
