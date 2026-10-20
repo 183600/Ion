@@ -117,6 +117,20 @@ pub fn UnifiedClient::close_all(self : UnifiedClient) -> Result[Unit, HttpError]
   self.connector.close_all()
 }
 
+/// Cap the number of simultaneously open connections per host. A value below 1
+/// means unlimited (the default).
+pub fn UnifiedClient::with_max_connections_per_host(
+  self : UnifiedClient,
+  max_connections : Int,
+) -> UnifiedClient {
+  let _ = self.connector.with_max_connections_per_host(max_connections)
+  UnifiedClient::{
+    connector: self.connector,
+    options: self.options,
+    redirect_count: 0,
+  }
+}
+
 /// Replace the TLS configuration used for HTTPS connections.
 pub fn UnifiedClient::with_tls_config(
   self : UnifiedClient,

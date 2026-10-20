@@ -2078,3 +2078,43 @@ test "connector clamps the idle cap to at least one" {
     .with_max_idle_per_host(0)
   assert_eq(connector.max_idle_per_host(), 1)
 }
+
+///|
+test "connector enforces a per-host connection cap" {
+  let first = regression_mock_stream("", 1, 0)
+  let second = regression_mock_stream("", 1, 0)
+  let streams : Array[&Stream] = [first, second]
+  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+    .with_max_connections_per_host(1)
+  assert_eq(connector.max_connections_per_host(), 1)
+  let url = Url::parse("http://example.com/").unwrap()
+  let (_stream, lease) = connector.checkout(url).unwrap()
+  assert_true(connector.checkout(url) is Err(_))
+  assert_eq(dialer.index, 1)
+  lease.release(false)
+  assert_true(connector.checkout(url) is Ok(_))
+  assert_eq(dialer.index, 2)
+}
+
+///|
+test "connector connection cap is counted per host" {
+  let first = regression_mock_stream("", 1, 0)
+  let second = regression_mock_stream("", 1, 0)
+  let streams : Array[&Stream] = [first, second]
+  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+    .with_max_connections_per_host(1)
+  let (_s0, lease0) = connector.checkout(Url::parse("http://a.example/").unwrap()).unwrap()
+  let (_s1, _lease1) = connector.checkout(Url::parse("http://b.example/").unwrap()).unwrap()
+  let _ = lease0
+  assert_eq(dialer.index, 2)
+}
+
+///|
+test "connector clamps the connection cap to unlimited" {
+  let dialer = TcpDialer::new()
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+    .with_max_connections_per_host(0)
+  assert_eq(connector.max_connections_per_host(), 0)
+}

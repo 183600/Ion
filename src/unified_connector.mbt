@@ -20,6 +20,17 @@ fn ConnectionPoolState::new() -> ConnectionPoolState {
   }
 }
 
+/// Number of connections still checked out for `key`.
+fn ConnectionPoolState::active_count(self : ConnectionPoolState, key : String) -> Int {
+  let mut count = 0
+  for entry in self.active {
+    if entry.key == key {
+      count = count + 1
+    }
+  }
+  count
+}
+
 /// Cache a reusable connection for `key`, keeping at most `max_idle`
 /// idle connections per host. Connections beyond the cap are closed.
 fn ConnectionPoolState::cache_idle(
@@ -50,6 +61,7 @@ pub struct Connector {
   tls_provider : &TlsProvider
   tls_config : TlsConfig?
   timeout_ms : Int
+  mut max_connections_per_host : Int
   pool : @ref.Ref[ConnectionPoolState]
 }
 
@@ -119,6 +131,7 @@ pub fn Connector::new(dialer : &Dialer, tls_provider : &TlsProvider) -> Connecto
     tls_provider,
     tls_config: None,
     timeout_ms: 30000,
+    max_connections_per_host: 0,
     pool: @ref.Ref(ConnectionPoolState::new()),
   }
 }
@@ -139,6 +152,7 @@ pub fn Connector::with_tls_config(self : Connector, config : TlsConfig) -> Conne
     tls_provider: self.tls_provider,
     tls_config: Some(config),
     timeout_ms: self.timeout_ms,
+    max_connections_per_host: self.max_connections_per_host,
     pool: @ref.Ref(ConnectionPoolState::new()),
   }
 }
@@ -156,6 +170,22 @@ pub fn Connector::with_max_idle_per_host(
 /// The current per-host idle connection cap.
 pub fn Connector::max_idle_per_host(self : Connector) -> Int {
   self.pool.val.max_idle
+}
+
+/// Cap the number of simultaneously checked-out connections per host. A value
+/// below 1 means unlimited (the default). Requests that exceed the cap fail
+/// with a connection error instead of opening another socket.
+pub fn Connector::with_max_connections_per_host(
+  self : Connector,
+  max_connections : Int,
+) -> Connector {
+  self.max_connections_per_host = if max_connections < 1 { 0 } else { max_connections }
+  self
+}
+
+/// The current per-host connection cap; `0` means unlimited.
+pub fn Connector::max_connections_per_host(self : Connector) -> Int {
+  self.max_connections_per_host
 }
 
 fn connection_key(url : Url) -> String {
@@ -207,6 +237,15 @@ fn Connector::connect_impl(
   match take_idle_stream(self.pool, conn_key) {
     Some(stream) => return Ok((stream, true))
     None => ()
+  }
+
+  // Refuse to exceed the per-host connection cap once no idle connection is
+  // available. The check is done before dialing so no socket is wasted.
+  if self.max_connections_per_host > 0 &&
+    self.pool.val.active_count(conn_key) >= self.max_connections_per_host {
+    return Err(NetworkError(ConnectionFailed(
+      "connection limit reached for " + conn_key,
+    )))
   }
 
   // Dial TCP connection
