@@ -226,18 +226,15 @@ fn valid_host(value : String) -> Bool {
   if value.length() == 0 {
     return false
   }
-  for ch in value {
-    if ch <= ' ' || ch == '\u{7f}' || ch == '/' || ch == '?' || ch == '#' ||
-      ch == '@' || ch == '\\' || ch == ',' {
-      return false
-    }
-  }
   if value.has_prefix("[") {
     let close = match value.find("]") {
       Some(index) => index
       None => return false
     }
     if close <= 1 {
+      return false
+    }
+    if !is_ip_literal(value[1:close].to_owned()) {
       return false
     }
     let rest = value[close + 1:]
@@ -249,17 +246,15 @@ fn valid_host(value : String) -> Bool {
     }
     return valid_host_port(rest[1:].to_owned())
   }
-  if value.contains("[") || value.contains("]") {
-    return false
-  }
   match value.rev_find(":") {
     Some(index) => {
       if index == 0 || value[0:index].contains(":") {
         return false
       }
+      valid_url_host_chars(value[0:index].to_owned()) &&
       valid_host_port(value[index + 1:].to_owned())
     }
-    None => true
+    None => valid_url_host_chars(value)
   }
 }
 

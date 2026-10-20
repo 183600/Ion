@@ -125,6 +125,26 @@ test "URL supports bracketed IPv6 literals" {
   assert_eq(url.host, "::1")
   assert_eq(url.port, 8080)
   assert_eq(url.to_string(), "http://[::1]:8080/path")
+  for raw in [
+    "http://[::]/",
+    "http://[2001:db8::1]/",
+    "http://[::ffff:192.0.2.1]/",
+    "http://[fe80::1%25eth0]/",
+    "http://[v1.foo]/",
+  ] {
+    assert_true(Url::parse(raw) is Ok(_))
+  }
+  for raw in [
+    "http://[foo]/",
+    "http://[[::1]]/",
+    "http://[:::]/",
+    "http://[1:2:3:4:5:6:7]/",
+    "http://[1:2:3:4:5:6:7:8:9]/",
+    "http://[::ffff:192.0.2.999]/",
+    "http://[1:::2]/",
+  ] {
+    assert_true(Url::parse(raw) is Err(_))
+  }
 }
 
 ///|
@@ -1152,6 +1172,20 @@ test "request encoding accepts bracketed IPv6 Host headers" {
       Request::new(GET, url).with_header("Host", "[::1]"),
     ) is Ok(_),
   )
+  for host in [
+    "[::]",
+    "[2001:db8::1]",
+    "[::ffff:192.0.2.1]",
+    "[fe80::1%25eth0]",
+    "[v1.foo]",
+  ] {
+    let codec = H1Codec::new(regression_mock_stream("", 0, 0))
+    assert_true(
+      codec.encode_request(
+        Request::new(GET, url).with_header("Host", host),
+      ) is Ok(_),
+    )
+  }
   let automatic = regression_mock_stream("", 0, 0)
   let automatic_codec = H1Codec::new(automatic)
   assert_true(automatic_codec.encode_request(Request::new(GET, url)) is Ok(_))
@@ -1160,7 +1194,30 @@ test "request encoding accepts bracketed IPv6 Host headers" {
 ///|
 test "request encoding rejects malformed Host ports and IPv6 literals" {
   let url = Url::parse("http://example.com/").unwrap()
-  for host in ["::1", "[::1", "::1]:80", "example.com:notaport", "example.com:70000", "[::1]:", ":80"] {
+  for host in [
+    "::1",
+    "[::1",
+    "::1]:80",
+    "example.com:notaport",
+    "example.com:70000",
+    "[::1]:",
+    ":80",
+    "[foo]",
+    "[[::1]]",
+    "[:::]",
+    "[1:2:3:4:5:6:7]",
+    "[1:2:3:4:5:6:7:8:9]",
+    "[::ffff:192.0.2.999]",
+    "[1:::2]",
+    "exa\"mple.com",
+    "exa<mple.com",
+    "exa>mple.com",
+    "exa^mple.com",
+    "exa`mple.com",
+    "exa{mple.com",
+    "exa|mple.com",
+    "exa}mple.com",
+  ] {
     let codec = H1Codec::new(regression_mock_stream("", 0, 0))
     assert_true(
       codec.encode_request(
