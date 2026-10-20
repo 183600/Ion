@@ -66,3 +66,7 @@ test "Connector close_all" {
 
 // Note: These are basic tests. In a real implementation, we would need mock servers
 // to test the actual HTTP request/response flow without making real network calls.
+test "UnifiedClient closes pooled connections" {
+  let client = UnifiedClient::new()
+  assert_true(client.close_all() is Ok(_))
+}

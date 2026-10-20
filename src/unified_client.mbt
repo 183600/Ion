@@ -98,6 +98,11 @@ pub fn UnifiedClient::with_transport(
   }
 }
 
+/// Close every pooled connection owned by this client.
+pub fn UnifiedClient::close_all(self : UnifiedClient) -> Result[Unit, HttpError] {
+  self.connector.close_all()
+}
+
 /// Replace the TLS configuration used for HTTPS connections.
 pub fn UnifiedClient::with_tls_config(
   self : UnifiedClient,

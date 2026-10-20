@@ -232,6 +232,7 @@ pub struct UnifiedClient {
   mut redirect_count : Int32
 }
 pub fn UnifiedClient::close(Self) -> Result[Unit, HttpError]
+pub fn UnifiedClient::close_all(Self) -> Result[Unit, HttpError]
 pub fn UnifiedClient::delete(Self, String) -> Result[Response, HttpError]
 pub fn UnifiedClient::get(Self, String) -> Result[Response, HttpError]
 pub fn UnifiedClient::head(Self, String) -> Result[Response, HttpError]
