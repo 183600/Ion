@@ -184,10 +184,7 @@ fn is_ipvfuture_literal(value : String) -> Bool {
   true
 }
 
-fn is_ip_literal(value : String) -> Bool {
-  if is_ipvfuture_literal(value) {
-    return true
-  }
+fn is_ipv6_literal_with_zone(value : String) -> Bool {
   let mut address = value
   match value.find("%") {
     Some(index) => {
@@ -202,4 +199,8 @@ fn is_ip_literal(value : String) -> Bool {
     None => ()
   }
   is_ipv6_literal(address)
+}
+
+fn is_ip_literal(value : String) -> Bool {
+  is_ipvfuture_literal(value) || is_ipv6_literal_with_zone(value)
 }

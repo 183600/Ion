@@ -31,3 +31,11 @@ test "native DNS failures are classified as invalid addresses" {
   assert_true(native_tcp_address_error(10002) is InvalidAddress(_))
   assert_true(native_tcp_address_error(10110) is InvalidAddress(_))
 }
+///|
+#cfg(target="native")
+test "native dial hosts strip IPv6 brackets" {
+  assert_eq(tcp_dial_host("[::1]"), "::1")
+  assert_eq(tcp_dial_host("[fe80::1%eth0]"), "fe80::1%eth0")
+  assert_eq(tcp_dial_host("example.com"), "example.com")
+  assert_eq(tcp_dial_host("[v1.foo]"), "[v1.foo]")
+}

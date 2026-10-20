@@ -27,6 +27,16 @@ fn valid_tcp_port(port : Int) -> Bool {
   port >= 1 && port <= 65535
 }
 
+fn tcp_dial_host(host : String) -> String {
+  if host.has_prefix("[") && host.has_suffix("]") {
+    let inner = host[1:host.length() - 1].to_owned()
+    if is_ipv6_literal_with_zone(inner) {
+      return inner
+    }
+  }
+  host
+}
+
 /// TCP Dialer implementation
 pub struct TcpDialer {
   timeout_ms : Int

@@ -80,7 +80,11 @@ pub fn NativeTcpStream::open(self : NativeTcpStream) -> Result[NativeTcpStream, 
   if !valid_tcp_port(self.port) {
     return Err(NetError::InvalidAddress("Invalid port"))
   }
-  let fd = feather_tcp_connect(@utf8.encode(self.host), self.port, self.timeout_ms)
+  let fd = feather_tcp_connect(
+    @utf8.encode(tcp_dial_host(self.host)),
+    self.port,
+    self.timeout_ms,
+  )
   if fd < 0 {
     return Err(native_tcp_address_error(-fd))
   }
@@ -233,7 +237,11 @@ pub impl Dialer for NativeTcpDialer with fn resolve(
   }
   let capacity = 8192
   let output = Bytes::new(capacity)
-  let length = feather_tcp_resolve(@utf8.encode(host), output, capacity)
+  let length = feather_tcp_resolve(
+    @utf8.encode(tcp_dial_host(host)),
+    output,
+    capacity,
+  )
   if length < 0 {
     return Err(native_tcp_address_error(-length))
   }
