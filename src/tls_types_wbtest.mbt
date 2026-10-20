@@ -55,3 +55,12 @@ test "TLS validation rejects malformed server names" {
     assert_true(TlsConfig::new(name).validate() is Ok(_))
   }
 }
+///|
+test "TLS validation accepts IPv6 zone identifiers" {
+  for name in ["fe80::1%25eth0", "fe80::1%eth0", "[fe80::1%25eth0]"] {
+    assert_true(TlsConfig::new(name).validate() is Ok(_))
+  }
+  for name in ["fe80::1%25"] {
+    assert_true(TlsConfig::new(name).validate() is Err(InvalidConfig(_)))
+  }
+}

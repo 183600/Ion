@@ -110,7 +110,7 @@ fn valid_server_name(value : String) -> Bool {
     return is_ip_literal(value[1:value.length() - 1].to_owned())
   }
   if value.contains(":") {
-    return is_ipv6_literal(value)
+    return is_ipv6_literal_with_zone(value)
   }
   valid_url_host_chars(value)
 }
