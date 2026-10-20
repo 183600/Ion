@@ -1,9 +1,9 @@
 test "ClientOptions creation" {
   let options = ClientOptions::new()
-  assert_eq!(options.user_agent, "Feather/0.1.0")
-  assert_eq!(options.timeout_ms, 30000)
-  assert_eq!(options.follow_redirects, true)
-  assert_eq!(options.max_redirects, 10)
+  assert_eq(options.user_agent, "Feather/0.1.0")
+  assert_eq(options.timeout_ms, 30000)
+  assert_eq(options.follow_redirects, true)
+  assert_eq(options.max_redirects, 10)
 }
 
 test "ClientOptions customization" {
@@ -13,16 +13,16 @@ test "ClientOptions customization" {
     .with_follow_redirects(false)
     .with_max_redirects(5)
   
-  assert_eq!(options.user_agent, "CustomAgent/1.0")
-  assert_eq!(options.timeout_ms, 5000)
-  assert_eq!(options.follow_redirects, false)
-  assert_eq!(options.max_redirects, 5)
+  assert_eq(options.user_agent, "CustomAgent/1.0")
+  assert_eq(options.timeout_ms, 5000)
+  assert_eq(options.follow_redirects, false)
+  assert_eq(options.max_redirects, 5)
 }
 
 test "UnifiedClient creation" {
   let client = UnifiedClient::new()
-  assert_eq!(client.options.user_agent, "Feather/0.1.0")
-  assert_eq!(client.redirect_count, 0)
+  assert_eq(client.options.user_agent, "Feather/0.1.0")
+  assert_eq(client.redirect_count, 0)
 }
 
 test "UnifiedClient with options" {
@@ -31,19 +31,19 @@ test "UnifiedClient with options" {
     .with_follow_redirects(false)
   
   let client = UnifiedClient::with_options(options)
-  assert_eq!(client.options.user_agent, "TestAgent/1.0")
-  assert_eq!(client.options.follow_redirects, false)
+  assert_eq(client.options.user_agent, "TestAgent/1.0")
+  assert_eq(client.options.follow_redirects, false)
 }
 
 test "is_redirect function" {
-  assert_eq!(is_redirect(301), true)
-  assert_eq!(is_redirect(302), true)
-  assert_eq!(is_redirect(303), true)
-  assert_eq!(is_redirect(307), true)
-  assert_eq!(is_redirect(308), true)
-  assert_eq!(is_redirect(200), false)
-  assert_eq!(is_redirect(404), false)
-  assert_eq!(is_redirect(500), false)
+  assert_eq(is_redirect(301), true)
+  assert_eq(is_redirect(302), true)
+  assert_eq(is_redirect(303), true)
+  assert_eq(is_redirect(307), true)
+  assert_eq(is_redirect(308), true)
+  assert_eq(is_redirect(200), false)
+  assert_eq(is_redirect(404), false)
+  assert_eq(is_redirect(500), false)
 }
 
 test "Connector creation" {
@@ -52,7 +52,7 @@ test "Connector creation" {
   let connector = Connector::new(dialer, tls_provider)
   
   // Test that connector is created successfully
-  assert!(true) // If we got here, it worked
+  assert_true(true) // If we got here, it worked
 }
 
 test "Connector close_all" {
@@ -61,7 +61,7 @@ test "Connector close_all" {
   let connector = Connector::new(dialer, tls_provider)
   
   let result = connector.close_all()
-  assert!(result.is_ok())
+  assert_true(result is Ok(_))
 }
 
 // Note: These are basic tests. In a real implementation, we would need mock servers

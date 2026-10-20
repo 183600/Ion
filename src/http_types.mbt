@@ -1,0 +1,367 @@
+/// HTTP error types
+pub enum HttpError {
+  NetworkError(NetError)
+  TlsError(TlsError)
+  InvalidUrl(String)
+  InvalidMethod(String)
+  InvalidHeader(String)
+  Timeout
+  ConnectionClosed
+  ProtocolError(String)
+  RedirectLimitExceeded
+} derive(Eq, Debug)
+
+/// HTTP method
+pub enum HttpMethod {
+  GET
+  POST
+  PUT
+  DELETE
+  HEAD
+  OPTIONS
+  PATCH
+} derive(Eq, Debug)
+
+pub fn HttpMethod::to_string(method : HttpMethod) -> String {
+  match method {
+    GET => "GET"
+    POST => "POST"
+    PUT => "PUT"
+    DELETE => "DELETE"
+    HEAD => "HEAD"
+    OPTIONS => "OPTIONS"
+    PATCH => "PATCH"
+  }
+}
+
+/// HTTP header
+pub struct Header {
+  name : String
+  value : String
+}
+
+pub fn Header::new(name : String, value : String) -> Header {
+  Header::{ name, value }
+}
+
+/// HTTP headers collection
+pub struct Headers {
+  headers : List[Header]
+}
+
+pub fn Headers::new() -> Headers {
+  Headers::{ headers: @list.List([]) }
+}
+
+pub fn Headers::add(self : Headers, name : String, value : String) -> Headers {
+  Headers::{ headers: self.headers.prepend(Header::new(name, value)) }
+}
+
+pub fn Headers::get(self : Headers, name : String) -> Option[String] {
+  let lower_name = name.to_lower()
+  self.headers.find(fn(h) { h.name.to_lower() == lower_name }).map(fn(h) { h.value })
+}
+
+pub fn Headers::remove(self : Headers, name : String) -> Headers {
+  let lower_name = name.to_lower()
+  Headers::{ headers: self.headers.filter(fn(h) { h.name.to_lower() != lower_name }) }
+}
+
+pub fn Headers::iter(self : Headers) -> Iter[Header] {
+  self.headers.iter()
+}
+
+/// URL structure
+pub struct Url {
+  scheme : String
+  host : String
+  port : Int
+  path : String
+  query : String
+  fragment : String
+}
+
+pub fn Url::new(scheme : String, host : String, port : Int) -> Url {
+  Url::{ scheme, host, port, path: "/", query: "", fragment: "" }
+}
+
+fn find_char(str : String, target : Char) -> Int? {
+  let len = str.length()
+  let mut i = 0
+  while i < len {
+    match str.get_char(i) {
+      Some(ch) => {
+        if ch == target {
+          return Some(i)
+        }
+      }
+      None => ()
+    }
+    i = i + 1
+  }
+  None
+}
+
+fn find_first_delimiter(str : String) -> Int? {
+  let len = str.length()
+  let mut i = 0
+  while i < len {
+    match str.get_char(i) {
+      Some(ch) => {
+        if ch == '/' || ch == '?' || ch == '#' {
+          return Some(i)
+        }
+      }
+      None => ()
+    }
+    i = i + 1
+  }
+  None
+}
+
+pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
+  if url_str.length() == 0 {
+    return Err(InvalidUrl("Empty URL"))
+  }
+
+  let scheme_end = match url_str.find("://") {
+    Some(index) => index
+    None => return Err(InvalidUrl("Invalid URL format"))
+  }
+  if scheme_end == 0 {
+    return Err(InvalidUrl("Invalid URL format"))
+  }
+
+  let scheme = url_str.substring(start=0, end=scheme_end).to_lower()
+  if scheme != "http" && scheme != "https" {
+    return Err(InvalidUrl("Only http and https schemes supported"))
+  }
+
+  let rest = url_str.substring(start=scheme_end + 3)
+  if rest.length() == 0 {
+    return Err(InvalidUrl("URL has no host"))
+  }
+
+  let authority_end = find_first_delimiter(rest)
+  let authority = match authority_end {
+    Some(index) => rest.substring(start=0, end=index)
+    None => rest
+  }
+  let remainder = match authority_end {
+    Some(index) => rest.substring(start=index)
+    None => ""
+  }
+  if authority.length() == 0 {
+    return Err(InvalidUrl("URL has no host"))
+  }
+
+  // Ignore optional userinfo (user:password@host).
+  let host_port = match find_char(authority, '@') {
+    Some(index) => authority.substring(start=index + 1)
+    None => authority
+  }
+  if host_port.length() == 0 {
+    return Err(InvalidUrl("URL has no host"))
+  }
+
+  let mut host = host_port
+  let mut port_str : Option[String] = None
+  if host_port.has_prefix("[") {
+    let close = match find_char(host_port, ']') {
+      Some(index) => index
+      None => return Err(InvalidUrl("Invalid IPv6 host"))
+    }
+    host = host_port.substring(start=1, end=close)
+    let after = close + 1
+    if after < host_port.length() {
+      if host_port.get_char(after) == Some(':') {
+        port_str = Some(host_port.substring(start=after + 1))
+      } else {
+        return Err(InvalidUrl("Invalid host"))
+      }
+    }
+  } else {
+    match find_char(host_port, ':') {
+      Some(index) => {
+        host = host_port.substring(start=0, end=index)
+        port_str = Some(host_port.substring(start=index + 1))
+      }
+      None => ()
+    }
+  }
+
+  if host.length() == 0 {
+    return Err(InvalidUrl("URL has no host"))
+  }
+  if host.contains(":") {
+    return Err(InvalidUrl("Invalid unbracketed IPv6 host"))
+  }
+
+  let port = match port_str {
+    Some(port_text) => {
+      if port_text.length() == 0 {
+        return Err(InvalidUrl("Invalid port number"))
+      }
+      let parsed = try {
+        @string.parse_int(port_text[:])
+      } catch {
+        _ => return Err(InvalidUrl("Invalid port number"))
+      }
+      if parsed < 1 || parsed > 65535 {
+        return Err(InvalidUrl("Invalid port number"))
+      }
+      parsed
+    }
+    None => {
+      if scheme == "https" {
+        443
+      } else {
+        80
+      }
+    }
+  }
+
+  let mut path = "/"
+  let mut query = ""
+  let mut fragment = ""
+  if remainder.length() > 0 {
+    let mut main = remainder
+    match main.find("#") {
+      Some(index) => {
+        fragment = main.substring(start=index + 1)
+        main = main.substring(start=0, end=index)
+      }
+      None => ()
+    }
+    match main.find("?") {
+      Some(index) => {
+        query = main.substring(start=index + 1)
+        main = main.substring(start=0, end=index)
+      }
+      None => ()
+    }
+    if main.length() > 0 {
+      path = main
+    }
+  }
+
+  Ok(Url::{ scheme, host, port, path, query, fragment })
+}
+
+pub fn Url::to_string(self : Url) -> String {
+  let host_text = if self.host.contains(":") {
+    "[" + self.host + "]"
+  } else {
+    self.host
+  }
+  let host_port = if (self.scheme == "https" && self.port != 443) ||
+    (self.scheme == "http" && self.port != 80) {
+    host_text + ":" + self.port.to_string()
+  } else {
+    host_text
+  }
+  let path = if self.path.length() > 0 { self.path } else { "/" }
+  let base = self.scheme + "://" + host_port + path
+  let with_query = if self.query.length() > 0 {
+    base + "?" + self.query
+  } else {
+    base
+  }
+  if self.fragment.length() > 0 {
+    with_query + "#" + self.fragment
+  } else {
+    with_query
+  }
+}
+
+/// HTTP Request
+pub struct Request {
+  method : HttpMethod
+  url : Url
+  headers : Headers
+  body : Option[Bytes]
+  timeout_ms : Int
+}
+
+pub fn Request::new(method : HttpMethod, url : Url) -> Request {
+  Request::{
+    method,
+    url,
+    headers: Headers::new(),
+    body: None,
+    timeout_ms: 30000,
+  }
+}
+
+pub fn Request::with_header(self : Request, name : String, value : String) -> Request {
+  Request::{ ..self, headers: self.headers.add(name, value) }
+}
+
+pub fn Request::with_body(self : Request, body : Bytes) -> Request {
+  Request::{ ..self, body: Some(body) }
+}
+
+pub fn Request::with_timeout(self : Request, timeout_ms : Int) -> Request {
+  Request::{ ..self, timeout_ms }
+}
+
+pub fn Request::get_header(self : Request, name : String) -> Option[String] {
+  self.headers.get(name)
+}
+
+/// HTTP Response
+pub struct Response {
+  status : Int
+  headers : Headers
+  body : &Stream // Stream for reading response body
+}
+
+pub fn Response::new(status : Int, headers : Headers, body : &Stream) -> Response {
+  Response::{ status, headers, body }
+}
+
+pub fn Response::get_header(self : Response, name : String) -> Option[String] {
+  self.headers.get(name)
+}
+
+/// HTTP Client interface
+pub trait HttpClient {
+  fn request(Self, Request) -> Result[Response, HttpError]
+}
+
+/// Convenience functions for common HTTP methods
+pub fn &HttpClient::get(self : &HttpClient, url : String) -> Result[Response, HttpError] {
+  let parsed_url = match Url::parse(url) {
+    Ok(url) => url
+    Err(err) => return Err(err)
+  }
+  let req = Request::new(GET, parsed_url)
+  self.request(req)
+}
+
+pub fn &HttpClient::post(self : &HttpClient, url : String, body : Bytes) -> Result[Response, HttpError] {
+  let parsed_url = match Url::parse(url) {
+    Ok(url) => url
+    Err(err) => return Err(err)
+  }
+  let req = Request::new(POST, parsed_url).with_body(body)
+  self.request(req)
+}
+
+pub fn &HttpClient::put(self : &HttpClient, url : String, body : Bytes) -> Result[Response, HttpError] {
+  let parsed_url = match Url::parse(url) {
+    Ok(url) => url
+    Err(err) => return Err(err)
+  }
+  let req = Request::new(PUT, parsed_url).with_body(body)
+  self.request(req)
+}
+
+pub fn &HttpClient::delete(self : &HttpClient, url : String) -> Result[Response, HttpError] {
+  let parsed_url = match Url::parse(url) {
+    Ok(url) => url
+    Err(err) => return Err(err)
+  }
+  let req = Request::new(DELETE, parsed_url)
+  self.request(req)
+}

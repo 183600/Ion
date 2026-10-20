@@ -6,19 +6,19 @@ pub enum TlsError {
   InvalidConfig(String)
   IoError(String)
   ConnectionClosed
-}
+} derive(Eq, Debug)
 
 /// TLS version
 pub enum TlsVersion {
   Tls1_2
   Tls1_3
-}
+} derive(Eq, Debug)
 
 /// Certificate verification mode
 pub enum VerifyMode {
   Strict
   SkipVerification // Only for testing, should have scary name
-}
+} derive(Eq, Debug)
 
 /// Root certificate store
 pub struct RootStore {
@@ -26,11 +26,11 @@ pub struct RootStore {
 }
 
 pub fn RootStore::new() -> RootStore {
-  RootStore::{ certificates: List::[] }
+  RootStore::{ certificates: @list.List([]) }
 }
 
 pub fn RootStore::add_certificate(self : RootStore, cert : Bytes) -> RootStore {
-  RootStore::{ certificates: Cons(cert, self.certificates) }
+  RootStore::{ certificates: self.certificates.prepend(cert) }
 }
 
 /// Client certificate for mTLS
@@ -41,7 +41,7 @@ pub struct ClientCert {
 
 /// Key log sink for debugging
 pub trait KeyLogSink {
-  fn log(self : KeyLogSink, label : String, secret : Bytes) -> Unit
+  fn log(Self, String, Bytes) -> Unit
 }
 
 /// TLS configuration
@@ -52,13 +52,13 @@ pub struct TlsConfig {
   client_auth : Option[ClientCert]
   verify : VerifyMode
   min_version : TlsVersion
-  key_log : Option[KeyLogSink]
+  key_log : Option[&KeyLogSink]
 }
 
 pub fn TlsConfig::new(server_name : String) -> TlsConfig {
   TlsConfig::{
     server_name,
-    alpn: List::["http/1.1"],
+    alpn: @list.List(["http/1.1"]),
     root_store: RootStore::new(),
     client_auth: None,
     verify: Strict,
@@ -87,6 +87,6 @@ pub fn TlsConfig::with_min_version(self : TlsConfig, min_version : TlsVersion) -
   TlsConfig::{ ..self, min_version }
 }
 
-pub fn TlsConfig::with_key_log(self : TlsConfig, key_log : KeyLogSink) -> TlsConfig {
+pub fn TlsConfig::with_key_log(self : TlsConfig, key_log : &KeyLogSink) -> TlsConfig {
   TlsConfig::{ ..self, key_log: Some(key_log) }
 }
