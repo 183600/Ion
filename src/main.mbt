@@ -39,20 +39,31 @@ fn run_post(url : String, body : String) -> Unit {
   let _ = client.close_all()
 }
 
-fn main {
-  let args = @env.args()
-  let mut url = ""
+fn parse_cli_request(args : Array[String]) -> (String, String, String) {
+  // The runtime argument list includes the executable name as its first entry.
+  let index = if args.length() > 0 { 1 } else { 0 }
   let mut method = ""
+  let mut url = ""
   let mut body = ""
-  if args.length() > 0 && (args[0].has_prefix("http://") || args[0].has_prefix("https://")) {
-    url = args[0]
-  } else if args.length() > 1 {
-    method = args[0].to_lower()
-    url = args[1]
-    if args.length() > 2 {
-      body = args[2]
+  if index < args.length() {
+    let first = args[index]
+    let lower = first.to_lower()
+    if lower.has_prefix("http://") || lower.has_prefix("https://") {
+      url = first
+    } else if index + 1 < args.length() {
+      method = first.to_lower()
+      url = args[index + 1]
+      if index + 2 < args.length() {
+        body = args[index + 2]
+      }
     }
   }
+  (method, url, body)
+}
+
+fn main {
+  let (method, parsed_url, body) = parse_cli_request(@env.args())
+  let mut url = parsed_url
   if url.length() == 0 {
     match @env.get_env_var("FEATHER_URL") {
       Some(value) => url = value
