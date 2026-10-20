@@ -454,6 +454,14 @@ pub fn Request::with_basic_auth(self : Request, username : String, password : St
   Request::{ ..self, headers: self.headers.set("Authorization", "Basic " + encoded) }
 }
 
+pub fn Request::set_header(self : Request, name : String, value : String) -> Request {
+  Request::{ ..self, headers: self.headers.set(name, value) }
+}
+
+pub fn Request::without_header(self : Request, name : String) -> Request {
+  Request::{ ..self, headers: self.headers.remove(name) }
+}
+
 pub fn Request::with_body(self : Request, body : Bytes) -> Request {
   Request::{ ..self, body: Some(body) }
 }

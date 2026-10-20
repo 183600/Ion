@@ -1298,3 +1298,13 @@ test "empty Location headers are not followed" {
   assert_eq(response.status, 302)
   assert_eq(dialer.count, 1)
 }
+///|
+test "request headers can be replaced and removed" {
+  let url = Url::parse("https://example.com/").unwrap()
+  let request = Request::new(GET, url)
+    .with_header("X-Test", "one")
+    .with_header("X-Test", "two")
+    .set_header("X-Test", "three")
+    .without_header("Missing")
+  assert_eq(request.headers.get_all("X-Test"), @list.List(["three"]))
+}
