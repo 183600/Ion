@@ -160,8 +160,7 @@ fn valid_header_name(name : String) -> Bool {
     return false
   }
   for ch in name {
-    if ch == '\r' || ch == '\n' || ch == '\u{0}' || ch == ':' ||
-      ch == ' ' || ch == '\t' {
+    if ch <= ' ' || ch == '\u{7f}' || ch == ':' {
       return false
     }
   }
@@ -170,7 +169,7 @@ fn valid_header_name(name : String) -> Bool {
 
 fn valid_header_value(value : String) -> Bool {
   for ch in value {
-    if ch == '\r' || ch == '\n' || ch == '\u{0}' {
+    if (ch < ' ' && ch != '\t') || ch == '\u{7f}' {
       return false
     }
   }

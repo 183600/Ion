@@ -135,6 +135,7 @@ test "URL rejects control characters" {
   assert_true(Url::parse("http://example.com/a\tb") is Err(_))
   assert_true(Url::parse("http://user@pass@example.com/") is Err(_))
   assert_true(Url::parse("http://exa[mple.com/") is Err(_))
+  assert_true(Url::parse("http://example.com/a\u{1}b") is Err(_))
 }
 
 ///|
