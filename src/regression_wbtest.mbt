@@ -1676,6 +1676,17 @@ test "connector applies its timeout before TLS handshakes" {
   assert_eq(stream.last_timeout, 1234)
 }
 ///|
+test "connector applies its timeout to HTTP connections" {
+  let stream = regression_mock_stream("", 0, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_timeout(
+    1234,
+  )
+  let url = Url::parse("http://example.com/").unwrap()
+  let _ = connector.connect(url).unwrap()
+  assert_eq(stream.last_timeout, 1234)
+}
+///|
 test "redirect origin comparison ignores host case" {
   let raw = "HTTP/1.1 302 Found\r\nLocation: http://EXAMPLE.com/next\r\nContent-Length: 0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
   let stream = regression_mock_stream(raw, 1, 0)

@@ -170,16 +170,17 @@ fn Connector::connect_impl(
     Err(err) => return Err(NetworkError(err))
   }
 
+  // Bound both plain HTTP I/O and the TLS handshake using the connector timeout.
+  match raw_stream.set_timeout(self.timeout_ms) {
+    Ok(_) => ()
+    Err(err) => {
+      let _ = raw_stream.close()
+      return Err(NetworkError(err))
+    }
+  }
+
   // If HTTPS, wrap with TLS
   if scheme == "https" {
-    // Bound the TLS handshake using the same deadline as the connection.
-    match raw_stream.set_timeout(self.timeout_ms) {
-      Ok(_) => ()
-      Err(err) => {
-        let _ = raw_stream.close()
-        return Err(NetworkError(err))
-      }
-    }
     // Use the shared configuration when present, otherwise secure defaults.
     let tls_config = match self.tls_config {
       Some(config) => config.with_server_name(host)
