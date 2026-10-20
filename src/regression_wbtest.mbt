@@ -720,14 +720,16 @@ test "connector pools connections and close removes them" {
 
 ///|
 test "connector replaces externally closed pooled streams" {
-  let stream = regression_mock_stream("", 1, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let first_stream = regression_mock_stream("", 1, 0)
+  let second_stream = regression_mock_stream("", 1, 0)
+  let streams : Array[&Stream] = [first_stream, second_stream]
+  let dialer = RegressionQueueDialer::{ streams, index: 0 }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let url = Url::parse("http://example.com/").unwrap()
   let first = connector.connect(url).unwrap()
   assert_true(first.close() is Ok(_))
   let _ = connector.connect(url).unwrap()
-  assert_eq(dialer.count, 2)
+  assert_eq(dialer.index, 2)
 }
 
 struct RegressionHttpClient {
@@ -1957,15 +1959,17 @@ test "replacing TLS configuration closes the old pool" {
 }
 ///|
 test "replacing connector TLS configuration closes its pool" {
-  let stream = regression_mock_stream("", 1, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let first_stream = regression_mock_stream("", 1, 0)
+  let second_stream = regression_mock_stream("", 1, 0)
+  let streams : Array[&Stream] = [first_stream, second_stream]
+  let dialer = RegressionQueueDialer::{ streams, index: 0 }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let url = Url::parse("http://example.com/").unwrap()
   let _ = connector.connect(url).unwrap()
   let replaced = connector.with_tls_config(TlsConfig::new("example.com"))
-  assert_false(stream.is_open)
+  assert_false(first_stream.is_open)
   let _ = replaced.connect(url).unwrap()
-  assert_eq(dialer.count, 2)
+  assert_eq(dialer.index, 2)
 }
 ///|
 test "replacing connector TLS configuration isolates the new pool" {
