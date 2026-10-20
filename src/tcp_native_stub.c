@@ -21,12 +21,16 @@
 #define FEATHER_GAI_BASE 10000
 
 static int feather_set_timeout(int fd, int32_t timeout_ms) {
-  if (timeout_ms <= 0) {
-    return 0;
-  }
   struct timeval tv;
-  tv.tv_sec = timeout_ms / 1000;
-  tv.tv_usec = (timeout_ms % 1000) * 1000;
+  if (timeout_ms <= 0) {
+    // A zero timeval disables the socket timeout; returning early would keep
+    // a previously configured timeout in effect.
+    tv.tv_sec = 0;
+    tv.tv_usec = 0;
+  } else {
+    tv.tv_sec = timeout_ms / 1000;
+    tv.tv_usec = (timeout_ms % 1000) * 1000;
+  }
   if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
     return -errno;
   }
