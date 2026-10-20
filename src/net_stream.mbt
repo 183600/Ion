@@ -46,6 +46,15 @@ pub fn TcpStream::new(host : String, port : Int) -> TcpStream {
 }
 
 pub fn TcpStream::open(self : TcpStream) -> Result[TcpStream, NetError] {
+  if self.is_open {
+    return Ok(self)
+  }
+  if !valid_tcp_host(self.host) {
+    return Err(NetError::InvalidAddress("Invalid host"))
+  }
+  if !valid_tcp_port(self.port) {
+    return Err(NetError::InvalidAddress("Invalid port"))
+  }
   // In real implementation, this would open a TCP connection
   self.is_open = true
   Ok(self)

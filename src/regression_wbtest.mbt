@@ -1009,3 +1009,28 @@ test "UnifiedClient exposes transport and TLS configuration" {
   let _ = client.request(Request::new(GET, url)).unwrap()
   assert_eq(provider.last_config.unwrap().server_name, "secure.example")
 }
+
+///|
+test "dialer validates host names and ports" {
+  let dialer = TcpDialer::new()
+  assert_true(dialer.dial_tcp("", 80) is Err(InvalidAddress(_)))
+  assert_true(dialer.dial_tcp("bad host", 80) is Err(InvalidAddress(_)))
+  assert_true(dialer.dial_tcp("example.com", 0) is Err(InvalidAddress(_)))
+  assert_true(dialer.dial_tcp("example.com", 65536) is Err(InvalidAddress(_)))
+  assert_true(dialer.resolve("") is Err(InvalidAddress(_)))
+  assert_true(dialer.resolve("bad\nhost") is Err(InvalidAddress(_)))
+  assert_true(dialer.dial_tcp("example.com", 80) is Ok(_))
+}
+
+///|
+test "opening an invalid TcpStream fails cleanly" {
+  let missing_host = TcpStream::new("", 80)
+  assert_true(missing_host.open() is Err(InvalidAddress(_)))
+  assert_eq(missing_host.is_open, false)
+  let bad_port = TcpStream::new("example.com", 70000)
+  assert_true(bad_port.open() is Err(InvalidAddress(_)))
+  let stream = TcpStream::new("example.com", 80)
+  assert_true(stream.open() is Ok(_))
+  assert_true(stream.open() is Ok(_))
+  assert_eq(stream.is_open, true)
+}
