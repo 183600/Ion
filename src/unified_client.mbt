@@ -11,6 +11,7 @@ pub struct ClientOptions {
   timeout_ms : Int
   follow_redirects : Bool
   max_redirects : Int
+  max_response_body_bytes : Int
 } derive(Eq, Debug)
 
 pub fn ClientOptions::new() -> ClientOptions {
@@ -19,6 +20,7 @@ pub fn ClientOptions::new() -> ClientOptions {
     timeout_ms: 30000,
     follow_redirects: true,
     max_redirects: 10,
+    max_response_body_bytes: DEFAULT_MAX_RESPONSE_BODY_BYTES,
   }
 }
 
@@ -36,6 +38,18 @@ pub fn ClientOptions::with_follow_redirects(self : ClientOptions, follow_redirec
 
 pub fn ClientOptions::with_max_redirects(self : ClientOptions, max_redirects : Int) -> ClientOptions {
   ClientOptions::{ ..self, max_redirects: if max_redirects < 0 { 0 } else { max_redirects } }
+}
+
+/// Cap the number of body bytes read from a single response. A value below 1 is
+/// clamped to 0, which rejects any non-empty body.
+pub fn ClientOptions::with_max_response_body_bytes(
+  self : ClientOptions,
+  max_response_body_bytes : Int,
+) -> ClientOptions {
+  ClientOptions::{
+    ..self,
+    max_response_body_bytes: if max_response_body_bytes < 0 { 0 } else { max_response_body_bytes },
+  }
 }
 
 #cfg(target="native")
@@ -325,8 +339,9 @@ fn UnifiedClient::do_request_once(
   }
 
   // Create codec
-  let codec = H1Codec::new_with_completion(
+  let codec = H1Codec::new_with_limit_and_completion(
     stream,
+    self.options.max_response_body_bytes,
     fn(reusable) { lease.release(reusable) },
   )
 

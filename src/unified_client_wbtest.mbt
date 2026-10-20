@@ -76,3 +76,38 @@ test "free get/post helpers validate URLs before dialing" {
   assert_true(get("ftp://example.com/") is Err(InvalidUrl(_)))
   assert_true(post("not a url", b"body") is Err(InvalidUrl(_)))
 }
+
+test "ClientOptions exposes a configurable response body limit" {
+  let options = ClientOptions::new()
+  assert_eq(options.max_response_body_bytes, 67108864)
+  let tightened = options.with_max_response_body_bytes(1024)
+  assert_eq(tightened.max_response_body_bytes, 1024)
+  let clamped = options.with_max_response_body_bytes(-1)
+  assert_eq(clamped.max_response_body_bytes, 0)
+}
+
+test "response body limit rejects oversized bodies before reading them" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 200\r\n\r\n" + "a".repeat(200)
+  let stream = regression_mock_stream(raw, 1, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let options = ClientOptions::new()
+    .with_follow_redirects(false)
+    .with_max_response_body_bytes(64)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let response = client.request(Request::new(GET, Url::parse("http://example.com/").unwrap())).unwrap()
+  assert_true(response.read_body() is Err(_))
+}
+
+test "response body limit allows bodies within the configured bound" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"
+  let stream = regression_mock_stream(raw, 1, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let options = ClientOptions::new()
+    .with_follow_redirects(false)
+    .with_max_response_body_bytes(5)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let response = client.request(Request::new(GET, Url::parse("http://example.com/").unwrap())).unwrap()
+  assert_eq(response.read_body().unwrap(), b"hello")
+}

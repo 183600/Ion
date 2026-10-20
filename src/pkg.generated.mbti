@@ -45,10 +45,12 @@ pub struct ClientOptions {
   timeout_ms : Int32
   follow_redirects : Bool
   max_redirects : Int32
+  max_response_body_bytes : Int32
 } derive(Eq, @debug.Debug)
 pub fn ClientOptions::new() -> Self
 pub fn ClientOptions::with_follow_redirects(Self, Bool) -> Self
 pub fn ClientOptions::with_max_redirects(Self, Int32) -> Self
+pub fn ClientOptions::with_max_response_body_bytes(Self, Int32) -> Self
 pub fn ClientOptions::with_timeout(Self, Int32) -> Self
 pub fn ClientOptions::with_user_agent(Self, String) -> Self
 
@@ -86,6 +88,7 @@ pub fn H1Codec::encode_request(Self, Request) -> Result[Unit, HttpError]
 pub fn H1Codec::new(&Stream) -> Self
 pub fn H1Codec::new_with_completion(&Stream, (Bool) -> Unit) -> Self
 pub fn H1Codec::new_with_limit(&Stream, Int32) -> Self
+pub fn H1Codec::new_with_limit_and_completion(&Stream, Int32, (Bool) -> Unit) -> Self
 
 pub struct Header {
   name : String

@@ -25,6 +25,14 @@ pub fn H1Codec::new_with_completion(
   H1Codec::make(stream, DEFAULT_MAX_BODY_BYTES, Some(on_complete))
 }
 
+pub fn H1Codec::new_with_limit_and_completion(
+  stream : &Stream,
+  max_body_bytes : Int,
+  on_complete : (Bool) -> Unit,
+) -> H1Codec {
+  H1Codec::make(stream, max_body_bytes, Some(on_complete))
+}
+
 fn H1Codec::make(
   stream : &Stream,
   max_body_bytes : Int,
