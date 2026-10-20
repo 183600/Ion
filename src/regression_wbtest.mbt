@@ -1346,3 +1346,13 @@ test "101 responses close the upgraded connection" {
   assert_eq(response.body.read(@buffer.new(size_hint=4)).unwrap(), 0)
   assert_false(stream.is_open)
 }
+///|
+test "failed HEAD encoding does not change response framing" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"
+  let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+  let url = Url::parse("http://example.com/").unwrap()
+  let invalid = Request::new(HEAD, url).with_header("X-Test", "bad\r\nvalue")
+  assert_true(codec.encode_request(invalid) is Err(_))
+  let response = codec.decode_response().unwrap()
+  assert_eq(response.text().unwrap(), "hello")
+}
