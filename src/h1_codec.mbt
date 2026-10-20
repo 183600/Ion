@@ -485,6 +485,27 @@ fn read_chunked_body(reader : StreamReader, output : Array[Byte]) -> Result[Unit
   Ok(())
 }
 
+fn response_content_length(headers : Headers) -> Result[Option[String], NetError] {
+  let mut result : Option[String] = None
+  let mut conflict = false
+  for header in headers.iter() {
+    if header.name.to_lower() == "content-length" {
+      let value = header.value.trim().to_string()
+      match result {
+        None => result = Some(value)
+        Some(existing) => if existing != value {
+          conflict = true
+        }
+      }
+    }
+  }
+  if conflict {
+    Err(NetError::ReadError("conflicting Content-Length headers"))
+  } else {
+    Ok(result)
+  }
+}
+
 fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
   if self.loaded {
     return match self.error {
@@ -512,12 +533,20 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
     Some(value) => header_has_token(value, "chunked")
     None => false
   }
+  let content_length = match response_content_length(self.headers) {
+    Ok(value) => value
+    Err(err) => {
+      let _ = self.reader.stream.close()
+      self.error = Some(err)
+      return Err(err)
+    }
+  }
 
   let mut close_after_load = false
   let result = if chunked {
     read_chunked_body(self.reader, self.body)
   } else {
-    match self.headers.get("Content-Length") {
+    match content_length {
       Some(value) => {
         let length_text = value.trim().to_string()
         if !is_decimal_digits(length_text) {

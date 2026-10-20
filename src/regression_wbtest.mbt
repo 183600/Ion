@@ -440,6 +440,21 @@ test "chunk sizes must be plain hexadecimal digits" {
 }
 
 ///|
+test "conflicting Content-Length headers are rejected" {
+  let conflicting = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Length: 6\r\n\r\nhello!"
+  let codec = H1Codec::new(regression_mock_stream(conflicting, 0, 0))
+  let response = codec.decode_response().unwrap()
+  assert_true(response.body.read(@buffer.new(size_hint=8)) is Err(_))
+
+  let repeated = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Length: 5\r\n\r\nhello"
+  let codec2 = H1Codec::new(regression_mock_stream(repeated, 0, 0))
+  let response2 = codec2.decode_response().unwrap()
+  let buf = @buffer.new(size_hint=8)
+  assert_eq(response2.body.read(buf).unwrap(), 5)
+  assert_eq(buf.to_bytes(), b"hello")
+}
+
+///|
 test "invalid Content-Length error is sticky" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: nope\r\n\r\n"
   let stream = regression_mock_stream(raw, 1, 0)
