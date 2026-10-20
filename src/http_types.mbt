@@ -413,7 +413,7 @@ pub fn Request::with_body(self : Request, body : Bytes) -> Request {
 }
 
 pub fn Request::with_timeout(self : Request, timeout_ms : Int) -> Request {
-  Request::{ ..self, timeout_ms }
+  Request::{ ..self, timeout_ms: if timeout_ms < 0 { 0 } else { timeout_ms } }
 }
 
 pub fn Request::get_header(self : Request, name : String) -> Option[String] {
