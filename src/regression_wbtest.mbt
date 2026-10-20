@@ -1240,3 +1240,12 @@ test "basic auth replaces existing authorization headers" {
   assert_eq(request.headers.length(), 1)
   assert_eq(request.with_basic_auth("", "").get_header("Authorization").unwrap(), "Basic Og==")
 }
+///|
+test "chunked transfer coding must be final" {
+  let invalid = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked, gzip\r\n\r\n5\r\nhello\r\n0\r\n\r\n"
+  let response = H1Codec::new(regression_mock_stream(invalid, 4096, 4096)).decode_response().unwrap()
+  assert_true(response.read_body() is Err(NetworkError(ReadError(_))))
+  let valid = "HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n"
+  let response = H1Codec::new(regression_mock_stream(valid, 4096, 4096)).decode_response().unwrap()
+  assert_eq(response.read_body().unwrap(), b"hello")
+}

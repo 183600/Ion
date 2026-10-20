@@ -688,6 +688,25 @@ fn read_chunked_body(
   Ok(())
 }
 
+fn response_is_chunked(headers : Headers) -> Result[Bool, NetError] {
+  let mut chunked_seen = false
+  for value in headers.get_all("Transfer-Encoding") {
+    for part in value.split(",") {
+      let token = part.trim().to_owned().to_lower()
+      if token.length() == 0 {
+        continue
+      }
+      if chunked_seen {
+        return Err(NetError::ReadError("invalid Transfer-Encoding"))
+      }
+      if token == "chunked" {
+        chunked_seen = true
+      }
+    }
+  }
+  Ok(chunked_seen)
+}
+
 fn response_content_length(headers : Headers) -> Result[Option[String], NetError] {
   let mut result : Option[String] = None
   let mut conflict = false
@@ -730,7 +749,14 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
     return Ok(())
   }
 
-  let chunked = headers_have_token(self.headers, "Transfer-Encoding", "chunked")
+  let chunked = match response_is_chunked(self.headers) {
+    Ok(value) => value
+    Err(err) => {
+      let _ = self.reader.stream.close()
+      self.error = Some(err)
+      return Err(err)
+    }
+  }
   let content_length = match response_content_length(self.headers) {
     Ok(value) => value
     Err(err) => {
