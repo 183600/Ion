@@ -640,8 +640,8 @@ pub fn H1Codec::decode_response(
       completed: false,
     }
     if self.on_complete is Some(_) &&
-      (is_head || response_head.status == 204 || response_head.status == 205 ||
-      response_head.status == 304) {
+      (is_head || response_head.status == 101 || response_head.status == 204 ||
+      response_head.status == 205 || response_head.status == 304) {
       let _ = response_stream.prepare()
     }
     let response_stream : &Stream = response_stream

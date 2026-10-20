@@ -1776,6 +1776,20 @@ test "101 responses close the upgraded connection" {
   assert_false(stream.is_open)
 }
 ///|
+test "client closes upgraded connections without a body read" {
+  let raw = "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n"
+  let stream = regression_mock_stream(raw, 0, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let options = ClientOptions::new().with_follow_redirects(false)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let url = Url::parse("http://example.com/").unwrap()
+  let response = client.request(Request::new(GET, url)).unwrap()
+  assert_eq(response.status, 101)
+  assert_false(stream.is_open)
+}
+
+///|
 test "failed HEAD encoding does not change response framing" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"
   let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
