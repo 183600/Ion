@@ -1,9 +1,0 @@
-{
-  "source_dir": "/workspace/projects/Ion",
-  "name": "feather",
-  "packages": [],
-  "deps": [],
-  "backend": "wasm-gc",
-  "opt_level": "release",
-  "source": "src"
-}

@@ -1,0 +1,14 @@
+# MoonBit build outputs
+/_build/
+/target
+
+# MoonBit package cache
+.mooncakes/
+
+# opencode / loop scratch files
+opencode.json
+opencode.jsonc
+.opencode.json
+.opencode_issues.md
+REPORT*.md
+autodl_budget*.json
