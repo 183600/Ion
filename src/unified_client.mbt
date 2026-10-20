@@ -133,8 +133,18 @@ fn normalize_path_and_suffix(target : String) -> String {
   result + suffix
 }
 
+fn absolute_path(path : String) -> String {
+  if path.length() == 0 {
+    "/"
+  } else if path.has_prefix("/") {
+    path
+  } else {
+    "/" + path
+  }
+}
+
 fn base_without_fragment(base : Url) -> String {
-  let base_str = base.scheme + "://" + url_authority(base) + base.path
+  let base_str = base.scheme + "://" + url_authority(base) + absolute_path(base.path)
   if base.query.length() > 0 {
     base_str + "?" + base.query
   } else {
@@ -155,7 +165,7 @@ fn resolve_redirect_url(base : Url, location : String) -> Result[Url, HttpError]
     base.scheme + "://" + url_authority(base) +
     normalize_path_and_suffix(location)
   } else if location.has_prefix("?") {
-    base.scheme + "://" + url_authority(base) + base.path + location
+    base.scheme + "://" + url_authority(base) + absolute_path(base.path) + location
   } else if location.length() == 0 {
     base.to_string()
   } else {
