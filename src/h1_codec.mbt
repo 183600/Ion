@@ -192,6 +192,10 @@ fn valid_host(value : String) -> Bool {
   if value.length() == 0 {
     return false
   }
+  if (value.contains("[") || value.contains("]")) &&
+    !(value.has_prefix("[") && value.has_suffix("]")) {
+    return false
+  }
   for ch in value {
     if ch <= ' ' || ch == '\u{7f}' || ch == '/' || ch == '?' || ch == '#' ||
       ch == '@' {
