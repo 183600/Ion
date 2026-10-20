@@ -631,6 +631,7 @@ fn read_chunked_body(
     }
     if size == 0 {
       // Consume optional trailers until the final empty line.
+      let mut trailer_count = 0
       while true {
         let trailer = match read_line(reader) {
           Ok(Some(trailer)) => trailer
@@ -639,6 +640,22 @@ fn read_chunked_body(
         }
         if trailer.length() == 0 {
           break
+        }
+        if trailer.get_char(0) == Some(' ') || trailer.get_char(0) == Some('\t') {
+          return Err(NetError::ReadError("invalid chunked trailer"))
+        }
+        trailer_count = trailer_count + 1
+        if trailer_count > MAX_RESPONSE_HEADERS {
+          return Err(NetError::ReadError("too many chunked trailers"))
+        }
+        let colon_idx = match trailer.find(":") {
+          Some(index) => index
+          None => return Err(NetError::ReadError("invalid chunked trailer"))
+        }
+        let name = trailer.substring(start=0, end=colon_idx)
+        let value = trailer.substring(start=colon_idx + 1).trim().to_string()
+        if !valid_header_name(name) || !valid_header_value(value) {
+          return Err(NetError::ReadError("invalid chunked trailer"))
         }
       }
       return Ok(())

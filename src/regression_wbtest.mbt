@@ -1097,3 +1097,13 @@ test "request encoding rejects duplicate or malformed Host headers" {
     ) is Ok(_),
   )
 }
+///|
+test "chunked trailers must be valid header fields" {
+  for trailer in ["Bad Trailer: x", "X-Test: a\rb", ": value", "X-Test"] {
+    let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n" +
+      trailer + "\r\n\r\n"
+    let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+    let response = codec.decode_response().unwrap()
+    assert_true(response.read_body() is Err(_))
+  }
+}
