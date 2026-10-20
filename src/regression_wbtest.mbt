@@ -1350,6 +1350,38 @@ test "connection tokens are detected across repeated headers" {
   assert_eq(stream.is_open, false)
 }
 ///|
+test "URL rejects malformed percent escapes outside the host" {
+  for raw in [
+    "http://example.com/%",
+    "http://example.com/%zz",
+    "http://example.com/a%2",
+    "http://example.com/?x=%zz",
+    "http://example.com/#%zz",
+    "http://example.com/a\\b",
+  ] {
+    assert_true(Url::parse(raw) is Err(_))
+  }
+  for raw in [
+    "http://example.com/%20",
+    "http://example.com/?x=%2F",
+    "http://example.com/#frag",
+  ] {
+    assert_true(Url::parse(raw) is Ok(_))
+  }
+}
+
+///|
+test "request encoding rejects malformed targets" {
+  let url = Url::parse("http://example.com/").unwrap()
+  for path in ["/a%zz", "/a\\b"] {
+    let stream = regression_mock_stream("", 0, 0)
+    let codec = H1Codec::new(stream)
+    let request = Request::new(GET, url.with_path(path))
+    assert_true(codec.encode_request(request) is Err(InvalidUrl(_)))
+  }
+}
+
+///|
 test "URL rejects unsafe host characters" {
   for raw in [
     "http://exa\\mple.com/",

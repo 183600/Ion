@@ -157,6 +157,39 @@ fn find_first_delimiter(str : String) -> Int? {
   None
 }
 
+fn valid_encoded_url_chars(value : String) -> Bool {
+  let mut index = 0
+  while index < value.length() {
+    let ch = match value.get_char(index) {
+      Some(ch) => ch
+      None => return false
+    }
+    if ch == '\\' {
+      return false
+    }
+    if ch == '%' {
+      if index + 2 >= value.length() {
+        return false
+      }
+      let high = match value.get_char(index + 1) {
+        Some(ch) => ch
+        None => return false
+      }
+      let low = match value.get_char(index + 2) {
+        Some(ch) => ch
+        None => return false
+      }
+      if !is_hex_char(high) || !is_hex_char(low) {
+        return false
+      }
+      index = index + 3
+      continue
+    }
+    index = index + 1
+  }
+  true
+}
+
 fn valid_url_host_chars(host : String) -> Bool {
   let mut index = 0
   while index < host.length() {
@@ -330,6 +363,11 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
     if main.length() > 0 {
       path = main
     }
+  }
+
+  if !valid_encoded_url_chars(path) || !valid_encoded_url_chars(query) ||
+    !valid_encoded_url_chars(fragment) {
+    return Err(InvalidUrl("Invalid URL characters"))
   }
 
   Ok(Url::{ scheme, host, port, path, query, fragment })

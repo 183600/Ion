@@ -217,7 +217,7 @@ fn valid_header_value(value : String) -> Bool {
 }
 
 fn valid_request_target(value : String) -> Bool {
-  if value.length() == 0 {
+  if value.length() == 0 || !valid_encoded_url_chars(value) {
     return false
   }
   for ch in value {
