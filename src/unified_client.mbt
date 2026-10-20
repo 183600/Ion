@@ -301,6 +301,10 @@ fn UnifiedClient::do_request_once(
     Ok(_) => ()
     Err(err) => {
       let _ = self.connector.close(request.url)
+      if allow_retry && lease.reused && request_can_be_retried(request.method) &&
+        err is NetworkError(_) {
+        return self.do_request_once(req, false)
+      }
       return Err(err)
     }
   }
