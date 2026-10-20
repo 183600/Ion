@@ -276,6 +276,38 @@ test "sequential responses on one codec preserve buffered bytes" {
 }
 
 ///|
+test "response rejects invalid header names and values" {
+  let malformed = [
+    "HTTP/1.1 200 OK\r\nBad Header: x\r\n\r\n",
+    "HTTP/1.1 200 OK\r\nX-Test: a\rb\r\n\r\n",
+  ]
+  for raw in malformed {
+    let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+    assert_true(codec.decode_response() is Err(_))
+  }
+}
+
+///|
+test "Transfer-Encoding only recognizes the chunked token" {
+  let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: notchunked\r\nContent-Length: 5\r\n\r\nhello"
+  let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+  let response = codec.decode_response().unwrap()
+  let buf = @buffer.new(size_hint=8)
+  assert_eq(response.body.read(buf).unwrap(), 5)
+  assert_eq(buf.to_bytes(), b"hello")
+}
+
+///|
+test "response stream is closed after closing" {
+  let raw = "HTTP/1.1 204 No Content\r\n\r\n"
+  let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+  let response = codec.decode_response().unwrap()
+  assert_true(response.body.close() is Ok(_))
+  let buf = @buffer.new(size_hint=8)
+  assert_true(response.body.write(buf) is Err(NetError::Closed))
+}
+
+///|
 test "decode_response remembers a preceding HEAD request" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"
   let stream = regression_mock_stream(raw, 0, 0)

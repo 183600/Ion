@@ -33,6 +33,9 @@ fn StreamReader::next_byte(self : StreamReader) -> Result[Byte?, NetError] {
     Ok(count) => count
     Err(err) => return Err(err)
   }
+  if count < 0 {
+    return Err(NetError::ReadError("invalid read count"))
+  }
   if count == 0 {
     return Ok(None)
   }
@@ -56,6 +59,9 @@ fn StreamReader::read_exact(
       let count = match self.stream.read(buf) {
         Ok(count) => count
         Err(err) => return Err(err)
+      }
+      if count < 0 {
+        return Err(NetError::ReadError("invalid read count"))
       }
       if count == 0 {
         return Err(NetError::ReadError("unexpected end of response body"))
@@ -94,6 +100,9 @@ fn StreamReader::read_to_eof(
     let count = match self.stream.read(buf) {
       Ok(count) => count
       Err(err) => return Err(err)
+    }
+    if count < 0 {
+      return Err(NetError::ReadError("invalid read count"))
     }
     if count == 0 {
       return Ok(())
@@ -164,6 +173,16 @@ fn valid_header_value(value : String) -> Bool {
     }
   }
   true
+}
+
+fn header_has_token(value : String, token : String) -> Bool {
+  let token = token.to_lower()
+  for part in value.split(",") {
+    if part.trim().to_string().to_lower() == token {
+      return true
+    }
+  }
+  false
 }
 
 /// Encode HTTP request to HTTP/1.1 format
@@ -325,10 +344,13 @@ pub fn H1Codec::decode_response(
     }
 
     let name = line.substring(start=0, end=colon_idx).trim().to_string()
-    if name.length() == 0 {
+    if !valid_header_name(name) {
       return Err(ProtocolError("Invalid header format"))
     }
     let value = line.substring(start=colon_idx + 1).trim().to_string()
+    if !valid_header_value(value) {
+      return Err(ProtocolError("Invalid header value"))
+    }
 
     headers = headers.add(name, value)
   }
@@ -430,7 +452,7 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
 
   let transfer_encoding = self.headers.get("Transfer-Encoding")
   let chunked = match transfer_encoding {
-    Some(value) => value.to_lower().contains("chunked")
+    Some(value) => header_has_token(value, "chunked")
     None => false
   }
 
@@ -497,8 +519,10 @@ pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buf
 }
 
 pub impl Stream for ResponseStream with fn write(self : ResponseStream, buf : Buffer) -> Result[Int, NetError] {
-  let _ = self
   let _ = buf
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
   Err(NetError::WriteError("Response stream is read-only"))
 }
 
