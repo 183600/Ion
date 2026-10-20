@@ -259,13 +259,14 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
 }
 
 pub fn Url::to_string(self : Url) -> String {
+  let scheme = self.scheme.to_lower()
   let host_text = if self.host.contains(":") {
     "[" + self.host + "]"
   } else {
     self.host
   }
-  let host_port = if (self.scheme == "https" && self.port != 443) ||
-    (self.scheme == "http" && self.port != 80) {
+  let host_port = if (scheme == "https" && self.port != 443) ||
+    (scheme == "http" && self.port != 80) {
     host_text + ":" + self.port.to_string()
   } else {
     host_text

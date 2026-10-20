@@ -140,13 +140,14 @@ fn write_all(stream : &Stream, data : Bytes) -> Result[Unit, NetError] {
 }
 
 fn host_header_value(url : Url) -> String {
+  let scheme = url.scheme.to_lower()
   let host = if url.host.contains(":") {
     "[" + url.host + "]"
   } else {
     url.host
   }
-  if (url.scheme == "https" && url.port != 443) ||
-    (url.scheme == "http" && url.port != 80) {
+  if (scheme == "https" && url.port != 443) ||
+    (scheme == "http" && url.port != 80) {
     host + ":" + url.port.to_string()
   } else {
     host
