@@ -128,6 +128,8 @@ test "URL supports bracketed IPv6 literals" {
 test "URL rejects control characters" {
   assert_true(Url::parse("http://example.com/\r\nInjected: yes") is Err(_))
   assert_true(Url::parse("http://example.com/\u{0}") is Err(_))
+  assert_true(Url::parse("http://example.com/a b") is Err(_))
+  assert_true(Url::parse("http://example.com/a\tb") is Err(_))
 }
 
 ///|

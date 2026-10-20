@@ -124,7 +124,7 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
     return Err(InvalidUrl("Empty URL"))
   }
   for ch in url_str {
-    if ch == '\r' || ch == '\n' || ch == '\u{0}' {
+    if ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == '\u{0}' {
       return Err(InvalidUrl("Invalid URL characters"))
     }
   }
