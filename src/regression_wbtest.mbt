@@ -142,6 +142,8 @@ test "URL supports bracketed IPv6 literals" {
     "http://[1:2:3:4:5:6:7:8:9]/",
     "http://[::ffff:192.0.2.999]/",
     "http://[1:::2]/",
+    "http://[::1%25]/",
+    "http://[::1%]/",
   ] {
     assert_true(Url::parse(raw) is Err(_))
   }
@@ -1213,6 +1215,8 @@ test "request encoding rejects malformed Host ports and IPv6 literals" {
     "[1:2:3:4:5:6:7:8:9]",
     "[::ffff:192.0.2.999]",
     "[1:::2]",
+    "[::1%25]",
+    "[::1%]",
     "exa\"mple.com",
     "exa<mple.com",
     "exa>mple.com",

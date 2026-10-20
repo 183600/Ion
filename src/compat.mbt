@@ -191,7 +191,13 @@ fn is_ipv6_literal_with_zone(value : String) -> Bool {
       if index == 0 || index == value.length() - 1 {
         return false
       }
-      if !is_zone_id(value[index + 1:].to_owned()) {
+      let zone = value[index + 1:].to_owned()
+      let zone = if zone.has_prefix("25") {
+        zone[2:].to_owned()
+      } else {
+        zone
+      }
+      if !is_zone_id(zone) {
         return false
       }
       address = value[0:index].to_owned()
