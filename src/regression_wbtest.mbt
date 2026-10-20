@@ -1320,3 +1320,13 @@ test "replacing TLS configuration closes the old pool" {
   let _ = client.with_tls_config(TlsConfig::new("example.com"))
   assert_false(stream.is_open)
 }
+///|
+test "101 responses close the upgraded connection" {
+  let raw = "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n"
+  let stream = regression_mock_stream(raw, 0, 0)
+  let codec = H1Codec::new(stream)
+  let response = codec.decode_response().unwrap()
+  assert_eq(response.status, 101)
+  assert_eq(response.body.read(@buffer.new(size_hint=4)).unwrap(), 0)
+  assert_false(stream.is_open)
+}

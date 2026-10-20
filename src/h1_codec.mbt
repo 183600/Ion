@@ -743,7 +743,8 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
   // Responses to HEAD and 1xx/204/304 responses never carry a body.
   if self.head || self.status == 204 || self.status == 205 || self.status == 304 ||
     (self.status >= 100 && self.status < 200) {
-    if close_connection || close_by_default {
+    // A protocol switch cannot be reused for another HTTP request.
+    if self.status == 101 || close_connection || close_by_default {
       let _ = self.reader.stream.close()
     }
     return Ok(())
