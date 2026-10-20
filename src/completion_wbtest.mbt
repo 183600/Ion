@@ -50,3 +50,21 @@ test "request connection close prevents connection reuse" {
   assert_eq(response.read_body().unwrap(), b"ok")
   assert_false(stream.is_open)
 }
+
+///|
+test "client does not pool a connection requested to close" {
+  let raw = "HTTP/1.1 204 No Content\r\n\r\n"
+  let stream = regression_mock_stream(raw, 0, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new().with_follow_redirects(false),
+    redirect_count: 0,
+  }
+  let url = Url::parse("http://example.com/close").unwrap()
+  let request = Request::new(GET, url).with_header("Connection", "close")
+  let response = client.request(request).unwrap()
+  assert_eq(response.status, 204)
+  assert_false(stream.is_open)
+}
