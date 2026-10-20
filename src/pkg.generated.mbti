@@ -48,10 +48,12 @@ pub struct H1Codec {
   stream : &Stream
   reader : StreamReader
   mut last_is_head : Bool
+  max_body_bytes : Int32
 }
 pub fn H1Codec::decode_response(Self, head? : Bool) -> Result[Response, HttpError]
 pub fn H1Codec::encode_request(Self, Request) -> Result[Unit, HttpError]
 pub fn H1Codec::new(&Stream) -> Self
+pub fn H1Codec::new_with_limit(&Stream, Int32) -> Self
 
 pub struct Header {
   name : String
@@ -127,12 +129,18 @@ pub fn Request::with_header(Self, String, String) -> Self
 pub fn Request::with_timeout(Self, Int32) -> Self
 
 pub struct Response {
+  version : String
   status : Int32
   headers : Headers
   body : &Stream
 }
 pub fn Response::get_header(Self, String) -> String?
 pub fn Response::new(Int32, Headers, &Stream) -> Self
+pub fn Response::new_with_version(String, Int32, Headers, &Stream) -> Self
+pub fn Response::read_body(Self) -> Result[Bytes, HttpError]
+pub fn Response::text(Self) -> Result[String, HttpError]
+
+type ResponseHead
 
 type ResponseStream
 pub impl Stream for ResponseStream

@@ -3,10 +3,23 @@ pub struct H1Codec {
   stream : &Stream
   reader : StreamReader
   mut last_is_head : Bool
+  max_body_bytes : Int
 }
 
+const DEFAULT_MAX_BODY_BYTES : Int = 67108864
+
 pub fn H1Codec::new(stream : &Stream) -> H1Codec {
-  H1Codec::{ stream, reader: StreamReader::new(stream), last_is_head: false }
+  H1Codec::new_with_limit(stream, DEFAULT_MAX_BODY_BYTES)
+}
+
+pub fn H1Codec::new_with_limit(stream : &Stream, max_body_bytes : Int) -> H1Codec {
+  let limit = if max_body_bytes < 0 { 0 } else { max_body_bytes }
+  H1Codec::{
+    stream,
+    reader: StreamReader::new(stream),
+    last_is_head: false,
+    max_body_bytes: limit,
+  }
 }
 
 struct StreamReader {
@@ -85,11 +98,15 @@ fn StreamReader::read_exact(
 fn StreamReader::read_to_eof(
   self : StreamReader,
   output : Array[Byte],
+  max_bytes : Int,
 ) -> Result[Unit, NetError] {
   while true {
     if self.pending_offset < self.pending.length() {
       let mut i = self.pending_offset
       while i < self.pending.length() {
+        if output.length() >= max_bytes {
+          return Err(NetError::ReadError("response body too large"))
+        }
         output.push(self.pending[i])
         i = i + 1
       }
@@ -111,6 +128,9 @@ fn StreamReader::read_to_eof(
     let bytes = buf.to_bytes()
     let mut i = 0
     while i < bytes.length() {
+      if output.length() >= max_bytes {
+        return Err(NetError::ReadError("response body too large"))
+      }
       output.push(bytes[i])
       i = i + 1
     }
@@ -277,7 +297,14 @@ pub fn H1Codec::encode_request(self : H1Codec, req : Request) -> Result[Unit, Ht
   }
 }
 
-fn read_line(reader : StreamReader) -> Result[String?, NetError] {
+fn read_line(
+  reader : StreamReader,
+  max_bytes? : Int,
+) -> Result[String?, NetError] {
+  let limit = match max_bytes {
+    Some(value) => value
+    None => 8192
+  }
   let line = @buffer.new(size_hint=128)
   let mut any = false
   while true {
@@ -293,6 +320,9 @@ fn read_line(reader : StreamReader) -> Result[String?, NetError] {
     }
     any = true
     line.write_byte(byte)
+    if line.length() > limit {
+      return Err(NetError::ReadError("response line too long"))
+    }
     if byte == b'\n' {
       break
     }
@@ -309,27 +339,27 @@ fn read_line(reader : StreamReader) -> Result[String?, NetError] {
   Ok(Some(@utf8.decode_lossy(bytes.exact_view(start=0, end=end))))
 }
 
-/// Decode HTTP response from HTTP/1.1 format
-pub fn H1Codec::decode_response(
-  self : H1Codec,
-  head? : Bool,
-) -> Result[Response, HttpError] {
-  let is_head = match head {
-    Some(value) => value
-    None => self.last_is_head
-  }
-  // Read response line
-  let response_line = match read_line(self.reader) {
+struct ResponseHead {
+  version : String
+  status : Int
+  headers : Headers
+}
+
+const MAX_RESPONSE_HEADERS : Int = 200
+
+fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] {
+  let response_line = match read_line(reader) {
     Ok(Some(line)) => line
     Ok(None) => return Err(ProtocolError("Invalid response line"))
     Err(err) => return Err(NetworkError(err))
   }
-  if !response_line.has_prefix("HTTP/") {
-    return Err(ProtocolError("Invalid response line"))
-  }
   let first_space = match response_line.find(" ") {
     Some(index) => index
     None => return Err(ProtocolError("Invalid response line"))
+  }
+  let version = response_line.substring(start=0, end=first_space)
+  if version != "HTTP/1.1" && version != "HTTP/1.0" {
+    return Err(ProtocolError("Unsupported HTTP version"))
   }
   let mut status_start = first_space
   while status_start < response_line.length() &&
@@ -357,17 +387,24 @@ pub fn H1Codec::decode_response(
     return Err(ProtocolError("Invalid status code"))
   }
 
-  // Read headers
   let mut headers = Headers::new()
-
+  let mut header_count = 0
   while true {
-    let line = match read_line(self.reader) {
+    let line = match read_line(reader) {
       Ok(Some(line)) => line
       Ok(None) => return Err(ProtocolError("Unexpected end of response headers"))
       Err(err) => return Err(NetworkError(err))
     }
     if line.length() == 0 {
       break
+    }
+    // Obsolete line folding is ambiguous and must not be accepted.
+    if line.get_char(0) == Some(' ') || line.get_char(0) == Some('\t') {
+      return Err(ProtocolError("Invalid header format"))
+    }
+    header_count = header_count + 1
+    if header_count > MAX_RESPONSE_HEADERS {
+      return Err(ProtocolError("Too many response headers"))
     }
 
     let colon_idx = match line.find(":") {
@@ -387,28 +424,66 @@ pub fn H1Codec::decode_response(
     headers = headers.add(name, value)
   }
 
-  // Create a response stream that can read the body
-  let response_stream : &Stream = ResponseStream::{
-    reader: self.reader,
-    headers,
-    status,
-    head: is_head,
-    body: [],
-    offset: 0,
-    loaded: false,
-    error: None,
-    is_open: true,
-  }
+  Ok(ResponseHead::{ version, status, headers })
+}
 
-  Ok(Response::new(status, headers, response_stream))
+/// Decode HTTP response from HTTP/1.1 format
+pub fn H1Codec::decode_response(
+  self : H1Codec,
+  head? : Bool,
+) -> Result[Response, HttpError] {
+  let is_head = match head {
+    Some(value) => value
+    None => self.last_is_head
+  }
+  let mut informational_count = 0
+  while true {
+    let response_head = match read_response_head(self.reader) {
+      Ok(head) => head
+      Err(err) => return Err(err)
+    }
+    // Skip interim responses such as 100 Continue; 101 is a final response.
+    if response_head.status >= 100 && response_head.status < 200 &&
+      response_head.status != 101 {
+      informational_count = informational_count + 1
+      if informational_count > 8 {
+        return Err(ProtocolError("Too many informational responses"))
+      }
+      continue
+    }
+
+    let response_stream : &Stream = ResponseStream::{
+      reader: self.reader,
+      version: response_head.version,
+      headers: response_head.headers,
+      status: response_head.status,
+      head: is_head,
+      max_body_bytes: self.max_body_bytes,
+      body: [],
+      offset: 0,
+      loaded: false,
+      error: None,
+      is_open: true,
+    }
+
+    return Ok(Response::new_with_version(
+      response_head.version,
+      response_head.status,
+      response_head.headers,
+      response_stream,
+    ))
+  }
+  Err(ProtocolError("Invalid response"))
 }
 
 /// Response stream for reading HTTP response body
 struct ResponseStream {
   reader : StreamReader
+  version : String
   headers : Headers
   status : Int
   head : Bool
+  max_body_bytes : Int
   body : Array[Byte]
   mut offset : Int
   mut loaded : Bool
@@ -416,7 +491,11 @@ struct ResponseStream {
   mut is_open : Bool
 }
 
-fn read_chunked_body(reader : StreamReader, output : Array[Byte]) -> Result[Unit, NetError] {
+fn read_chunked_body(
+  reader : StreamReader,
+  output : Array[Byte],
+  max_bytes : Int,
+) -> Result[Unit, NetError] {
   while true {
     let line = match read_line(reader) {
       Ok(Some(line)) => line
@@ -452,6 +531,9 @@ fn read_chunked_body(reader : StreamReader, output : Array[Byte]) -> Result[Unit
         }
       }
       return Ok(())
+    }
+    if output.length() > max_bytes - size {
+      return Err(NetError::ReadError("response body too large"))
     }
     match reader.read_exact(size, output) {
       Ok(_) => ()
@@ -502,11 +584,16 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
     Some(value) => header_has_token(value, "close")
     None => false
   }
+  let keep_alive = match self.headers.get("Connection") {
+    Some(value) => header_has_token(value, "keep-alive")
+    None => false
+  }
+  let close_by_default = self.version == "HTTP/1.0" && !keep_alive
 
   // Responses to HEAD and 1xx/204/304 responses never carry a body.
   if self.head || self.status == 204 || self.status == 205 || self.status == 304 ||
     (self.status >= 100 && self.status < 200) {
-    if close_connection {
+    if close_connection || close_by_default {
       let _ = self.reader.stream.close()
     }
     return Ok(())
@@ -528,7 +615,7 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
 
   let mut close_after_load = false
   let result = if chunked {
-    read_chunked_body(self.reader, self.body)
+    read_chunked_body(self.reader, self.body, self.max_body_bytes)
   } else {
     match content_length {
       Some(value) => {
@@ -546,6 +633,12 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
         }
         match parsed {
           Some(length) => {
+            if length > self.max_body_bytes {
+              let err = NetError::ReadError("response body too large")
+              let _ = self.reader.stream.close()
+              self.error = Some(err)
+              return Err(err)
+            }
             self.reader.read_exact(length, self.body)
           }
           None => {
@@ -558,14 +651,14 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
       }
       None => {
         close_after_load = true
-        self.reader.read_to_eof(self.body)
+        self.reader.read_to_eof(self.body, self.max_body_bytes)
       }
     }
   }
 
   match result {
     Ok(_) => {
-      if close_after_load || close_connection {
+      if close_after_load || close_connection || close_by_default {
         let _ = self.reader.stream.close()
       }
       Ok(())

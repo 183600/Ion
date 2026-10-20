@@ -671,3 +671,77 @@ test "redirect method and body rules" {
   assert_eq(redirect_method(307, POST), (POST, true))
   assert_eq(redirect_method(308, PUT), (PUT, true))
 }
+
+///|
+test "interim 100 Continue responses are skipped" {
+  let raw = "HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+  let codec = H1Codec::new(regression_mock_stream(raw, 1, 0))
+  let response = codec.decode_response().unwrap()
+  assert_eq(response.status, 200)
+  assert_eq(response.version, "HTTP/1.1")
+  assert_eq(response.text().unwrap(), "ok")
+}
+
+///|
+test "unsupported HTTP versions are rejected" {
+  for version in ["HTTP/2.0", "HTTP/0.9", "HTTP/1.2"] {
+    let raw = version + " 200 OK\r\nContent-Length: 0\r\n\r\n"
+    let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+    assert_true(codec.decode_response() is Err(_))
+  }
+}
+
+///|
+test "obsolete folded response headers are rejected" {
+  let raw = "HTTP/1.1 200 OK\r\nX-Test: one\r\n two\r\nContent-Length: 0\r\n\r\n"
+  let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+  assert_true(codec.decode_response() is Err(_))
+}
+
+///|
+test "HTTP/1.0 closes by default but honors keep-alive" {
+  let closing = "HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\nok"
+  let close_stream = regression_mock_stream(closing, 1, 0)
+  let close_codec = H1Codec::new(close_stream)
+  let close_response = close_codec.decode_response().unwrap()
+  assert_eq(close_response.text().unwrap(), "ok")
+  assert_eq(close_stream.is_open, false)
+
+  let keeping = "HTTP/1.0 200 OK\r\nConnection: keep-alive\r\nContent-Length: 2\r\n\r\nok"
+  let keep_stream = regression_mock_stream(keeping, 1, 0)
+  let keep_codec = H1Codec::new(keep_stream)
+  let keep_response = keep_codec.decode_response().unwrap()
+  assert_eq(keep_response.text().unwrap(), "ok")
+  assert_eq(keep_stream.is_open, true)
+}
+
+///|
+test "response bodies are bounded by the configured limit" {
+  let fixed = "HTTP/1.1 200 OK\r\nContent-Length: 9\r\n\r\n123456789"
+  let fixed_codec = H1Codec::new_with_limit(regression_mock_stream(fixed, 0, 0), 8)
+  let fixed_response = fixed_codec.decode_response().unwrap()
+  assert_true(fixed_response.read_body() is Err(_))
+
+  let chunked = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n5\r\nworld\r\n0\r\n\r\n"
+  let chunked_codec = H1Codec::new_with_limit(regression_mock_stream(chunked, 1, 0), 9)
+  let chunked_response = chunked_codec.decode_response().unwrap()
+  assert_true(chunked_response.read_body() is Err(_))
+
+  let eof = "HTTP/1.1 200 OK\r\n\r\n123456789"
+  let eof_codec = H1Codec::new_with_limit(regression_mock_stream(eof, 1, 0), 8)
+  let eof_response = eof_codec.decode_response().unwrap()
+  assert_true(eof_response.read_body() is Err(_))
+}
+
+///|
+test "read_body and text consume the response stream" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"
+  let codec = H1Codec::new(regression_mock_stream(raw, 2, 0))
+  let response = codec.decode_response().unwrap()
+  assert_eq(response.read_body().unwrap(), b"hello")
+  assert_eq(response.read_body().unwrap(), b"")
+
+  let text_codec = H1Codec::new(regression_mock_stream(raw, 2, 0))
+  let text_response = text_codec.decode_response().unwrap()
+  assert_eq(text_response.text().unwrap(), "hello")
+}

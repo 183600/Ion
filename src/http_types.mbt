@@ -347,13 +347,45 @@ pub fn Request::get_header(self : Request, name : String) -> Option[String] {
 
 /// HTTP Response
 pub struct Response {
+  version : String
   status : Int
   headers : Headers
   body : &Stream // Stream for reading response body
 }
 
 pub fn Response::new(status : Int, headers : Headers, body : &Stream) -> Response {
-  Response::{ status, headers, body }
+  Response::{ version: "HTTP/1.1", status, headers, body }
+}
+
+pub fn Response::new_with_version(
+  version : String,
+  status : Int,
+  headers : Headers,
+  body : &Stream,
+) -> Response {
+  Response::{ version, status, headers, body }
+}
+
+/// Read the complete response body, enforcing the stream's own size limit.
+pub fn Response::read_body(self : Response) -> Result[Bytes, HttpError] {
+  let output = @buffer.new(size_hint=4096)
+  while true {
+    let chunk = @buffer.new(size_hint=4096)
+    match self.body.read(chunk) {
+      Ok(0) => break
+      Ok(_) => output.write_bytes(chunk.to_bytes())
+      Err(err) => return Err(NetworkError(err))
+    }
+  }
+  Ok(output.to_bytes())
+}
+
+/// Decode the complete response body as UTF-8 text.
+pub fn Response::text(self : Response) -> Result[String, HttpError] {
+  match self.read_body() {
+    Ok(body) => Ok(@utf8.decode_lossy(body[:]))
+    Err(err) => Err(err)
+  }
 }
 
 pub fn Response::get_header(self : Response, name : String) -> Option[String] {
