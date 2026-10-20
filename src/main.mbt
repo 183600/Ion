@@ -1,3 +1,11 @@
+#cfg(target="native")
+extern "C" fn os_exit(code : Int) -> Unit = "exit"
+
+#cfg(not(target="native"))
+fn os_exit(code : Int) -> Unit {
+  let _ = code
+}
+
 /// Command-line entry point for the Feather HTTP/HTTPS client.
 fn print_usage() -> Unit {
   println("Usage: feather <url>                    send a GET request")
@@ -22,32 +30,45 @@ fn print_response(response : Response) -> Unit {
   }
 }
 
-fn run_request(method : HttpMethod, url : String, body : String) -> Unit {
+fn run_request(method : HttpMethod, url : String, body : String) -> Bool {
   let client = UnifiedClient::new()
-  if method == GET && body.length() == 0 {
+  let succeeded = if method == GET && body.length() == 0 {
     match client.get(url) {
-      Ok(response) => print_response(response)
-      Err(err) => report(err)
-    }
-  } else {
-    let parsed_url = match Url::parse(url) {
-      Ok(parsed) => parsed
+      Ok(response) => {
+        print_response(response)
+        true
+      }
       Err(err) => {
         report(err)
-        let _ = client.close_all()
-        return
+        false
       }
     }
-    let mut request = Request::new(method, parsed_url)
-    if body.length() > 0 {
-      request = request.with_body(@utf8.encode(body))
-    }
-    match client.request(request) {
-      Ok(response) => print_response(response)
-      Err(err) => report(err)
+  } else {
+    match Url::parse(url) {
+      Ok(parsed_url) => {
+        let mut request = Request::new(method, parsed_url)
+        if body.length() > 0 {
+          request = request.with_body(@utf8.encode(body))
+        }
+        match client.request(request) {
+          Ok(response) => {
+            print_response(response)
+            true
+          }
+          Err(err) => {
+            report(err)
+            false
+          }
+        }
+      }
+      Err(err) => {
+        report(err)
+        false
+      }
     }
   }
   let _ = client.close_all()
+  succeeded
 }
 
 fn parse_cli_request(args : Array[String]) -> (String, String, String) {
@@ -72,7 +93,20 @@ fn parse_cli_request(args : Array[String]) -> (String, String, String) {
   (method, url, body)
 }
 
+fn wants_help(args : Array[String]) -> Bool {
+  let index = if args.length() > 0 { 1 } else { 0 }
+  if index >= args.length() {
+    return false
+  }
+  let first = args[index].to_lower()
+  first == "-h" || first == "--help" || first == "help"
+}
+
 fn main {
+  if wants_help(@env.args()) {
+    print_usage()
+    return
+  }
   let (method, parsed_url, body) = parse_cli_request(@env.args())
   let mut url = parsed_url
   if url.length() == 0 {
@@ -83,6 +117,7 @@ fn main {
   }
   if url.length() == 0 {
     print_usage()
+    os_exit(1)
     return
   }
   let verb = if method.length() == 0 {
@@ -92,9 +127,12 @@ fn main {
       Ok(verb) => verb
       Err(_) => {
         println("error: unsupported method '" + method + "'")
+        os_exit(1)
         return
       }
     }
   }
-  run_request(verb, url, body)
+  if !run_request(verb, url, body) {
+    os_exit(1)
+  }
 }
