@@ -72,7 +72,7 @@ pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpEr
 
 /// Close a connection and remove from pool
 pub fn Connector::close(self : Connector, url : Url) -> Result[Unit, HttpError] {
-  let conn_key = "{url.scheme}://{url.host}:{url.port}"
+  let conn_key = url.scheme + "://" + url.host + ":" + url.port.to_string()
 
   match self.connection_pool.get(conn_key) {
     Some(stream) => {
