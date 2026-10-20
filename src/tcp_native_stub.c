@@ -61,7 +61,8 @@ int32_t feather_tcp_connect(moonbit_bytes_t host, int32_t port, int32_t timeout_
   struct addrinfo *result = NULL;
   int gai = getaddrinfo(name, service, &hints, &result);
   if (gai != 0) {
-    return -(FEATHER_GAI_BASE + gai);
+    int code = gai < 0 ? -gai : gai;
+    return -(FEATHER_GAI_BASE + code);
   }
 
   int last_error = EHOSTUNREACH;
@@ -310,7 +311,8 @@ int32_t feather_tcp_resolve(moonbit_bytes_t host, moonbit_bytes_t output, int32_
   struct addrinfo *result = NULL;
   int gai = getaddrinfo(name, NULL, &hints, &result);
   if (gai != 0) {
-    return -(FEATHER_GAI_BASE + gai);
+    int code = gai < 0 ? -gai : gai;
+    return -(FEATHER_GAI_BASE + code);
   }
 
   char *buffer = (char *)output;

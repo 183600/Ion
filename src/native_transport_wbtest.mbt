@@ -25,3 +25,9 @@ test "native streams reject invalid targets without dialing" {
   let missing = NativeTcpStream::new("127.0.0.1", 1)
   assert_true(missing.read(Buffer()) is Err(Closed))
 }
+///|
+#cfg(target="native")
+test "native DNS failures are classified as invalid addresses" {
+  assert_true(native_tcp_address_error(10002) is InvalidAddress(_))
+  assert_true(native_tcp_address_error(10110) is InvalidAddress(_))
+}
