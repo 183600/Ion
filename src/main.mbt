@@ -1,8 +1,9 @@
 /// Command-line entry point for the Feather HTTP/HTTPS client.
 fn print_usage() -> Unit {
-  println("Usage: feather <url>             send a GET request")
-  println("       feather post <url> [body]  send a POST request")
-  println("       FEATHER_URL=<url> feather  send a GET request to FEATHER_URL")
+  println("Usage: feather <url>                    send a GET request")
+  println("       feather <method> <url> [body]    send a request with the given method")
+  println("       FEATHER_URL=<url> feather         send a GET request to FEATHER_URL")
+  println("Methods: get, post, put, delete, head, options, patch")
 }
 
 fn report(err : HttpError) -> Unit {
@@ -21,20 +22,30 @@ fn print_response(response : Response) -> Unit {
   }
 }
 
-fn run_get(url : String) -> Unit {
+fn run_request(method : HttpMethod, url : String, body : String) -> Unit {
   let client = UnifiedClient::new()
-  match client.get(url) {
-    Ok(response) => print_response(response)
-    Err(err) => report(err)
-  }
-  let _ = client.close_all()
-}
-
-fn run_post(url : String, body : String) -> Unit {
-  let client = UnifiedClient::new()
-  match client.post(url, @utf8.encode(body)) {
-    Ok(response) => print_response(response)
-    Err(err) => report(err)
+  if method == GET && body.length() == 0 {
+    match client.get(url) {
+      Ok(response) => print_response(response)
+      Err(err) => report(err)
+    }
+  } else {
+    let parsed_url = match Url::parse(url) {
+      Ok(parsed) => parsed
+      Err(err) => {
+        report(err)
+        let _ = client.close_all()
+        return
+      }
+    }
+    let mut request = Request::new(method, parsed_url)
+    if body.length() > 0 {
+      request = request.with_body(@utf8.encode(body))
+    }
+    match client.request(request) {
+      Ok(response) => print_response(response)
+      Err(err) => report(err)
+    }
   }
   let _ = client.close_all()
 }
@@ -74,9 +85,16 @@ fn main {
     print_usage()
     return
   }
-  if method == "post" {
-    run_post(url, body)
+  let verb = if method.length() == 0 {
+    GET
   } else {
-    run_get(url)
+    match HttpMethod::parse(method) {
+      Ok(verb) => verb
+      Err(_) => {
+        println("error: unsupported method '" + method + "'")
+        return
+      }
+    }
   }
+  run_request(verb, url, body)
 }

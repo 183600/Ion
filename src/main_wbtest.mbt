@@ -29,3 +29,20 @@ test "CLI handles the no-argument case" {
   assert_eq(url, "")
   assert_eq(body, "")
 }
+
+///|
+test "CLI methods map to their HTTP verbs" {
+  for (text, verb) in [
+    ("get", GET),
+    ("post", POST),
+    ("put", PUT),
+    ("delete", DELETE),
+    ("head", HEAD),
+    ("options", OPTIONS),
+    ("patch", PATCH),
+  ] {
+    assert_true(HttpMethod::parse(text) is Ok(_))
+    assert_eq(HttpMethod::parse(text).unwrap(), verb)
+  }
+  assert_true(HttpMethod::parse("brew") is Err(InvalidMethod(_)))
+}
