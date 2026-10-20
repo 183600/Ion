@@ -37,12 +37,10 @@ fn ConnectionLease::release(self : ConnectionLease, reusable : Bool) -> Unit {
     match self.stream.peer_addr() {
       Ok(_) => self.pool.val.idle.set(self.key, self.stream)
       Err(_) => {
-        let _ = self.pool.val.idle.remove(self.key)
         let _ = self.stream.close()
       }
     }
   } else {
-    let _ = self.pool.val.idle.remove(self.key)
     let _ = self.stream.close()
   }
 }
