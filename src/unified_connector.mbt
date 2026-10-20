@@ -43,8 +43,8 @@ pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpEr
   if scheme != "http" && scheme != "https" {
     return Err(InvalidUrl("Only http and https schemes supported"))
   }
-  if host.length() == 0 {
-    return Err(InvalidUrl("URL has no host"))
+  if !valid_tcp_host(host) {
+    return Err(InvalidUrl("Invalid host"))
   }
   if port < 1 || port > 65535 {
     return Err(InvalidUrl("Invalid port number"))

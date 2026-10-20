@@ -1014,6 +1014,9 @@ test "connector rejects invalid schemes, hosts, and ports" {
     connector.connect(Url::new("http", "", 80)) is Err(InvalidUrl(_)),
   )
   assert_true(
+    connector.connect(Url::new("http", "bad host", 80)) is Err(InvalidUrl(_)),
+  )
+  assert_true(
     connector.connect(Url::new("http", "example.com", 0)) is Err(InvalidUrl(_)),
   )
   assert_true(
