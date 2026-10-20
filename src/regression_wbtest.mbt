@@ -1108,6 +1108,40 @@ test "request encoding rejects duplicate or malformed Host headers" {
   )
 }
 ///|
+test "request encoding accepts bracketed IPv6 Host headers" {
+  let url = Url::parse("http://[::1]:8080/").unwrap()
+  let stream = regression_mock_stream("", 0, 0)
+  let codec = H1Codec::new(stream)
+  assert_true(
+    codec.encode_request(
+      Request::new(GET, url).with_header("Host", "[::1]:8080"),
+    ) is Ok(_),
+  )
+  assert_true(@utf8.decode(stream.output.to_bytes()[:]).contains("Host: [::1]:8080\r\n"))
+  let bare = H1Codec::new(regression_mock_stream("", 0, 0))
+  assert_true(
+    bare.encode_request(
+      Request::new(GET, url).with_header("Host", "[::1]"),
+    ) is Ok(_),
+  )
+  let automatic = regression_mock_stream("", 0, 0)
+  let automatic_codec = H1Codec::new(automatic)
+  assert_true(automatic_codec.encode_request(Request::new(GET, url)) is Ok(_))
+  assert_true(@utf8.decode(automatic.output.to_bytes()[:]).contains("Host: [::1]:8080\r\n"))
+}
+///|
+test "request encoding rejects malformed Host ports and IPv6 literals" {
+  let url = Url::parse("http://example.com/").unwrap()
+  for host in ["::1", "[::1", "::1]:80", "example.com:notaport", "example.com:70000", "[::1]:", ":80"] {
+    let codec = H1Codec::new(regression_mock_stream("", 0, 0))
+    assert_true(
+      codec.encode_request(
+        Request::new(GET, url).with_header("Host", host),
+      ) is Err(InvalidHeader(_)),
+    )
+  }
+}
+///|
 test "chunked trailers must be valid header fields" {
   for trailer in ["Bad Trailer: x", "X-Test: a\rb", ": value", "X-Test"] {
     let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n" +

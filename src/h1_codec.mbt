@@ -210,12 +210,20 @@ fn valid_request_target(value : String) -> Bool {
   true
 }
 
-fn valid_host(value : String) -> Bool {
-  if value.length() == 0 {
+fn valid_host_port(value : String) -> Bool {
+  if !is_decimal_digits(value) {
     return false
   }
-  if (value.contains("[") || value.contains("]")) &&
-    !(value.has_prefix("[") && value.has_suffix("]")) {
+  let port = try {
+    @string.parse_int(value[:])
+  } catch {
+    _ => return false
+  }
+  port >= 1 && port <= 65535
+}
+
+fn valid_host(value : String) -> Bool {
+  if value.length() == 0 {
     return false
   }
   for ch in value {
@@ -224,7 +232,35 @@ fn valid_host(value : String) -> Bool {
       return false
     }
   }
-  true
+  if value.has_prefix("[") {
+    let close = match value.find("]") {
+      Some(index) => index
+      None => return false
+    }
+    if close <= 1 {
+      return false
+    }
+    let rest = value[close + 1:]
+    if rest.length() == 0 {
+      return true
+    }
+    if !rest.has_prefix(":") {
+      return false
+    }
+    return valid_host_port(rest[1:].to_owned())
+  }
+  if value.contains("[") || value.contains("]") {
+    return false
+  }
+  match value.rev_find(":") {
+    Some(index) => {
+      if index == 0 || value[0:index].contains(":") {
+        return false
+      }
+      valid_host_port(value[index + 1:].to_owned())
+    }
+    None => true
+  }
 }
 
 fn header_has_token(value : String, token : String) -> Bool {
@@ -316,7 +352,7 @@ pub fn H1Codec::encode_request(self : H1Codec, req : Request) -> Result[Unit, Ht
   if !valid_request_target(target) {
     return Err(InvalidUrl("Invalid request target"))
   }
-  if !valid_host(req.url.host) {
+  if !valid_host(req.url.authority()) {
     return Err(InvalidUrl("Invalid host"))
   }
   let req_line = req.method.to_string() + " " + target + " HTTP/1.1\r\n"
