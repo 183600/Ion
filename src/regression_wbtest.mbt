@@ -862,6 +862,44 @@ test "request framing rejects ambiguous lengths" {
 }
 
 ///|
+test "TLS configuration is validated before use" {
+  assert_true(TlsConfig::new("example.com").validate() is Ok(_))
+  assert_true(TlsConfig::new("").validate() is Err(InvalidConfig(_)))
+  assert_true(TlsConfig::new("bad name").validate() is Err(InvalidConfig(_)))
+  assert_true(
+    TlsConfig::new("example.com").with_alpn(@list.List(["h2", ""])).validate() is
+    Err(InvalidConfig(_)),
+  )
+  assert_true(
+    TlsConfig::new("example.com")
+      .with_client_auth(ClientCert::new(b"", b"key"))
+      .validate() is Err(InvalidConfig(_)),
+  )
+  assert_true(
+    TlsConfig::new("example.com")
+      .with_client_auth(ClientCert::new(b"cert", b""))
+      .validate() is Err(InvalidConfig(_)),
+  )
+  let provider = MockTlsProvider::new("test")
+  assert_true(provider.new_client(TlsConfig::new("")) is Err(_))
+  assert_true(
+    provider.new_client(TlsConfig::new("example.com")) is Ok(_),
+  )
+}
+
+///|
+test "a mock TLS context cannot be connected twice" {
+  let provider = MockTlsProvider::new("test")
+  let ctx = provider.new_client(TlsConfig::new("example.com")).unwrap()
+  let first = TcpStream::new("example.com", 443)
+  assert_true(first.open() is Ok(_))
+  assert_true(ctx.connect(first) is Ok(_))
+  let second = TcpStream::new("example.com", 443)
+  assert_true(second.open() is Ok(_))
+  assert_true(ctx.connect(second) is Err(_))
+}
+
+///|
 test "HttpClient convenience methods cover HEAD, OPTIONS, and PATCH" {
   let body = regression_mock_stream("", 0, 0)
   let client = RegressionHttpClient::{ calls: 0, response_body: body }

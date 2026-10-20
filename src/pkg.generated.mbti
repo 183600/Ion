@@ -21,6 +21,7 @@ pub struct ClientCert {
   certificate : Bytes
   private_key : Bytes
 } derive(Eq, @debug.Debug)
+pub fn ClientCert::new(Bytes, Bytes) -> Self
 
 pub struct ClientOptions {
   user_agent : String
@@ -183,6 +184,7 @@ pub struct TlsConfig {
   key_log : &KeyLogSink?
 }
 pub fn TlsConfig::new(String) -> Self
+pub fn TlsConfig::validate(Self) -> Result[Unit, TlsError]
 pub fn TlsConfig::with_alpn(Self, @list.List[String]) -> Self
 pub fn TlsConfig::with_client_auth(Self, ClientCert) -> Self
 pub fn TlsConfig::with_key_log(Self, &KeyLogSink) -> Self

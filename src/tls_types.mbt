@@ -39,6 +39,10 @@ pub struct ClientCert {
   private_key : Bytes
 } derive(Eq, Debug)
 
+pub fn ClientCert::new(certificate : Bytes, private_key : Bytes) -> ClientCert {
+  ClientCert::{ certificate, private_key }
+}
+
 /// Key log sink for debugging
 pub trait KeyLogSink {
   fn log(Self, String, Bytes) -> Unit
@@ -89,4 +93,53 @@ pub fn TlsConfig::with_min_version(self : TlsConfig, min_version : TlsVersion) -
 
 pub fn TlsConfig::with_key_log(self : TlsConfig, key_log : &KeyLogSink) -> TlsConfig {
   TlsConfig::{ ..self, key_log: Some(key_log) }
+}
+
+fn valid_server_name(value : String) -> Bool {
+  if value.length() == 0 {
+    return false
+  }
+  for ch in value {
+    if ch <= ' ' || ch == '\u{7f}' || ch == '/' || ch == '\\' || ch == '@' ||
+      ch == ',' {
+      return false
+    }
+  }
+  true
+}
+
+fn valid_alpn_protocol(value : String) -> Bool {
+  if value.length() == 0 {
+    return false
+  }
+  for ch in value {
+    if ch <= ' ' || ch == '\u{7f}' || ch == ',' {
+      return false
+    }
+  }
+  true
+}
+
+/// Check configuration before a provider starts a handshake.
+pub fn TlsConfig::validate(self : TlsConfig) -> Result[Unit, TlsError] {
+  if !valid_server_name(self.server_name) {
+    return Err(InvalidConfig("Invalid TLS server name"))
+  }
+  for protocol in self.alpn {
+    if !valid_alpn_protocol(protocol) {
+      return Err(InvalidConfig("Invalid ALPN protocol"))
+    }
+  }
+  match self.client_auth {
+    Some(client) => {
+      if client.certificate.length() == 0 {
+        return Err(InvalidConfig("Client certificate is empty"))
+      }
+      if client.private_key.length() == 0 {
+        return Err(InvalidConfig("Client private key is empty"))
+      }
+    }
+    None => ()
+  }
+  Ok(())
 }
