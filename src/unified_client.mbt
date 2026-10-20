@@ -48,11 +48,21 @@ fn default_client_dialer(timeout_ms : Int) -> TcpDialer {
   TcpDialer::with_timeout(timeout_ms)
 }
 
+#cfg(target="native")
+fn default_client_tls_provider() -> OpenSslTlsProvider {
+  OpenSslTlsProvider::new()
+}
+
+#cfg(not(target="native"))
+fn default_client_tls_provider() -> MockTlsProvider {
+  MockTlsProvider::new("default")
+}
+
 /// Create a new UnifiedClient with default options
 pub fn UnifiedClient::new() -> UnifiedClient {
   let options = ClientOptions::new()
   let dialer = default_client_dialer(options.timeout_ms)
-  let tls_provider = MockTlsProvider::new("default")
+  let tls_provider = default_client_tls_provider()
   let connector = Connector::new(dialer, tls_provider).with_timeout(options.timeout_ms)
 
   UnifiedClient::{
@@ -65,7 +75,7 @@ pub fn UnifiedClient::new() -> UnifiedClient {
 /// Create a new UnifiedClient with custom options
 pub fn UnifiedClient::with_options(options : ClientOptions) -> UnifiedClient {
   let dialer = default_client_dialer(options.timeout_ms)
-  let tls_provider = MockTlsProvider::new("default")
+  let tls_provider = default_client_tls_provider()
   let connector = Connector::new(dialer, tls_provider).with_timeout(options.timeout_ms)
 
   UnifiedClient::{
