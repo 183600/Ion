@@ -1048,6 +1048,15 @@ test "relative redirect resolution" {
     resolve_redirect_url(base, "#frag").unwrap().to_string(),
     "http://example.com/a/b/c?old=1#frag",
   )
+  assert_eq(normalize_path_and_suffix("/."), "/")
+  assert_eq(normalize_path_and_suffix("/a/.."), "/")
+  assert_eq(normalize_path_and_suffix("//"), "//")
+  assert_eq(
+    resolve_redirect_url(Url::parse("http://example.com/").unwrap(), "..//")
+    .unwrap()
+    .to_string(),
+    "http://example.com//",
+  )
 }
 
 ///|

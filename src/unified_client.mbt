@@ -163,7 +163,7 @@ fn normalize_path_and_suffix(target : String) -> String {
     }
   }
   let joined = normalized.join("/")
-  let result = if joined.length() == 0 {
+  let result = if normalized.length() == 0 {
     "/"
   } else if trailing {
     "/" + joined + "/"
