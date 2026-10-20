@@ -638,7 +638,10 @@ pub fn Response::read_body_with_limit(
         }
         output.write_bytes(bytes)
       }
-      Err(err) => return Err(NetworkError(err))
+      Err(err) => {
+        let _ = self.body.close()
+        return Err(NetworkError(err))
+      }
     }
   }
   Ok(output.to_bytes())

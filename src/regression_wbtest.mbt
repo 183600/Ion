@@ -1764,6 +1764,47 @@ pub impl Stream for NoProgressStream with fn local_addr(self : NoProgressStream)
   Ok("mock:0")
 }
 
+struct ReadErrorStream {
+  mut is_open : Bool
+}
+
+pub impl Stream for ReadErrorStream with fn read(self : ReadErrorStream, buf : Buffer) -> Result[Int, NetError] {
+  let _ = self
+  let _ = buf
+  Err(NetError::ReadError("read failed"))
+}
+
+pub impl Stream for ReadErrorStream with fn write(self : ReadErrorStream, buf : Buffer) -> Result[Int, NetError] {
+  let _ = self
+  Ok(buf.length())
+}
+
+pub impl Stream for ReadErrorStream with fn flush(self : ReadErrorStream) -> Result[Unit, NetError] {
+  let _ = self
+  Ok(())
+}
+
+pub impl Stream for ReadErrorStream with fn close(self : ReadErrorStream) -> Result[Unit, NetError] {
+  self.is_open = false
+  Ok(())
+}
+
+pub impl Stream for ReadErrorStream with fn set_timeout(self : ReadErrorStream, timeout_ms : Int) -> Result[Unit, NetError] {
+  let _ = self
+  let _ = timeout_ms
+  Ok(())
+}
+
+pub impl Stream for ReadErrorStream with fn peer_addr(self : ReadErrorStream) -> Result[String, NetError] {
+  let _ = self
+  Ok("mock:0")
+}
+
+pub impl Stream for ReadErrorStream with fn local_addr(self : ReadErrorStream) -> Result[String, NetError] {
+  let _ = self
+  Ok("mock:0")
+}
+
 ///|
 test "streams reporting progress without data are rejected" {
   let stream = NoProgressStream::{ is_open: true }
@@ -1830,6 +1871,13 @@ test "exceeding an explicit body limit closes the response stream" {
 
   let stalled = Response::new(200, Headers::new(), NoProgressStream::{ is_open: true })
   assert_true(stalled.read_body_with_limit(4) is Err(NetworkError(ReadError(_))))
+}
+///|
+test "body read errors close the response stream" {
+  let stream = ReadErrorStream::{ is_open: true }
+  let response = Response::new(200, Headers::new(), stream)
+  assert_true(response.read_body_with_limit(4) is Err(NetworkError(ReadError(_))))
+  assert_false(stream.is_open)
 }
 ///|
 test "client option builders clamp negative limits" {
