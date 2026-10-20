@@ -455,6 +455,21 @@ test "conflicting Content-Length headers are rejected" {
 }
 
 ///|
+test "combined Content-Length values must agree" {
+  let combined = "HTTP/1.1 200 OK\r\nContent-Length: 5, 5\r\n\r\nhello"
+  let codec = H1Codec::new(regression_mock_stream(combined, 0, 0))
+  let response = codec.decode_response().unwrap()
+  assert_eq(response.text().unwrap(), "hello")
+
+  for value in ["5, 6", "5, nope", "5,"] {
+    let raw = "HTTP/1.1 200 OK\r\nContent-Length: " + value + "\r\n\r\nhello"
+    let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+    let response = codec.decode_response().unwrap()
+    assert_true(response.read_body() is Err(_))
+  }
+}
+
+///|
 test "invalid Content-Length error is sticky" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: nope\r\n\r\n"
   let stream = regression_mock_stream(raw, 1, 0)

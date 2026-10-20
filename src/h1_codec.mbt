@@ -743,25 +743,33 @@ fn response_is_chunked(headers : Headers) -> Result[Bool, NetError] {
   Ok(chunked_seen)
 }
 
-fn response_content_length(headers : Headers) -> Result[Option[String], NetError] {
-  let mut result : Option[String] = None
-  let mut conflict = false
+fn response_content_length(headers : Headers) -> Result[Option[Int], NetError] {
+  let mut result : Option[Int] = None
   for header in headers.iter() {
     if header.name.to_lower() == "content-length" {
-      let value = header.value.trim().to_owned()
-      match result {
-        None => result = Some(value)
-        Some(existing) => if existing != value {
-          conflict = true
+      for part in header.value.split(",") {
+        let value = part.trim().to_owned()
+        if !is_decimal_digits(value) {
+          return Err(NetError::ReadError("invalid Content-Length"))
+        }
+        let parsed = try {
+          @string.parse_int(value[:])
+        } catch {
+          _ => return Err(NetError::ReadError("invalid Content-Length"))
+        }
+        if parsed < 0 {
+          return Err(NetError::ReadError("invalid Content-Length"))
+        }
+        match result {
+          None => result = Some(parsed)
+          Some(existing) => if existing != parsed {
+            return Err(NetError::ReadError("conflicting Content-Length headers"))
+          }
         }
       }
     }
   }
-  if conflict {
-    Err(NetError::ReadError("conflicting Content-Length headers"))
-  } else {
-    Ok(result)
-  }
+  Ok(result)
 }
 
 fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
@@ -808,36 +816,14 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
     read_chunked_body(self.reader, self.body, self.max_body_bytes)
   } else {
     match content_length {
-      Some(value) => {
-        let length_text = value.trim().to_owned()
-        if !is_decimal_digits(length_text) {
-          let err = NetError::ReadError("invalid Content-Length")
+      Some(length) => {
+        if length > self.max_body_bytes {
+          let err = NetError::ReadError("response body too large")
           let _ = self.reader.stream.close()
           self.error = Some(err)
           return Err(err)
         }
-        let parsed = try {
-          Some(@string.parse_int(length_text[:]))
-        } catch {
-          _ => None
-        }
-        match parsed {
-          Some(length) => {
-            if length > self.max_body_bytes {
-              let err = NetError::ReadError("response body too large")
-              let _ = self.reader.stream.close()
-              self.error = Some(err)
-              return Err(err)
-            }
-            self.reader.read_exact(length, self.body)
-          }
-          None => {
-            let err = NetError::ReadError("invalid Content-Length")
-            let _ = self.reader.stream.close()
-            self.error = Some(err)
-            return Err(err)
-          }
-        }
+        self.reader.read_exact(length, self.body)
       }
       None => {
         close_after_load = true
