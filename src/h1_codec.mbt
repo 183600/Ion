@@ -160,12 +160,20 @@ fn write_all(stream : &Stream, data : Bytes) -> Result[Unit, NetError] {
   Ok(())
 }
 
+fn is_header_token_char(ch : Char) -> Bool {
+  (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+  (ch >= '0' && ch <= '9') || ch == '!' || ch == '#' || ch == '$' ||
+  ch == '%' || ch == '&' || ch == '\u{27}' || ch == '*' || ch == '+' ||
+  ch == '-' || ch == '.' || ch == '^' || ch == '_' || ch == '\u{60}' ||
+  ch == '|' || ch == '~'
+}
+
 fn valid_header_name(name : String) -> Bool {
   if name.length() == 0 {
     return false
   }
   for ch in name {
-    if ch <= ' ' || ch == '\u{7f}' || ch == ':' {
+    if !is_header_token_char(ch) {
       return false
     }
   }
@@ -214,6 +222,15 @@ fn header_has_token(value : String, token : String) -> Bool {
   let token = token.to_lower()
   for part in value.split(",") {
     if part.trim().to_string().to_lower() == token {
+      return true
+    }
+  }
+  false
+}
+
+fn headers_have_token(headers : Headers, name : String, token : String) -> Bool {
+  for value in headers.get_all(name) {
+    if header_has_token(value, token) {
       return true
     }
   }
@@ -499,7 +516,7 @@ fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] 
       None => return Err(ProtocolError("Invalid header format"))
     }
 
-    let name = line.substring(start=0, end=colon_idx).trim().to_string()
+    let name = line.substring(start=0, end=colon_idx)
     if !valid_header_name(name) {
       return Err(ProtocolError("Invalid header format"))
     }
@@ -667,14 +684,8 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
     }
   }
   self.loaded = true
-  let close_connection = match self.headers.get("Connection") {
-    Some(value) => header_has_token(value, "close")
-    None => false
-  }
-  let keep_alive = match self.headers.get("Connection") {
-    Some(value) => header_has_token(value, "keep-alive")
-    None => false
-  }
+  let close_connection = headers_have_token(self.headers, "Connection", "close")
+  let keep_alive = headers_have_token(self.headers, "Connection", "keep-alive")
   let close_by_default = self.version == "HTTP/1.0" && !keep_alive
 
   // Responses to HEAD and 1xx/204/304 responses never carry a body.
@@ -686,11 +697,7 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
     return Ok(())
   }
 
-  let transfer_encoding = self.headers.get("Transfer-Encoding")
-  let chunked = match transfer_encoding {
-    Some(value) => header_has_token(value, "chunked")
-    None => false
-  }
+  let chunked = headers_have_token(self.headers, "Transfer-Encoding", "chunked")
   let content_length = match response_content_length(self.headers) {
     Ok(value) => value
     Err(err) => {

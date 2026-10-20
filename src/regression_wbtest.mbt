@@ -1034,3 +1034,24 @@ test "opening an invalid TcpStream fails cleanly" {
   assert_true(stream.open() is Ok(_))
   assert_eq(stream.is_open, true)
 }
+///|
+test "header names must be valid HTTP tokens" {
+  for raw in [
+    "HTTP/1.1 200 OK\r\nX-Test : value\r\nContent-Length: 0\r\n\r\n",
+    "HTTP/1.1 200 OK\r\nX-T\u{e9}st: value\r\nContent-Length: 0\r\n\r\n",
+    "HTTP/1.1 200 OK\r\nX@Test: value\r\nContent-Length: 0\r\n\r\n",
+  ] {
+    let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+    assert_true(codec.decode_response() is Err(_))
+  }
+}
+
+///|
+test "connection tokens are detected across repeated headers" {
+  let raw = "HTTP/1.1 200 OK\r\nConnection: close\r\nConnection: keep-alive\r\nContent-Length: 2\r\n\r\nok"
+  let stream = regression_mock_stream(raw, 1, 0)
+  let codec = H1Codec::new(stream)
+  let response = codec.decode_response().unwrap()
+  assert_eq(response.text().unwrap(), "ok")
+  assert_eq(stream.is_open, false)
+}
