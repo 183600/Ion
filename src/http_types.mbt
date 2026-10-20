@@ -190,6 +190,39 @@ fn valid_encoded_url_chars(value : String) -> Bool {
   true
 }
 
+fn valid_userinfo_chars(value : String) -> Bool {
+  let mut index = 0
+  while index < value.length() {
+    let ch = match value.get_char(index) {
+      Some(ch) => ch
+      None => return false
+    }
+    if ch == '%' {
+      if index + 2 >= value.length() {
+        return false
+      }
+      let high = match value.get_char(index + 1) {
+        Some(ch) => ch
+        None => return false
+      }
+      let low = match value.get_char(index + 2) {
+        Some(ch) => ch
+        None => return false
+      }
+      if !is_hex_char(high) || !is_hex_char(low) {
+        return false
+      }
+      index = index + 3
+      continue
+    }
+    if !is_unreserved_char(ch) && !is_sub_delim_char(ch) && ch != ':' {
+      return false
+    }
+    index = index + 1
+  }
+  true
+}
+
 fn valid_url_host_chars(host : String) -> Bool {
   let mut index = 0
   while index < host.length() {
@@ -267,9 +300,15 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
     return Err(InvalidUrl("URL has no host"))
   }
 
-  // Ignore optional userinfo (user:password@host).
+  // Ignore optional userinfo (user:password@host), but reject malformed escapes.
   let host_port = match find_char(authority, '@') {
-    Some(index) => authority[index + 1:].to_owned()
+    Some(index) => {
+      let userinfo = authority[0:index].to_owned()
+      if !valid_userinfo_chars(userinfo) {
+        return Err(InvalidUrl("Invalid URL characters"))
+      }
+      authority[index + 1:].to_owned()
+    }
     None => authority
   }
   if host_port.length() == 0 {

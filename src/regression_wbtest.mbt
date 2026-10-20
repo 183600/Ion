@@ -1443,6 +1443,33 @@ test "URL rejects malformed percent escapes outside the host" {
 }
 
 ///|
+test "URL validates userinfo characters" {
+  for raw in [
+    "http://user%zz@example.com/",
+    "http://user%2@example.com/",
+    "http://user%@example.com/",
+    "http://user%2G@example.com/",
+    "http://us\\er@example.com/",
+    "http://us[er@example.com/",
+    "http://us]er@example.com/",
+    "http://us{er@example.com/",
+    "http://us|er@example.com/",
+    "http://us^er@example.com/",
+  ] {
+    assert_true(Url::parse(raw) is Err(_))
+  }
+  for raw in [
+    "http://user:pass@example.com/",
+    "http://user%40name@example.com/",
+    "http://user.name+tag@example.com/",
+    "http://user:@example.com/",
+    "http://@example.com/",
+  ] {
+    assert_true(Url::parse(raw) is Ok(_))
+  }
+}
+
+///|
 test "request encoding rejects malformed targets" {
   let url = Url::parse("http://example.com/").unwrap()
   for path in ["/a%zz", "/a\\b"] {
