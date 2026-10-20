@@ -34,7 +34,7 @@ pub fn TcpDialer::new() -> TcpDialer {
 }
 
 pub fn TcpDialer::with_timeout(timeout_ms : Int) -> TcpDialer {
-  TcpDialer::{ timeout_ms }
+  TcpDialer::{ timeout_ms: if timeout_ms < 0 { 0 } else { timeout_ms } }
 }
 
 pub impl Dialer for TcpDialer with fn dial_tcp(self : TcpDialer, host : String, port : Int) -> Result[&Stream, NetError] {

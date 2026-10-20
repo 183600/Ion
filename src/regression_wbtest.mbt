@@ -1261,3 +1261,12 @@ test "response body reads enforce an explicit limit" {
   let response = Response::new(200, Headers::new(), regression_mock_stream("hello", 4096, 4096))
   assert_eq(response.read_body_with_limit(5).unwrap(), b"hello")
 }
+///|
+test "client option builders clamp negative limits" {
+  let options = ClientOptions::new()
+    .with_timeout(-5)
+    .with_max_redirects(-3)
+  assert_eq(options.timeout_ms, 0)
+  assert_eq(options.max_redirects, 0)
+  assert_eq(TcpDialer::with_timeout(-1).timeout_ms, 0)
+}

@@ -27,7 +27,7 @@ pub fn ClientOptions::with_user_agent(self : ClientOptions, user_agent : String)
 }
 
 pub fn ClientOptions::with_timeout(self : ClientOptions, timeout_ms : Int) -> ClientOptions {
-  ClientOptions::{ ..self, timeout_ms }
+  ClientOptions::{ ..self, timeout_ms: if timeout_ms < 0 { 0 } else { timeout_ms } }
 }
 
 pub fn ClientOptions::with_follow_redirects(self : ClientOptions, follow_redirects : Bool) -> ClientOptions {
@@ -35,7 +35,7 @@ pub fn ClientOptions::with_follow_redirects(self : ClientOptions, follow_redirec
 }
 
 pub fn ClientOptions::with_max_redirects(self : ClientOptions, max_redirects : Int) -> ClientOptions {
-  ClientOptions::{ ..self, max_redirects }
+  ClientOptions::{ ..self, max_redirects: if max_redirects < 0 { 0 } else { max_redirects } }
 }
 
 #cfg(target="native")
