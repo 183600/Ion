@@ -474,6 +474,10 @@ pub fn Request::get_header(self : Request, name : String) -> Option[String] {
   self.headers.get(name)
 }
 
+pub fn Request::get_header_all(self : Request, name : String) -> List[String] {
+  self.headers.get_all(name)
+}
+
 /// HTTP Response
 pub struct Response {
   version : String
@@ -542,6 +546,10 @@ pub fn Response::text(self : Response) -> Result[String, HttpError] {
 
 pub fn Response::get_header(self : Response, name : String) -> Option[String] {
   self.headers.get(name)
+}
+
+pub fn Response::get_header_all(self : Response, name : String) -> List[String] {
+  self.headers.get_all(name)
 }
 
 pub fn Response::is_success(self : Response) -> Bool {

@@ -1356,3 +1356,14 @@ test "failed HEAD encoding does not change response framing" {
   let response = codec.decode_response().unwrap()
   assert_eq(response.text().unwrap(), "hello")
 }
+///|
+test "request and response expose repeated header values" {
+  let raw = "HTTP/1.1 200 OK\r\nSet-Cookie: a=1\r\nSet-Cookie: b=2\r\nContent-Length: 0\r\n\r\n"
+  let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+  let response = codec.decode_response().unwrap()
+  assert_eq(response.get_header_all("Set-Cookie"), @list.List(["a=1", "b=2"]))
+  let request = Request::new(GET, Url::parse("http://example.com/").unwrap())
+    .with_header("X-Test", "one")
+    .with_header("X-Test", "two")
+  assert_eq(request.get_header_all("x-test"), @list.List(["one", "two"]))
+}
