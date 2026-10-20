@@ -1167,3 +1167,49 @@ test "Request with_method changes only the verb" {
   assert_eq(request.get_header("X-Test").unwrap(), "yes")
   assert_eq(request.body.unwrap(), b"body")
 }
+struct NoProgressStream {
+  mut is_open : Bool
+}
+
+pub impl Stream for NoProgressStream with fn read(self : NoProgressStream, buf : Buffer) -> Result[Int, NetError] {
+  let _ = self
+  let _ = buf
+  Ok(1)
+}
+
+pub impl Stream for NoProgressStream with fn write(self : NoProgressStream, buf : Buffer) -> Result[Int, NetError] {
+  Ok(buf.length())
+}
+
+pub impl Stream for NoProgressStream with fn flush(self : NoProgressStream) -> Result[Unit, NetError] {
+  let _ = self
+  Ok(())
+}
+
+pub impl Stream for NoProgressStream with fn close(self : NoProgressStream) -> Result[Unit, NetError] {
+  self.is_open = false
+  Ok(())
+}
+
+pub impl Stream for NoProgressStream with fn set_timeout(self : NoProgressStream, timeout_ms : Int) -> Result[Unit, NetError] {
+  let _ = self
+  let _ = timeout_ms
+  Ok(())
+}
+
+pub impl Stream for NoProgressStream with fn peer_addr(self : NoProgressStream) -> Result[String, NetError] {
+  let _ = self
+  Ok("mock:0")
+}
+
+pub impl Stream for NoProgressStream with fn local_addr(self : NoProgressStream) -> Result[String, NetError] {
+  let _ = self
+  Ok("mock:0")
+}
+
+///|
+test "streams reporting progress without data are rejected" {
+  let stream = NoProgressStream::{ is_open: true }
+  let codec = H1Codec::new(stream)
+  assert_true(codec.decode_response() is Err(NetworkError(ReadError(_))))
+}

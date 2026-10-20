@@ -53,6 +53,9 @@ fn StreamReader::next_byte(self : StreamReader) -> Result[Byte?, NetError] {
     return Ok(None)
   }
   self.pending = buf.to_bytes()
+  if self.pending.length() == 0 {
+    return Err(NetError::ReadError("stream returned no data"))
+  }
   let byte = self.pending[0]
   self.pending_offset = 1
   Ok(Some(byte))
@@ -81,6 +84,9 @@ fn StreamReader::read_exact(
         return Err(NetError::ReadError("unexpected end of response body"))
       }
       self.pending = buf.to_bytes()
+      if self.pending.length() == 0 {
+        return Err(NetError::ReadError("stream returned no data"))
+      }
     }
     let available = self.pending.length() - self.pending_offset
     let take = if available < remaining { available } else { remaining }
@@ -126,6 +132,9 @@ fn StreamReader::read_to_eof(
       return Ok(())
     }
     let bytes = buf.to_bytes()
+    if bytes.length() == 0 {
+      return Err(NetError::ReadError("stream returned no data"))
+    }
     let mut i = 0
     while i < bytes.length() {
       if output.length() >= max_bytes {
