@@ -55,7 +55,8 @@ fn StreamReader::read_exact(
     if self.pending_offset >= self.pending.length() {
       self.pending = b""
       self.pending_offset = 0
-      let buf = @buffer.new(size_hint=remaining)
+      let hint = if remaining > 8192 { 8192 } else { remaining }
+      let buf = @buffer.new(size_hint=hint)
       let count = match self.stream.read(buf) {
         Ok(count) => count
         Err(err) => return Err(err)
