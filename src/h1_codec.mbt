@@ -218,7 +218,13 @@ fn header_has_token(value : String, token : String) -> Bool {
 /// Encode HTTP request to HTTP/1.1 format
 pub fn H1Codec::encode_request(self : H1Codec, req : Request) -> Result[Unit, HttpError] {
   self.last_is_head = req.method == HEAD
-  let path = if req.url.path.length() > 0 { req.url.path } else { "/" }
+  let path = if req.url.path.length() == 0 {
+    "/"
+  } else if req.url.path.has_prefix("/") {
+    req.url.path
+  } else {
+    "/" + req.url.path
+  }
   let target = if req.url.query.length() > 0 {
     path + "?" + req.url.query
   } else {
