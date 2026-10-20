@@ -1286,3 +1286,15 @@ test "form requests percent-encode fields" {
   let encoded = H1Codec::new(regression_mock_stream("", 0, 0))
   assert_true(encoded.encode_request(request) is Ok(_))
 }
+///|
+test "empty Location headers are not followed" {
+  let raw = "HTTP/1.1 302 Found\r\nLocation:   \r\nContent-Length: 0\r\n\r\n"
+  let stream = regression_mock_stream(raw, 4096, 4096)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+  let url = Url::parse("http://example.com/start").unwrap()
+  let response = client.request(Request::new(GET, url)).unwrap()
+  assert_eq(response.status, 302)
+  assert_eq(dialer.count, 1)
+}

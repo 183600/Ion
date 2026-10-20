@@ -298,6 +298,9 @@ fn UnifiedClient::do_request(self : UnifiedClient, req : Request) -> Result[Resp
     if location is None {
       return Ok(response) // No location header, can't redirect
     }
+    if location.unwrap().trim().length() == 0 {
+      return Ok(response)
+    }
 
     // Parse redirect URL
     let parsed_url = match resolve_redirect_url(request.url, location.unwrap()) {
