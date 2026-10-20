@@ -232,7 +232,7 @@ fn do_request(self : UnifiedClient, req : Request) -> Result[Response, HttpError
   }
 
   // Decode response
-  let response = match codec.decode_response() {
+  let response = match codec.decode_response(head=request.method == HEAD) {
     Ok(response) => response
     Err(err) => {
       let _ = self.connector.close(request.url)

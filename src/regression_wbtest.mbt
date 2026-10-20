@@ -23,8 +23,11 @@ pub impl Stream for MockStream with fn read(self : MockStream, buf : Buffer) -> 
     return Err(NetError::Closed)
   }
   let available = self.input.length() - self.offset
-  let read_limit = if self.max_read > 0 { self.max_read } else { 1 }
-  let limit = if read_limit < available { read_limit } else { available }
+  let limit = if self.max_read > 0 && self.max_read < available {
+    self.max_read
+  } else {
+    available
+  }
   let mut i = 0
   while i < limit {
     buf.write_byte(self.input[self.offset + i])
@@ -195,6 +198,18 @@ test "response body decodes chunked encoding" {
 }
 
 ///|
+test "response decoding survives large read chunks" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhelloNEXT"
+  let stream = mock_stream(raw, 0, 0)
+  let codec = H1Codec::new(stream)
+  let response = codec.decode_response().unwrap()
+  let buf = @buffer.new(size_hint=16)
+  assert_eq(response.body.read(buf).unwrap(), 5)
+  assert_eq(buf.to_bytes(), @utf8.encode("hello"))
+  assert_eq(stream.offset, raw.length())
+}
+
+///|
 test "invalid Content-Length error is sticky" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: nope\r\n\r\n"
   let stream = mock_stream(raw, 1, 0)
@@ -224,6 +239,36 @@ test "HEAD response has no body" {
   let buf = @buffer.new(size_hint=8)
   assert_eq(response.body.read(buf).unwrap(), 0)
   assert_eq(stream.offset, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n".length())
+}
+
+struct MockDialer {
+  stream : &Stream
+}
+
+pub impl Dialer for MockDialer with fn dial_tcp(self : MockDialer, host : String, port : Int) -> Result[&Stream, NetError] {
+  let _ = host
+  let _ = port
+  Ok(self.stream)
+}
+
+pub impl Dialer for MockDialer with fn resolve(self : MockDialer, host : String) -> Result[List[String], NetError] {
+  let _ = self
+  Ok(@list.List([host]))
+}
+
+///|
+test "HEAD response body is not consumed" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhelloNEXT"
+  let stream = mock_stream(raw, 0, 0)
+  let dialer = MockDialer::{ stream }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let options = ClientOptions::new().with_follow_redirects(false)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let url = Url::parse("http://example.com/head").unwrap()
+  let response = client.request(Request::new(HEAD, url)).unwrap()
+  assert_eq(response.status, 200)
+  let buf = @buffer.new(size_hint=8)
+  assert_eq(response.body.read(buf).unwrap(), 0)
 }
 
 ///|

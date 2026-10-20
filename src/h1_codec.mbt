@@ -1,10 +1,110 @@
 /// HTTP/1.1 codec for encoding requests and decoding responses
 pub struct H1Codec {
   stream : &Stream
+  reader : StreamReader
 }
 
 pub fn H1Codec::new(stream : &Stream) -> H1Codec {
-  H1Codec::{ stream }
+  H1Codec::{ stream, reader: StreamReader::new(stream) }
+}
+
+struct StreamReader {
+  stream : &Stream
+  mut pending : Bytes
+  mut pending_offset : Int
+}
+
+fn StreamReader::new(stream : &Stream) -> StreamReader {
+  StreamReader::{ stream, pending: b"", pending_offset: 0 }
+}
+
+fn StreamReader::next_byte(self : StreamReader) -> Result[Byte?, NetError] {
+  if self.pending_offset < self.pending.length() {
+    let byte = self.pending[self.pending_offset]
+    self.pending_offset = self.pending_offset + 1
+    return Ok(Some(byte))
+  }
+
+  self.pending = b""
+  self.pending_offset = 0
+  let buf = @buffer.new(size_hint=4096)
+  let count = match self.stream.read(buf) {
+    Ok(count) => count
+    Err(err) => return Err(err)
+  }
+  if count == 0 {
+    return Ok(None)
+  }
+  self.pending = buf.to_bytes()
+  let byte = self.pending[0]
+  self.pending_offset = 1
+  Ok(Some(byte))
+}
+
+fn StreamReader::read_exact(
+  self : StreamReader,
+  length : Int,
+  output : Array[Byte],
+) -> Result[Unit, NetError] {
+  let mut remaining = length
+  while remaining > 0 {
+    if self.pending_offset >= self.pending.length() {
+      self.pending = b""
+      self.pending_offset = 0
+      let buf = @buffer.new(size_hint=remaining)
+      let count = match self.stream.read(buf) {
+        Ok(count) => count
+        Err(err) => return Err(err)
+      }
+      if count == 0 {
+        return Err(NetError::ReadError("unexpected end of response body"))
+      }
+      self.pending = buf.to_bytes()
+    }
+    let available = self.pending.length() - self.pending_offset
+    let take = if available < remaining { available } else { remaining }
+    let mut i = 0
+    while i < take {
+      output.push(self.pending[self.pending_offset + i])
+      i = i + 1
+    }
+    self.pending_offset = self.pending_offset + take
+    remaining = remaining - take
+  }
+  Ok(())
+}
+
+fn StreamReader::read_to_eof(
+  self : StreamReader,
+  output : Array[Byte],
+) -> Result[Unit, NetError] {
+  while true {
+    if self.pending_offset < self.pending.length() {
+      let mut i = self.pending_offset
+      while i < self.pending.length() {
+        output.push(self.pending[i])
+        i = i + 1
+      }
+      self.pending = b""
+      self.pending_offset = 0
+      continue
+    }
+    let buf = @buffer.new(size_hint=4096)
+    let count = match self.stream.read(buf) {
+      Ok(count) => count
+      Err(err) => return Err(err)
+    }
+    if count == 0 {
+      return Ok(())
+    }
+    let bytes = buf.to_bytes()
+    let mut i = 0
+    while i < bytes.length() {
+      output.push(bytes[i])
+      i = i + 1
+    }
+  }
+  Ok(())
 }
 
 fn write_all(stream : &Stream, data : Bytes) -> Result[Unit, NetError] {
@@ -103,26 +203,21 @@ pub fn H1Codec::encode_request(self : H1Codec, req : Request) -> Result[Unit, Ht
   }
 
   // Flush the stream
-  match self.stream.flush() {
+  match self.reader.stream.flush() {
     Ok(_) => Ok(())
     Err(err) => Err(NetworkError(err))
   }
 }
 
-fn read_stream_line(stream : &Stream) -> Result[String, NetError] {
+fn read_line(reader : StreamReader) -> Result[String, NetError] {
   let mut line = ""
   while true {
-    let buf = @buffer.new(size_hint=1)
-    let read_result = stream.read(buf)
-    let bytes_read = match read_result {
-      Ok(count) => count
+    let byte = match reader.next_byte() {
+      Ok(Some(byte)) => byte
+      Ok(None) => break
       Err(err) => return Err(err)
     }
-    if bytes_read == 0 {
-      break
-    }
-    let bytes = buf.to_bytes()
-    let ch = bytes[0].to_char()
+    let ch = byte.to_char()
     line += ch.to_string()
     if ch == '\n' {
       break
@@ -141,7 +236,7 @@ pub fn H1Codec::decode_response(
   head? : Bool = false,
 ) -> Result[Response, HttpError] {
   // Read response line
-  let response_line = match read_stream_line(self.stream) {
+  let response_line = match read_line(self.reader) {
     Ok(line) => line
     Err(err) => return Err(NetworkError(err))
   }
@@ -164,7 +259,7 @@ pub fn H1Codec::decode_response(
   let mut headers = Headers::new()
 
   while true {
-    let line = match read_stream_line(self.stream) {
+    let line = match read_line(self.reader) {
       Ok(line) => line
       Err(err) => return Err(NetworkError(err))
     }
@@ -185,7 +280,7 @@ pub fn H1Codec::decode_response(
 
   // Create a response stream that can read the body
   let response_stream : &Stream = ResponseStream::{
-    stream: self.stream,
+    reader: self.reader,
     headers,
     status,
     head,
@@ -200,7 +295,7 @@ pub fn H1Codec::decode_response(
 
 /// Response stream for reading HTTP response body
 struct ResponseStream {
-  stream : &Stream
+  reader : StreamReader
   headers : Headers
   status : Int
   head : Bool
@@ -210,56 +305,9 @@ struct ResponseStream {
   mut error : NetError?
 }
 
-fn append_exact(
-  stream : &Stream,
-  length : Int,
-  output : Array[Byte],
-) -> Result[Unit, NetError] {
-  let mut remaining = length
-  while remaining > 0 {
-    let buf = @buffer.new(size_hint=remaining)
-    let count = match stream.read(buf) {
-      Ok(count) => count
-      Err(err) => return Err(err)
-    }
-    if count == 0 {
-      return Err(NetError::ReadError("unexpected end of response body"))
-    }
-    let bytes = buf.to_bytes()
-    let take = if count < remaining { count } else { remaining }
-    let mut i = 0
-    while i < take {
-      output.push(bytes[i])
-      i = i + 1
-    }
-    remaining = remaining - take
-  }
-  Ok(())
-}
-
-fn read_until_eof(stream : &Stream, output : Array[Byte]) -> Result[Unit, NetError] {
+fn read_chunked_body(reader : StreamReader, output : Array[Byte]) -> Result[Unit, NetError] {
   while true {
-    let buf = @buffer.new(size_hint=4096)
-    let count = match stream.read(buf) {
-      Ok(count) => count
-      Err(err) => return Err(err)
-    }
-    if count == 0 {
-      return Ok(())
-    }
-    let bytes = buf.to_bytes()
-    let mut i = 0
-    while i < count {
-      output.push(bytes[i])
-      i = i + 1
-    }
-  }
-  Ok(())
-}
-
-fn read_chunked_body(stream : &Stream, output : Array[Byte]) -> Result[Unit, NetError] {
-  while true {
-    let line = match read_stream_line(stream) {
+    let line = match read_line(reader) {
       Ok(line) => line
       Err(err) => return Err(err)
     }
@@ -282,7 +330,7 @@ fn read_chunked_body(stream : &Stream, output : Array[Byte]) -> Result[Unit, Net
     if size == 0 {
       // Consume optional trailers until the final empty line.
       while true {
-        let trailer = match read_stream_line(stream) {
+        let trailer = match read_line(reader) {
           Ok(trailer) => trailer
           Err(err) => return Err(err)
         }
@@ -292,12 +340,12 @@ fn read_chunked_body(stream : &Stream, output : Array[Byte]) -> Result[Unit, Net
       }
       return Ok(())
     }
-    match append_exact(stream, size, output) {
+    match reader.read_exact(size, output) {
       Ok(_) => ()
       Err(err) => return Err(err)
     }
     let terminator : Array[Byte] = []
-    match append_exact(stream, 2, terminator) {
+    match reader.read_exact(2, terminator) {
       Ok(_) => ()
       Err(err) => return Err(err)
     }
@@ -330,7 +378,7 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
   }
 
   let result = if chunked {
-    read_chunked_body(self.stream, self.body)
+    read_chunked_body(self.reader, self.body)
   } else {
     match self.headers.get("Content-Length") {
       Some(value) => {
@@ -346,7 +394,7 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
               self.error = Some(err)
               return Err(err)
             }
-            append_exact(self.stream, length, self.body)
+            self.reader.read_exact(length, self.body)
           }
           None => {
             let err = NetError::ReadError("invalid Content-Length")
@@ -355,7 +403,7 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
           }
         }
       }
-      None => read_until_eof(self.stream, self.body)
+      None => self.reader.read_to_eof(self.body)
     }
   }
 
@@ -395,21 +443,21 @@ pub impl Stream for ResponseStream with fn write(self : ResponseStream, buf : Bu
 }
 
 pub impl Stream for ResponseStream with fn flush(self : ResponseStream) -> Result[Unit, NetError] {
-  self.stream.flush()
+  self.reader.stream.flush()
 }
 
 pub impl Stream for ResponseStream with fn close(self : ResponseStream) -> Result[Unit, NetError] {
-  self.stream.close()
+  self.reader.stream.close()
 }
 
 pub impl Stream for ResponseStream with fn set_timeout(self : ResponseStream, timeout_ms : Int) -> Result[Unit, NetError] {
-  self.stream.set_timeout(timeout_ms)
+  self.reader.stream.set_timeout(timeout_ms)
 }
 
 pub impl Stream for ResponseStream with fn peer_addr(self : ResponseStream) -> Result[String, NetError] {
-  self.stream.peer_addr()
+  self.reader.stream.peer_addr()
 }
 
 pub impl Stream for ResponseStream with fn local_addr(self : ResponseStream) -> Result[String, NetError] {
-  self.stream.local_addr()
+  self.reader.stream.local_addr()
 }
