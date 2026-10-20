@@ -100,6 +100,7 @@ pub enum HttpMethod {
   OPTIONS
   PATCH
 } derive(Eq, @debug.Debug)
+pub fn HttpMethod::parse(String) -> Result[Self, HttpError]
 pub fn HttpMethod::to_string(Self) -> String
 
 pub struct MockTlsClientCtx {
@@ -135,6 +136,7 @@ pub fn Request::get_header(Self, String) -> String?
 pub fn Request::new(HttpMethod, Url) -> Self
 pub fn Request::with_body(Self, Bytes) -> Self
 pub fn Request::with_header(Self, String, String) -> Self
+pub fn Request::with_method(Self, HttpMethod) -> Self
 pub fn Request::with_timeout(Self, Int32) -> Self
 
 pub struct Response {
@@ -251,6 +253,9 @@ pub fn Url::origin(Self) -> String
 pub fn Url::parse(String) -> Result[Self, HttpError]
 pub fn Url::request_target(Self) -> String
 pub fn Url::to_string(Self) -> String
+pub fn Url::with_fragment(Self, String) -> Self
+pub fn Url::with_path(Self, String) -> Self
+pub fn Url::with_query(Self, String) -> Self
 
 pub enum VerifyMode {
   Strict

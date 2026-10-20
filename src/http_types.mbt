@@ -22,6 +22,19 @@ pub enum HttpMethod {
   PATCH
 } derive(Eq, Debug)
 
+pub fn HttpMethod::parse(value : String) -> Result[HttpMethod, HttpError] {
+  match value.to_upper() {
+    "GET" => Ok(GET)
+    "POST" => Ok(POST)
+    "PUT" => Ok(PUT)
+    "DELETE" => Ok(DELETE)
+    "HEAD" => Ok(HEAD)
+    "OPTIONS" => Ok(OPTIONS)
+    "PATCH" => Ok(PATCH)
+    _ => Err(InvalidMethod(value))
+  }
+}
+
 pub fn HttpMethod::to_string(method : HttpMethod) -> String {
   match method {
     GET => "GET"
@@ -338,6 +351,18 @@ pub fn Url::request_target(self : Url) -> String {
   }
 }
 
+pub fn Url::with_path(self : Url, path : String) -> Url {
+  Url::{ ..self, path }
+}
+
+pub fn Url::with_query(self : Url, query : String) -> Url {
+  Url::{ ..self, query }
+}
+
+pub fn Url::with_fragment(self : Url, fragment : String) -> Url {
+  Url::{ ..self, fragment }
+}
+
 pub fn Url::to_string(self : Url) -> String {
   let base = self.origin() + self.request_target()
   if self.fragment.length() > 0 {
@@ -364,6 +389,10 @@ pub fn Request::new(method : HttpMethod, url : Url) -> Request {
     body: None,
     timeout_ms: 30000,
   }
+}
+
+pub fn Request::with_method(self : Request, verb : HttpMethod) -> Request {
+  Request::{ ..self, method: verb }
 }
 
 pub fn Request::with_header(self : Request, name : String, value : String) -> Request {

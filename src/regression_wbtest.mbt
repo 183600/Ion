@@ -1134,3 +1134,36 @@ test "redirect origin comparison ignores host case" {
   let next_index = wire.find("GET /next HTTP/1.1").unwrap()
   assert_true(wire.substring(start=next_index).contains("Authorization: Bearer token"))
 }
+///|
+test "HTTP method parsing accepts standard verbs" {
+  for verb in ["GET", "post", "Put", "DELETE", "HEAD", "OPTIONS", "PATCH"] {
+    assert_true(HttpMethod::parse(verb) is Ok(_))
+  }
+  assert_eq(HttpMethod::parse("get").unwrap(), GET)
+  assert_true(HttpMethod::parse("BREW") is Err(InvalidMethod(_)))
+  assert_true(HttpMethod::parse("") is Err(InvalidMethod(_)))
+}
+
+///|
+test "URL builders update individual components" {
+  let url = Url::parse("https://example.com/old?x=1#frag").unwrap()
+  let updated = url
+    .with_path("/new")
+    .with_query("y=2")
+    .with_fragment("other")
+  assert_eq(updated.to_string(), "https://example.com/new?y=2#other")
+  let cleared = updated.with_query("").with_fragment("")
+  assert_eq(cleared.to_string(), "https://example.com/new")
+}
+
+///|
+test "Request with_method changes only the verb" {
+  let url = Url::parse("http://example.com/").unwrap()
+  let request = Request::new(GET, url)
+    .with_header("X-Test", "yes")
+    .with_method(POST)
+    .with_body(b"body")
+  assert_eq(request.method, POST)
+  assert_eq(request.get_header("X-Test").unwrap(), "yes")
+  assert_eq(request.body.unwrap(), b"body")
+}
