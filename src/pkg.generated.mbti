@@ -65,10 +65,14 @@ pub struct Headers {
   headers : @list.List[Header]
 } derive(Eq, @debug.Debug)
 pub fn Headers::add(Self, String, String) -> Self
+pub fn Headers::contains(Self, String) -> Bool
 pub fn Headers::get(Self, String) -> String?
+pub fn Headers::get_all(Self, String) -> @list.List[String]
 pub fn Headers::iter(Self) -> Iter[Header]
+pub fn Headers::length(Self) -> Int32
 pub fn Headers::new() -> Self
 pub fn Headers::remove(Self, String) -> Self
+pub fn Headers::set(Self, String, String) -> Self
 
 pub enum HttpError {
   NetworkError(NetError)

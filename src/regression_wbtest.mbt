@@ -745,3 +745,86 @@ test "read_body and text consume the response stream" {
   let text_response = text_codec.decode_response().unwrap()
   assert_eq(text_response.text().unwrap(), "hello")
 }
+
+///|
+test "headers expose all values in insertion order" {
+  let headers = Headers::new()
+    .add("X-Test", "one")
+    .add("x-test", "two")
+    .add("Other", "value")
+  assert_eq(headers.get_all("X-Test"), @list.List(["one", "two"]))
+  assert_true(headers.contains("x-TEST"))
+  assert_eq(headers.length(), 3)
+  let replaced = headers.set("X-Test", "three")
+  assert_eq(replaced.get_all("x-test"), @list.List(["three"]))
+  assert_eq(replaced.get("other").unwrap(), "value")
+}
+
+///|
+test "request encoding supports chunked bodies" {
+  let stream = regression_mock_stream("", 0, 2)
+  let codec = H1Codec::new(stream)
+  let url = Url::parse("http://example.com/upload").unwrap()
+  let request = Request::new(POST, url)
+    .with_header("Transfer-Encoding", "chunked")
+    .with_body(@utf8.encode("hello"))
+  assert_true(codec.encode_request(request) is Ok(_))
+  let expected = @utf8.encode(
+    "POST /upload HTTP/1.1\r\nHost: example.com\r\nUser-Agent: Feather/0.1.0\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n",
+  )
+  assert_eq(stream.output.to_bytes(), expected)
+}
+
+///|
+test "empty chunked request still terminates the body" {
+  let stream = regression_mock_stream("", 0, 0)
+  let codec = H1Codec::new(stream)
+  let url = Url::parse("http://example.com/upload").unwrap()
+  let request = Request::new(POST, url).with_header("Transfer-Encoding", "chunked")
+  assert_true(codec.encode_request(request) is Ok(_))
+  assert_true(
+    @utf8.decode(stream.output.to_bytes()[:]).has_suffix("\r\n\r\n0\r\n\r\n"),
+  )
+}
+
+///|
+test "request framing rejects ambiguous lengths" {
+  let url = Url::parse("http://example.com/").unwrap()
+  let mismatch = H1Codec::new(regression_mock_stream("", 0, 0))
+  assert_true(
+    mismatch.encode_request(
+      Request::new(POST, url)
+        .with_header("Content-Length", "3")
+        .with_body(@utf8.encode("hello")),
+    ) is Err(InvalidHeader(_)),
+  )
+
+  let both = H1Codec::new(regression_mock_stream("", 0, 0))
+  assert_true(
+    both.encode_request(
+      Request::new(POST, url)
+        .with_header("Content-Length", "5")
+        .with_header("Transfer-Encoding", "chunked")
+        .with_body(@utf8.encode("hello")),
+    ) is Err(InvalidHeader(_)),
+  )
+
+  let duplicate = H1Codec::new(regression_mock_stream("", 0, 0))
+  assert_true(
+    duplicate.encode_request(
+      Request::new(POST, url)
+        .with_header("Content-Length", "5")
+        .with_header("Content-Length", "5")
+        .with_body(@utf8.encode("hello")),
+    ) is Err(InvalidHeader(_)),
+  )
+
+  let unsupported = H1Codec::new(regression_mock_stream("", 0, 0))
+  assert_true(
+    unsupported.encode_request(
+      Request::new(POST, url)
+        .with_header("Transfer-Encoding", "gzip")
+        .with_body(@utf8.encode("hello")),
+    ) is Err(InvalidHeader(_)),
+  )
+}

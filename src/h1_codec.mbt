@@ -220,6 +220,72 @@ fn header_has_token(value : String, token : String) -> Bool {
   false
 }
 
+fn request_content_length(headers : Headers) -> Result[Option[Int], HttpError] {
+  let values = headers.get_all("Content-Length")
+  if values.length() == 0 {
+    return Ok(None)
+  }
+  if values.length() > 1 {
+    return Err(InvalidHeader("Content-Length"))
+  }
+  let text = values.nth(0).unwrap().trim().to_string()
+  if !is_decimal_digits(text) {
+    return Err(InvalidHeader("Content-Length"))
+  }
+  let length = try {
+    @string.parse_int(text[:])
+  } catch {
+    _ => return Err(InvalidHeader("Content-Length"))
+  }
+  if length < 0 {
+    return Err(InvalidHeader("Content-Length"))
+  }
+  Ok(Some(length))
+}
+
+fn request_is_chunked(headers : Headers) -> Result[Bool, HttpError] {
+  let values = headers.get_all("Transfer-Encoding")
+  if values.length() == 0 {
+    return Ok(false)
+  }
+  if values.length() > 1 {
+    return Err(InvalidHeader("Transfer-Encoding"))
+  }
+  let mut final_token = ""
+  let mut seen = false
+  for part in values.nth(0).unwrap().split(",") {
+    let token = part.trim().to_string().to_lower()
+    if token.length() == 0 {
+      return Err(InvalidHeader("Transfer-Encoding"))
+    }
+    final_token = token
+    seen = true
+  }
+  if !seen || final_token != "chunked" {
+    return Err(InvalidHeader("Transfer-Encoding"))
+  }
+  Ok(true)
+}
+
+fn write_chunked_body(stream : &Stream, body : Bytes) -> Result[Unit, NetError] {
+  if body.length() > 0 {
+    let size_line = body.length().to_string(radix=16) + "\r\n"
+    match write_all(stream, @utf8.encode(size_line)) {
+      Ok(_) => ()
+      Err(err) => return Err(err)
+    }
+    match write_all(stream, body) {
+      Ok(_) => ()
+      Err(err) => return Err(err)
+    }
+    match write_all(stream, @utf8.encode("\r\n")) {
+      Ok(_) => ()
+      Err(err) => return Err(err)
+    }
+  }
+  write_all(stream, @utf8.encode("0\r\n\r\n"))
+}
+
 /// Encode HTTP request to HTTP/1.1 format
 pub fn H1Codec::encode_request(self : H1Codec, req : Request) -> Result[Unit, HttpError] {
   self.last_is_head = req.method == HEAD
@@ -238,29 +304,44 @@ pub fn H1Codec::encode_request(self : H1Codec, req : Request) -> Result[Unit, Ht
     }
   }
 
-  // Build headers
-  let mut headers_str = ""
-
-  // Add Host header if not present
-  let has_host = req.headers.get("Host") is Some(_)
-  if !has_host {
-    headers_str += "Host: " + req.url.authority() + "\r\n"
+  let content_length = match request_content_length(req.headers) {
+    Ok(value) => value
+    Err(err) => return Err(err)
+  }
+  let chunked = match request_is_chunked(req.headers) {
+    Ok(value) => value
+    Err(err) => return Err(err)
+  }
+  if content_length is Some(_) && chunked {
+    return Err(InvalidHeader("Transfer-Encoding"))
   }
 
-  // Add Content-Length if body is present and the caller did not set it.
-  match req.body {
-    Some(body) => {
-      let has_content_length = req.headers.get("Content-Length") is Some(_)
-      if !has_content_length {
-        headers_str += "Content-Length: " + body.length().to_string() + "\r\n"
-      }
+  let body_length = match req.body {
+    Some(body) => body.length()
+    None => 0
+  }
+  match content_length {
+    Some(declared) => if declared != body_length {
+      return Err(InvalidHeader("Content-Length"))
     }
     None => ()
   }
 
+  // Build headers
+  let mut headers_str = ""
+
+  // Add Host header if not present
+  if !req.headers.contains("Host") {
+    headers_str += "Host: " + req.url.authority() + "\r\n"
+  }
+
+  // Add Content-Length when the caller did not choose a framing mode.
+  if req.body is Some(_) && content_length is None && !chunked {
+    headers_str += "Content-Length: " + body_length.to_string() + "\r\n"
+  }
+
   // Add User-Agent if not present
-  let has_user_agent = req.headers.get("User-Agent") is Some(_)
-  if !has_user_agent {
+  if !req.headers.contains("User-Agent") {
     headers_str += "User-Agent: Feather/0.1.0\r\n"
   }
 
@@ -279,15 +360,21 @@ pub fn H1Codec::encode_request(self : H1Codec, req : Request) -> Result[Unit, Ht
     Err(err) => return Err(NetworkError(err))
   }
 
-  // Write body if present
-  match req.body {
-    Some(body) => {
-      match write_all(self.stream, body) {
-        Ok(_) => ()
-        Err(err) => return Err(NetworkError(err))
-      }
+  // Write body using the selected framing
+  let body_result = if chunked {
+    match req.body {
+      Some(body) => write_chunked_body(self.stream, body)
+      None => write_chunked_body(self.stream, b"")
     }
-    None => ()
+  } else {
+    match req.body {
+      Some(body) => write_all(self.stream, body)
+      None => Ok(())
+    }
+  }
+  match body_result {
+    Ok(_) => ()
+    Err(err) => return Err(NetworkError(err))
   }
 
   // Flush the stream

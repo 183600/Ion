@@ -62,6 +62,27 @@ pub fn Headers::get(self : Headers, name : String) -> Option[String] {
   self.headers.find(fn(h) { h.name.to_lower() == lower_name }).map(fn(h) { h.value })
 }
 
+/// All values for a header in insertion order.
+pub fn Headers::get_all(self : Headers, name : String) -> List[String] {
+  let lower_name = name.to_lower()
+  let mut values = @list.List([])
+  for header in self.headers.iter() {
+    if header.name.to_lower() == lower_name {
+      values = values.prepend(header.value)
+    }
+  }
+  values
+}
+
+pub fn Headers::contains(self : Headers, name : String) -> Bool {
+  self.get(name) is Some(_)
+}
+
+/// Replace every existing value for a header with a single value.
+pub fn Headers::set(self : Headers, name : String, value : String) -> Headers {
+  self.remove(name).add(name, value)
+}
+
 pub fn Headers::remove(self : Headers, name : String) -> Headers {
   let lower_name = name.to_lower()
   Headers::{ headers: self.headers.filter(fn(h) { h.name.to_lower() != lower_name }) }
@@ -69,6 +90,10 @@ pub fn Headers::remove(self : Headers, name : String) -> Headers {
 
 pub fn Headers::iter(self : Headers) -> Iter[Header] {
   self.headers.iter()
+}
+
+pub fn Headers::length(self : Headers) -> Int {
+  self.headers.length()
 }
 
 /// URL structure
