@@ -9,6 +9,8 @@ import {
 }
 
 // Values
+pub fn decode_content_encoding(String, Bytes, Int32) -> Result[Bytes, HttpError]
+
 pub fn default_client() -> UnifiedClient
 
 pub fn default_dialer() -> TcpDialer
@@ -17,12 +19,18 @@ pub fn default_tls_provider() -> MockTlsProvider
 
 pub fn get(String) -> Result[Response, HttpError]
 
+pub fn gunzip(Bytes, Int32) -> Result[Bytes, HttpError]
+
+pub fn inflate(Bytes, Int32) -> Result[Bytes, HttpError]
+
 pub fn post(String, Bytes) -> Result[Response, HttpError]
 
 // Errors
 
 // Types and methods
 type ActiveConnection
+
+type BitReader
 
 type ChunkReadState
 
@@ -122,6 +130,8 @@ pub enum HttpMethod {
 pub fn HttpMethod::parse(String) -> Result[Self, HttpError]
 pub fn HttpMethod::to_string(Self) -> String
 
+type Huffman
+
 pub struct MockTlsClientCtx {
   config : TlsConfig
   mut is_connected : Bool
@@ -179,6 +189,7 @@ pub fn Response::is_success(Self) -> Bool
 pub fn Response::new(Int32, Headers, &Stream) -> Self
 pub fn Response::new_with_version(String, Int32, Headers, &Stream) -> Self
 pub fn Response::read_body(Self) -> Result[Bytes, HttpError]
+pub fn Response::read_body_decoded(Self) -> Result[Bytes, HttpError]
 pub fn Response::read_body_with_limit(Self, Int32) -> Result[Bytes, HttpError]
 pub fn Response::text(Self) -> Result[String, HttpError]
 

@@ -301,6 +301,12 @@ fn UnifiedClient::do_request_once(
     request = request.with_header("User-Agent", self.options.user_agent)
   }
 
+  // Advertise the compression schemes we can decode. The body is decoded
+  // transparently by Response::read_body_decoded / text.
+  if request.get_header("Accept-Encoding") is None {
+    request = request.with_header("Accept-Encoding", "gzip, deflate")
+  }
+
   // Encode and send request
   match codec.encode_request(request) {
     Ok(_) => ()
