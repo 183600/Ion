@@ -1055,3 +1055,21 @@ test "connection tokens are detected across repeated headers" {
   assert_eq(response.text().unwrap(), "ok")
   assert_eq(stream.is_open, false)
 }
+///|
+test "URL rejects unsafe host characters" {
+  for raw in [
+    "http://exa\\mple.com/",
+    "http://exa\"mple.com/",
+    "http://exa<mple.com/",
+    "http://exa>mple.com/",
+    "http://exa^mple.com/",
+    "http://exa{mple.com/",
+    "http://exa|mple.com/",
+    "http://exa}mple.com/",
+    "http://exa,mple.com/",
+  ] {
+    assert_true(Url::parse(raw) is Err(_))
+  }
+  assert_true(Url::parse("http://exa_mple.example/") is Ok(_))
+  assert_true(Url::parse("http://[2001:db8::1]/") is Ok(_))
+}

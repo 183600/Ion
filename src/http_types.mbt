@@ -144,6 +144,18 @@ fn find_first_delimiter(str : String) -> Int? {
   None
 }
 
+fn valid_url_host_chars(host : String) -> Bool {
+  for ch in host {
+    if ch <= ' ' || ch == '\u{7f}' || ch == '/' || ch == '?' || ch == '#' ||
+      ch == '@' || ch == '[' || ch == ']' || ch == '\\' || ch == '"' ||
+      ch == '<' || ch == '>' || ch == '^' || ch == '\u{60}' || ch == '{' ||
+      ch == '|' || ch == '}' || ch == ',' {
+      return false
+    }
+  }
+  true
+}
+
 pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
   if url_str.length() == 0 {
     return Err(InvalidUrl("Empty URL"))
@@ -225,7 +237,7 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
   if host.length() == 0 {
     return Err(InvalidUrl("URL has no host"))
   }
-  if host.contains("@") {
+  if host.contains("@") || !valid_url_host_chars(host) {
     return Err(InvalidUrl("Invalid host"))
   }
   if !bracketed && (host.contains(":") || host.contains("[") || host.contains("]")) {
