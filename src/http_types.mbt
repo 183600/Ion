@@ -403,6 +403,52 @@ pub fn Request::with_header(self : Request, name : String, value : String) -> Re
   Request::{ ..self, headers: self.headers.add(name, value) }
 }
 
+fn is_form_unreserved(byte : Byte) -> Bool {
+  (byte >= b'a' && byte <= b'z') || (byte >= b'A' && byte <= b'Z') ||
+  (byte >= b'0' && byte <= b'9') || byte == b'-' || byte == b'.' ||
+  byte == b'_' || byte == b'~'
+}
+
+fn form_encode_component(value : String) -> String {
+  let hex : Array[Byte] = [
+    b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'A', b'B',
+    b'C', b'D', b'E', b'F',
+  ]
+  let output = Buffer(size_hint=value.length())
+  for byte in @utf8.encode(value) {
+    if is_form_unreserved(byte) {
+      output.write_byte(byte)
+    } else if byte == b' ' {
+      output.write_byte(b'+')
+    } else {
+      let code = byte.to_int()
+      output.write_byte(b'%')
+      output.write_byte(hex[(code >> 4) & 0xF])
+      output.write_byte(hex[code & 0xF])
+    }
+  }
+  @utf8.decode_lossy(output.to_bytes()[:])
+}
+
+/// Encode fields as an application/x-www-form-urlencoded request body.
+pub fn Request::with_form(self : Request, fields : Array[(String, String)]) -> Request {
+  let body = Buffer(size_hint=256)
+  let mut first = true
+  for field in fields {
+    let (name, value) = field
+    if !first {
+      body.write_byte(b'&')
+    }
+    first = false
+    body.write_bytes(@utf8.encode(form_encode_component(name)))
+    body.write_byte(b'=')
+    body.write_bytes(@utf8.encode(form_encode_component(value)))
+  }
+  self
+    .with_header("Content-Type", "application/x-www-form-urlencoded")
+    .with_body(body.to_bytes())
+}
+
 pub fn Request::with_basic_auth(self : Request, username : String, password : String) -> Request {
   let encoded = @base64.encode(@utf8.encode(username + ":" + password))
   Request::{ ..self, headers: self.headers.set("Authorization", "Basic " + encoded) }

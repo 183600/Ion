@@ -1270,3 +1270,19 @@ test "client option builders clamp negative limits" {
   assert_eq(options.max_redirects, 0)
   assert_eq(TcpDialer::with_timeout(-1).timeout_ms, 0)
 }
+///|
+test "form requests percent-encode fields" {
+  let url = Url::parse("https://example.com/submit").unwrap()
+  let request = Request::new(POST, url).with_form([
+    ("q", "hello world"),
+    ("symbols", "a+b&c=d/é"),
+    ("empty", ""),
+  ])
+  assert_eq(request.get_header("Content-Type").unwrap(), "application/x-www-form-urlencoded")
+  assert_eq(
+    @utf8.decode(request.body.unwrap()[:]),
+    "q=hello+world&symbols=a%2Bb%26c%3Dd%2F%C3%A9&empty=",
+  )
+  let encoded = H1Codec::new(regression_mock_stream("", 0, 0))
+  assert_true(encoded.encode_request(request) is Ok(_))
+}
