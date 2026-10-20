@@ -1,0 +1,27 @@
+///|
+#cfg(target="native")
+test "native TLS provider validates configuration before connecting" {
+  let provider = OpenSslTlsProvider::new()
+  assert_true(provider.new_client(TlsConfig::new("")) is Err(InvalidConfig(_)))
+  assert_true(provider.new_client(TlsConfig::new("example.com")) is Ok(_))
+}
+
+///|
+#cfg(target="native")
+test "native dialer resolves local hostnames" {
+  let dialer = NativeTcpDialer::new()
+  let addresses = dialer.resolve("localhost").unwrap()
+  assert_true(addresses.length() > 0)
+  assert_true(dialer.resolve("bad host") is Err(InvalidAddress(_)))
+}
+
+///|
+#cfg(target="native")
+test "native streams reject invalid targets without dialing" {
+  let invalid_host = NativeTcpStream::new("bad host", 80)
+  assert_true(invalid_host.open() is Err(InvalidAddress(_)))
+  let invalid_port = NativeTcpStream::new("127.0.0.1", 0)
+  assert_true(invalid_port.open() is Err(InvalidAddress(_)))
+  let missing = NativeTcpStream::new("127.0.0.1", 1)
+  assert_true(missing.read(Buffer()) is Err(Closed))
+}
