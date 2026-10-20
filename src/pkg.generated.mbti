@@ -1,0 +1,271 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "feather"
+
+import {
+  "moonbitlang/core/buffer",
+  "moonbitlang/core/debug",
+  "moonbitlang/core/list",
+}
+
+// Values
+pub fn default_client() -> UnifiedClient
+
+pub fn default_dialer() -> TcpDialer
+
+pub fn default_tls_provider() -> MockTlsProvider
+
+// Errors
+
+// Types and methods
+pub struct ClientCert {
+  certificate : Bytes
+  private_key : Bytes
+} derive(Eq, @debug.Debug)
+
+pub struct ClientOptions {
+  user_agent : String
+  timeout_ms : Int32
+  follow_redirects : Bool
+  max_redirects : Int32
+} derive(Eq, @debug.Debug)
+pub fn ClientOptions::new() -> Self
+pub fn ClientOptions::with_follow_redirects(Self, Bool) -> Self
+pub fn ClientOptions::with_max_redirects(Self, Int32) -> Self
+pub fn ClientOptions::with_timeout(Self, Int32) -> Self
+pub fn ClientOptions::with_user_agent(Self, String) -> Self
+
+pub struct Connector {
+  dialer : &Dialer
+  tls_provider : &TlsProvider
+  mut connection_pool : Map[String, &Stream]
+}
+pub fn Connector::close(Self, Url) -> Result[Unit, HttpError]
+pub fn Connector::close_all(Self) -> Result[Unit, HttpError]
+pub fn Connector::connect(Self, Url) -> Result[&Stream, HttpError]
+pub fn Connector::new(&Dialer, &TlsProvider) -> Self
+
+pub struct H1Codec {
+  stream : &Stream
+  reader : StreamReader
+  mut last_is_head : Bool
+}
+pub fn H1Codec::decode_response(Self, head? : Bool) -> Result[Response, HttpError]
+pub fn H1Codec::encode_request(Self, Request) -> Result[Unit, HttpError]
+pub fn H1Codec::new(&Stream) -> Self
+
+pub struct Header {
+  name : String
+  value : String
+} derive(Eq, @debug.Debug)
+pub fn Header::new(String, String) -> Self
+
+pub struct Headers {
+  headers : @list.List[Header]
+} derive(Eq, @debug.Debug)
+pub fn Headers::add(Self, String, String) -> Self
+pub fn Headers::get(Self, String) -> String?
+pub fn Headers::iter(Self) -> Iter[Header]
+pub fn Headers::new() -> Self
+pub fn Headers::remove(Self, String) -> Self
+
+pub enum HttpError {
+  NetworkError(NetError)
+  TlsError(TlsError)
+  InvalidUrl(String)
+  InvalidMethod(String)
+  InvalidHeader(String)
+  Timeout
+  ConnectionClosed
+  ProtocolError(String)
+  RedirectLimitExceeded
+} derive(Eq, @debug.Debug)
+
+pub enum HttpMethod {
+  GET
+  POST
+  PUT
+  DELETE
+  HEAD
+  OPTIONS
+  PATCH
+} derive(Eq, @debug.Debug)
+pub fn HttpMethod::to_string(Self) -> String
+
+pub struct MockTlsClientCtx {
+  config : TlsConfig
+  mut is_connected : Bool
+}
+pub impl TlsClientCtx for MockTlsClientCtx
+
+pub struct MockTlsProvider {
+  name : String
+} derive(Eq, @debug.Debug)
+pub fn MockTlsProvider::new(String) -> Self
+pub impl TlsProvider for MockTlsProvider
+
+pub enum NetError {
+  ConnectionFailed(String)
+  ReadError(String)
+  WriteError(String)
+  Timeout
+  Closed
+  InvalidAddress(String)
+  IoError(String)
+} derive(Eq, @debug.Debug)
+
+pub struct Request {
+  method : HttpMethod
+  url : Url
+  headers : Headers
+  body : Bytes?
+  timeout_ms : Int32
+} derive(Eq, @debug.Debug)
+pub fn Request::get_header(Self, String) -> String?
+pub fn Request::new(HttpMethod, Url) -> Self
+pub fn Request::with_body(Self, Bytes) -> Self
+pub fn Request::with_header(Self, String, String) -> Self
+pub fn Request::with_timeout(Self, Int32) -> Self
+
+pub struct Response {
+  status : Int32
+  headers : Headers
+  body : &Stream
+}
+pub fn Response::get_header(Self, String) -> String?
+pub fn Response::new(Int32, Headers, &Stream) -> Self
+
+type ResponseStream
+pub impl Stream for ResponseStream
+
+pub struct RootStore {
+  certificates : @list.List[Bytes]
+} derive(Eq, @debug.Debug)
+pub fn RootStore::add_certificate(Self, Bytes) -> Self
+pub fn RootStore::new() -> Self
+
+type StreamReader
+
+pub struct TcpDialer {
+  timeout_ms : Int32
+} derive(Eq, @debug.Debug)
+pub fn TcpDialer::new() -> Self
+pub fn TcpDialer::with_timeout(Int32) -> Self
+pub impl Dialer for TcpDialer
+
+pub struct TcpStream {
+  host : String
+  port : Int32
+  mut is_open : Bool
+} derive(Eq, @debug.Debug)
+pub fn TcpStream::new(String, Int32) -> Self
+pub fn TcpStream::open(Self) -> Result[Self, NetError]
+pub impl Stream for TcpStream
+
+pub struct TlsConfig {
+  server_name : String
+  alpn : @list.List[String]
+  root_store : RootStore
+  client_auth : ClientCert?
+  verify : VerifyMode
+  min_version : TlsVersion
+  key_log : &KeyLogSink?
+}
+pub fn TlsConfig::new(String) -> Self
+pub fn TlsConfig::with_alpn(Self, @list.List[String]) -> Self
+pub fn TlsConfig::with_client_auth(Self, ClientCert) -> Self
+pub fn TlsConfig::with_key_log(Self, &KeyLogSink) -> Self
+pub fn TlsConfig::with_min_version(Self, TlsVersion) -> Self
+pub fn TlsConfig::with_root_store(Self, RootStore) -> Self
+pub fn TlsConfig::with_verify_mode(Self, VerifyMode) -> Self
+
+pub enum TlsError {
+  HandshakeFailed(String)
+  CertificateValidationFailed(String)
+  ProtocolError(String)
+  InvalidConfig(String)
+  IoError(String)
+  ConnectionClosed
+} derive(Eq, @debug.Debug)
+
+pub struct TlsStream {
+  underlying : &Stream
+  config : TlsConfig
+  mut is_open : Bool
+}
+pub impl Stream for TlsStream
+
+pub enum TlsVersion {
+  Tls1_2
+  Tls1_3
+} derive(Eq, @debug.Debug)
+
+pub struct UnifiedClient {
+  connector : Connector
+  options : ClientOptions
+  mut redirect_count : Int32
+}
+pub fn UnifiedClient::close(Self) -> Result[Unit, HttpError]
+pub fn UnifiedClient::delete(Self, String) -> Result[Response, HttpError]
+pub fn UnifiedClient::get(Self, String) -> Result[Response, HttpError]
+pub fn UnifiedClient::new() -> Self
+pub fn UnifiedClient::post(Self, String, Bytes) -> Result[Response, HttpError]
+pub fn UnifiedClient::put(Self, String, Bytes) -> Result[Response, HttpError]
+pub fn UnifiedClient::with_options(ClientOptions) -> Self
+pub impl HttpClient for UnifiedClient
+
+pub struct Url {
+  scheme : String
+  host : String
+  port : Int32
+  path : String
+  query : String
+  fragment : String
+} derive(Eq, @debug.Debug)
+pub fn Url::new(String, String, Int32) -> Self
+pub fn Url::parse(String) -> Result[Self, HttpError]
+pub fn Url::to_string(Self) -> String
+
+pub enum VerifyMode {
+  Strict
+  SkipVerification
+} derive(Eq, @debug.Debug)
+
+// Type aliases
+pub using @list {type List}
+
+// Traits
+pub trait Dialer {
+  fn dial_tcp(Self, String, Int32) -> Result[&Stream, NetError]
+  fn resolve(Self, String) -> Result[@list.List[String], NetError]
+}
+
+pub trait HttpClient {
+  fn request(Self, Request) -> Result[Response, HttpError]
+}
+pub fn &HttpClient::delete(Self, String) -> Result[Response, HttpError]
+pub fn &HttpClient::get(Self, String) -> Result[Response, HttpError]
+pub fn &HttpClient::post(Self, String, Bytes) -> Result[Response, HttpError]
+pub fn &HttpClient::put(Self, String, Bytes) -> Result[Response, HttpError]
+
+pub trait KeyLogSink {
+  fn log(Self, String, Bytes) -> Unit
+}
+
+pub trait Stream {
+  fn read(Self, @buffer.Buffer) -> Result[Int32, NetError]
+  fn write(Self, @buffer.Buffer) -> Result[Int32, NetError]
+  fn flush(Self) -> Result[Unit, NetError]
+  fn close(Self) -> Result[Unit, NetError]
+  fn set_timeout(Self, Int32) -> Result[Unit, NetError]
+  fn peer_addr(Self) -> Result[String, NetError]
+  fn local_addr(Self) -> Result[String, NetError]
+}
+
+pub trait TlsClientCtx {
+  fn connect(Self, &Stream) -> Result[&Stream, TlsError]
+  fn server_name(Self) -> String
+}
+
+pub trait TlsProvider {
+  fn new_client(Self, TlsConfig) -> Result[&TlsClientCtx, TlsError]
+}
