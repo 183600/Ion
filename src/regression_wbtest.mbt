@@ -1249,6 +1249,16 @@ test "chunked trailers must be valid header fields" {
   }
 }
 ///|
+test "connector validates TLS settings before dialing" {
+  let stream = regression_mock_stream("", 0, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+    .with_tls_config(TlsConfig::new("base.example").with_alpn(@list.List(["h2", ""])))
+  let url = Url::parse("https://example.com/").unwrap()
+  assert_true(connector.connect(url) is Err(TlsError(InvalidConfig(_))))
+  assert_eq(dialer.count, 0)
+}
+///|
 test "connector applies its timeout before TLS handshakes" {
   let stream = regression_mock_stream("", 0, 0)
   let dialer = RegressionMockDialer::{ stream, count: 0 }

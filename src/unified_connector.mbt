@@ -52,6 +52,19 @@ pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpEr
 
   let conn_key = connection_key(url)
 
+  // Validate TLS settings before opening a socket. The connection host
+  // overrides any server name from the shared configuration.
+  if scheme == "https" {
+    let tls_config = match self.tls_config {
+      Some(config) => config.with_server_name(host)
+      None => TlsConfig::new(host)
+    }
+    match tls_config.validate() {
+      Ok(_) => ()
+      Err(err) => return Err(TlsError(err))
+    }
+  }
+
   // Check if we have a cached connection
   match self.connection_pool.get(conn_key) {
     Some(stream) => match stream.peer_addr() {
