@@ -276,6 +276,18 @@ test "sequential responses on one codec preserve buffered bytes" {
 }
 
 ///|
+test "TLS stream close is idempotent and formats IPv6 peers" {
+  let provider = MockTlsProvider::new("test")
+  let ctx = provider.new_client(TlsConfig::new("example.com")).unwrap()
+  let raw = TcpStream::new("::1", 443)
+  assert_true(raw.open() is Ok(_))
+  let tls = ctx.connect(raw).unwrap()
+  assert_eq(tls.peer_addr().unwrap(), "[::1]:443")
+  assert_true(tls.close() is Ok(_))
+  assert_true(tls.close() is Ok(_))
+}
+
+///|
 test "response rejects invalid header names and values" {
   let malformed = [
     "HTTP/1.1 200 OK\r\nBad Header: x\r\n\r\n",

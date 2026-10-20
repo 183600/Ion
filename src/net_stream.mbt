@@ -92,7 +92,12 @@ pub impl Stream for TcpStream with fn peer_addr(self : TcpStream) -> Result[Stri
   if !self.is_open {
     return Err(NetError::Closed)
   }
-  Ok(self.host + ":" + self.port.to_string())
+  let host = if self.host.contains(":") {
+    "[" + self.host + "]"
+  } else {
+    self.host
+  }
+  Ok(host + ":" + self.port.to_string())
 }
 
 pub impl Stream for TcpStream with fn local_addr(self : TcpStream) -> Result[String, NetError] {

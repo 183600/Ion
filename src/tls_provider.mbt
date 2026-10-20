@@ -83,6 +83,9 @@ pub impl Stream for TlsStream with fn flush(self : TlsStream) -> Result[Unit, Ne
 }
 
 pub impl Stream for TlsStream with fn close(self : TlsStream) -> Result[Unit, NetError] {
+  if !self.is_open {
+    return Ok(())
+  }
   self.is_open = false
   self.underlying.close()
 }
