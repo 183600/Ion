@@ -1809,6 +1809,19 @@ test "response body reads enforce an explicit limit" {
   let response = Response::new(200, Headers::new(), regression_mock_stream("hello", 4096, 4096))
   assert_eq(response.read_body_with_limit(5).unwrap(), b"hello")
 }
+
+///|
+test "exceeding an explicit body limit closes the response stream" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhelloHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+  let stream = regression_mock_stream(raw, 4096, 0)
+  let codec = H1Codec::new(stream)
+  let response = codec.decode_response().unwrap()
+  assert_true(response.read_body_with_limit(2) is Err(NetworkError(ReadError(_))))
+  assert_false(stream.is_open)
+
+  let stalled = Response::new(200, Headers::new(), NoProgressStream::{ is_open: true })
+  assert_true(stalled.read_body_with_limit(4) is Err(NetworkError(ReadError(_))))
+}
 ///|
 test "client option builders clamp negative limits" {
   let options = ClientOptions::new()

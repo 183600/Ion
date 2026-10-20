@@ -624,13 +624,16 @@ pub fn Response::read_body_with_limit(
       Ok(0) => break
       Ok(count) => {
         if count < 0 {
+          let _ = self.body.close()
           return Err(NetworkError(ReadError("invalid read count")))
         }
         let bytes = chunk.to_bytes()
         if bytes.length() == 0 {
+          let _ = self.body.close()
           return Err(NetworkError(ReadError("stream returned no data")))
         }
         if bytes.length() > limit - output.length() {
+          let _ = self.body.close()
           return Err(NetworkError(ReadError("response body too large")))
         }
         output.write_bytes(bytes)
