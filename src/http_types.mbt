@@ -656,6 +656,14 @@ pub fn Response::read_body(self : Response) -> Result[Bytes, HttpError] {
 /// `Content-Encoding` that Feather understands (`gzip`, `deflate`).
 /// Other encodings return an error; a missing/`identity` encoding is a no-op.
 pub fn Response::read_body_decoded(self : Response) -> Result[Bytes, HttpError] {
+  self.read_body_decoded_with_limit(DEFAULT_MAX_RESPONSE_BODY_BYTES)
+}
+
+/// Like `read_body_decoded`, but bounds the decoded output by `max_bytes`.
+pub fn Response::read_body_decoded_with_limit(
+  self : Response,
+  max_bytes : Int,
+) -> Result[Bytes, HttpError] {
   let raw = match self.read_body() {
     Ok(body) => body
     Err(err) => return Err(err)
@@ -674,23 +682,23 @@ pub fn Response::read_body_decoded(self : Response) -> Result[Bytes, HttpError] 
     }
     combined = combined + value
   }
-  decode_encodings(combined, raw)
+  decode_encodings(combined, raw, max_bytes)
 }
 
 /// Apply a (possibly comma-separated) `Content-Encoding` header. Encodings are
 /// listed in the order they were applied, so they are undone in reverse.
-fn decode_encodings(header : String, data : Bytes) -> Result[Bytes, HttpError] {
+fn decode_encodings(
+  header : String,
+  data : Bytes,
+  max_bytes : Int,
+) -> Result[Bytes, HttpError] {
   let encodings = header.split(",").to_array()
   let mut current = data
   let mut index = encodings.length() - 1
   while index >= 0 {
     let token = encodings[index].trim().to_owned()
     if token.length() > 0 && token.to_lower() != "identity" {
-      current = match decode_content_encoding(
-        token,
-        current,
-        DEFAULT_MAX_RESPONSE_BODY_BYTES,
-      ) {
+      current = match decode_content_encoding(token, current, max_bytes) {
         Ok(decoded) => decoded
         Err(err) => return Err(err)
       }

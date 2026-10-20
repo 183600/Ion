@@ -797,6 +797,22 @@ test "Response::read_body_decoded handles deflate and identity" {
   assert_eq(identity.read_body_decoded().unwrap(), inflate_bytes_of([119, 111, 114, 108, 100]))
 }
 
+test "read_body_decoded_with_limit bounds the decoded output" {
+  let compressed = inflate_bytes_of([
+    31, 139, 8, 0, 142, 223, 215, 106, 2, 255, 203, 72, 205, 201, 201, 7, 0, 134,
+    166, 16, 54, 5, 0, 0, 0,
+  ])
+  let stream : &Stream = InflateMockStream::{ input: compressed, offset: 0 }
+  let headers = Headers::new().set("Content-Encoding", "gzip")
+  let response = Response::new(200, headers, stream)
+  // "hello" is five bytes; a four-byte limit must reject the decoded output.
+  assert_true(response.read_body_decoded_with_limit(4) is Err(_))
+
+  let stream : &Stream = InflateMockStream::{ input: compressed, offset: 0 }
+  let response = Response::new(200, headers, stream)
+  assert_eq(response.read_body_decoded_with_limit(5).unwrap(), inflate_bytes_of([104, 101, 108, 108, 111]))
+}
+
 test "Content-Encoding decodes multiple encodings in reverse" {
   let payload = inflate_bytes_of([104, 101, 108, 108, 111])
   let stream : &Stream = InflateMockStream::{ input: payload, offset: 0 }
