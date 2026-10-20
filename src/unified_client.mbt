@@ -148,7 +148,7 @@ fn normalize_path_and_suffix(target : String) -> String {
 }
 
 fn resolve_redirect_url(base : Url, location : String) -> Result[Url, HttpError] {
-  let location = location.trim().to_string()
+  let location = location.trim().to_owned()
   let lower = location.to_lower()
   let full = if lower.has_prefix("http://") || lower.has_prefix("https://") {
     location
@@ -200,7 +200,7 @@ fn redirect_method(status : Int, method : HttpMethod) -> (HttpMethod, Bool) {
 
 fn drain_response(response : Response) -> Result[Unit, HttpError] {
   while true {
-    let buf = @buffer.new(size_hint=4096)
+    let buf = Buffer(size_hint=4096)
     match response.body.read(buf) {
       Ok(0) => return Ok(())
       Ok(_) => ()

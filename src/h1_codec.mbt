@@ -41,7 +41,7 @@ fn StreamReader::next_byte(self : StreamReader) -> Result[Byte?, NetError] {
 
   self.pending = b""
   self.pending_offset = 0
-  let buf = @buffer.new(size_hint=4096)
+  let buf = Buffer(size_hint=4096)
   let count = match self.stream.read(buf) {
     Ok(count) => count
     Err(err) => return Err(err)
@@ -69,7 +69,7 @@ fn StreamReader::read_exact(
       self.pending = b""
       self.pending_offset = 0
       let hint = if remaining > 8192 { 8192 } else { remaining }
-      let buf = @buffer.new(size_hint=hint)
+      let buf = Buffer(size_hint=hint)
       let count = match self.stream.read(buf) {
         Ok(count) => count
         Err(err) => return Err(err)
@@ -114,7 +114,7 @@ fn StreamReader::read_to_eof(
       self.pending_offset = 0
       continue
     }
-    let buf = @buffer.new(size_hint=4096)
+    let buf = Buffer(size_hint=4096)
     let count = match self.stream.read(buf) {
       Ok(count) => count
       Err(err) => return Err(err)
@@ -221,7 +221,7 @@ fn valid_host(value : String) -> Bool {
 fn header_has_token(value : String, token : String) -> Bool {
   let token = token.to_lower()
   for part in value.split(",") {
-    if part.trim().to_string().to_lower() == token {
+    if part.trim().to_owned().to_lower() == token {
       return true
     }
   }
@@ -245,7 +245,7 @@ fn request_content_length(headers : Headers) -> Result[Option[Int], HttpError] {
   if values.length() > 1 {
     return Err(InvalidHeader("Content-Length"))
   }
-  let text = values.nth(0).unwrap().trim().to_string()
+  let text = values.nth(0).unwrap().trim().to_owned()
   if !is_decimal_digits(text) {
     return Err(InvalidHeader("Content-Length"))
   }
@@ -271,7 +271,7 @@ fn request_is_chunked(headers : Headers) -> Result[Bool, HttpError] {
   let mut final_token = ""
   let mut seen = false
   for part in values.nth(0).unwrap().split(",") {
-    let token = part.trim().to_string().to_lower()
+    let token = part.trim().to_owned().to_lower()
     if token.length() == 0 {
       return Err(InvalidHeader("Transfer-Encoding"))
     }
@@ -416,7 +416,7 @@ fn read_line(
     Some(value) => value
     None => 8192
   }
-  let line = @buffer.new(size_hint=128)
+  let line = Buffer(size_hint=128)
   let mut any = false
   while true {
     let byte = match reader.next_byte() {
@@ -527,7 +527,7 @@ fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] 
     if !valid_header_name(name) {
       return Err(ProtocolError("Invalid header format"))
     }
-    let value = line.substring(start=colon_idx + 1).trim().to_string()
+    let value = line.substring(start=colon_idx + 1).trim().to_owned()
     if !valid_header_value(value) {
       return Err(ProtocolError("Invalid header value"))
     }
@@ -617,7 +617,7 @@ fn read_chunked_body(
       Some(index) => line.substring(start=0, end=index)
       None => line
     }
-    let size_text = size_text.trim().to_string()
+    let size_text = size_text.trim().to_owned()
     if !is_hex_digits(size_text) {
       return Err(NetError::ReadError("invalid chunk size"))
     }
@@ -653,7 +653,7 @@ fn read_chunked_body(
           None => return Err(NetError::ReadError("invalid chunked trailer"))
         }
         let name = trailer.substring(start=0, end=colon_idx)
-        let value = trailer.substring(start=colon_idx + 1).trim().to_string()
+        let value = trailer.substring(start=colon_idx + 1).trim().to_owned()
         if !valid_header_name(name) || !valid_header_value(value) {
           return Err(NetError::ReadError("invalid chunked trailer"))
         }
@@ -684,7 +684,7 @@ fn response_content_length(headers : Headers) -> Result[Option[String], NetError
   let mut conflict = false
   for header in headers.iter() {
     if header.name.to_lower() == "content-length" {
-      let value = header.value.trim().to_string()
+      let value = header.value.trim().to_owned()
       match result {
         None => result = Some(value)
         Some(existing) => if existing != value {
@@ -737,7 +737,7 @@ fn ResponseStream::load(self : ResponseStream) -> Result[Unit, NetError] {
   } else {
     match content_length {
       Some(value) => {
-        let length_text = value.trim().to_string()
+        let length_text = value.trim().to_owned()
         if !is_decimal_digits(length_text) {
           let err = NetError::ReadError("invalid Content-Length")
           let _ = self.reader.stream.close()

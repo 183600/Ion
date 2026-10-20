@@ -434,9 +434,9 @@ pub fn Response::new_with_version(
 
 /// Read the complete response body, enforcing the stream's own size limit.
 pub fn Response::read_body(self : Response) -> Result[Bytes, HttpError] {
-  let output = @buffer.new(size_hint=4096)
+  let output = Buffer(size_hint=4096)
   while true {
-    let chunk = @buffer.new(size_hint=4096)
+    let chunk = Buffer(size_hint=4096)
     match self.body.read(chunk) {
       Ok(0) => break
       Ok(_) => output.write_bytes(chunk.to_bytes())
