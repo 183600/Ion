@@ -250,7 +250,7 @@ pub impl Stream for NativeTlsStream with fn write(
       match native_tls_feed(self.tls, self.underlying) {
         TlsIoData => continue
         TlsIoClosed =>
-          return Err(NetError::ReadError("TLS connection closed unexpectedly"))
+          return Err(NetError::WriteError("TLS connection closed unexpectedly"))
         TlsIoTimeout => return Err(NetError::Timeout)
         TlsIoFailure(_) => return Err(NetError::WriteError("TLS read failed"))
       }
