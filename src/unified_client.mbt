@@ -72,7 +72,7 @@ pub impl HttpClient for UnifiedClient with fn request(self : UnifiedClient, req 
 
 fn url_authority(url : Url) -> String {
   let scheme = url.scheme.to_lower()
-  let host = if url.host.contains(":") {
+  let host = if url.host.contains(":") && !(url.host.has_prefix("[") && url.host.has_suffix("]")) {
     "[" + url.host + "]"
   } else {
     url.host

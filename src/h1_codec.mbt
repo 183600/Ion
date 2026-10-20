@@ -142,7 +142,7 @@ fn write_all(stream : &Stream, data : Bytes) -> Result[Unit, NetError] {
 
 fn host_header_value(url : Url) -> String {
   let scheme = url.scheme.to_lower()
-  let host = if url.host.contains(":") {
+  let host = if url.host.contains(":") && !(url.host.has_prefix("[") && url.host.has_suffix("]")) {
     "[" + url.host + "]"
   } else {
     url.host

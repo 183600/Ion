@@ -92,7 +92,7 @@ pub impl Stream for TcpStream with fn peer_addr(self : TcpStream) -> Result[Stri
   if !self.is_open {
     return Err(NetError::Closed)
   }
-  let host = if self.host.contains(":") {
+  let host = if self.host.contains(":") && !(self.host.has_prefix("[") && self.host.has_suffix("]")) {
     "[" + self.host + "]"
   } else {
     self.host

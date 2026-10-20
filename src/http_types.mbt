@@ -260,7 +260,7 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
 
 pub fn Url::to_string(self : Url) -> String {
   let scheme = self.scheme.to_lower()
-  let host_text = if self.host.contains(":") {
+  let host_text = if self.host.contains(":") && !(self.host.has_prefix("[") && self.host.has_suffix("]")) {
     "[" + self.host + "]"
   } else {
     self.host
