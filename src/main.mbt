@@ -10,7 +10,7 @@ fn report(err : HttpError) -> Unit {
 }
 
 fn print_response(response : Response) -> Unit {
-  println("HTTP " + response.version + " " + response.status.to_string())
+  println(response.version + " " + response.status.to_string())
   for header in response.headers.iter() {
     println(header.name + ": " + header.value)
   }
