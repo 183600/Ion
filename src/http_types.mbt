@@ -458,3 +458,27 @@ pub fn &HttpClient::delete(self : &HttpClient, url : String) -> Result[Response,
   let req = Request::new(DELETE, parsed_url)
   self.request(req)
 }
+
+pub fn &HttpClient::head(self : &HttpClient, url : String) -> Result[Response, HttpError] {
+  let parsed_url = match Url::parse(url) {
+    Ok(url) => url
+    Err(err) => return Err(err)
+  }
+  self.request(Request::new(HEAD, parsed_url))
+}
+
+pub fn &HttpClient::options(self : &HttpClient, url : String) -> Result[Response, HttpError] {
+  let parsed_url = match Url::parse(url) {
+    Ok(url) => url
+    Err(err) => return Err(err)
+  }
+  self.request(Request::new(OPTIONS, parsed_url))
+}
+
+pub fn &HttpClient::patch(self : &HttpClient, url : String, body : Bytes) -> Result[Response, HttpError] {
+  let parsed_url = match Url::parse(url) {
+    Ok(url) => url
+    Err(err) => return Err(err)
+  }
+  self.request(Request::new(PATCH, parsed_url).with_body(body))
+}

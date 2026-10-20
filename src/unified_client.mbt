@@ -346,6 +346,39 @@ pub fn UnifiedClient::delete(self : UnifiedClient, url : String) -> Result[Respo
   self.do_request(req)
 }
 
+/// Convenience method for HEAD requests
+pub fn UnifiedClient::head(self : UnifiedClient, url : String) -> Result[Response, HttpError] {
+  let parsed_url = match Url::parse(url) {
+    Ok(url) => url
+    Err(err) => return Err(err)
+  }
+  let req = Request::new(HEAD, parsed_url).with_timeout(self.options.timeout_ms)
+  self.redirect_count = 0
+  self.do_request(req)
+}
+
+/// Convenience method for OPTIONS requests
+pub fn UnifiedClient::options(self : UnifiedClient, url : String) -> Result[Response, HttpError] {
+  let parsed_url = match Url::parse(url) {
+    Ok(url) => url
+    Err(err) => return Err(err)
+  }
+  let req = Request::new(OPTIONS, parsed_url).with_timeout(self.options.timeout_ms)
+  self.redirect_count = 0
+  self.do_request(req)
+}
+
+/// Convenience method for PATCH requests
+pub fn UnifiedClient::patch(self : UnifiedClient, url : String, body : Bytes) -> Result[Response, HttpError] {
+  let parsed_url = match Url::parse(url) {
+    Ok(url) => url
+    Err(err) => return Err(err)
+  }
+  let req = Request::new(PATCH, parsed_url).with_body(body).with_timeout(self.options.timeout_ms)
+  self.redirect_count = 0
+  self.do_request(req)
+}
+
 /// Close all connections
 pub fn UnifiedClient::close(self : UnifiedClient) -> Result[Unit, HttpError] {
   self.connector.close_all()

@@ -219,7 +219,10 @@ pub struct UnifiedClient {
 pub fn UnifiedClient::close(Self) -> Result[Unit, HttpError]
 pub fn UnifiedClient::delete(Self, String) -> Result[Response, HttpError]
 pub fn UnifiedClient::get(Self, String) -> Result[Response, HttpError]
+pub fn UnifiedClient::head(Self, String) -> Result[Response, HttpError]
 pub fn UnifiedClient::new() -> Self
+pub fn UnifiedClient::options(Self, String) -> Result[Response, HttpError]
+pub fn UnifiedClient::patch(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::post(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::put(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::with_options(ClientOptions) -> Self
@@ -259,6 +262,9 @@ pub trait HttpClient {
 }
 pub fn &HttpClient::delete(Self, String) -> Result[Response, HttpError]
 pub fn &HttpClient::get(Self, String) -> Result[Response, HttpError]
+pub fn &HttpClient::head(Self, String) -> Result[Response, HttpError]
+pub fn &HttpClient::options(Self, String) -> Result[Response, HttpError]
+pub fn &HttpClient::patch(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn &HttpClient::post(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn &HttpClient::put(Self, String, Bytes) -> Result[Response, HttpError]
 

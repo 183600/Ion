@@ -860,3 +860,33 @@ test "request framing rejects ambiguous lengths" {
     ) is Err(InvalidHeader(_)),
   )
 }
+
+///|
+test "HttpClient convenience methods cover HEAD, OPTIONS, and PATCH" {
+  let body = regression_mock_stream("", 0, 0)
+  let client = RegressionHttpClient::{ calls: 0, response_body: body }
+  let trait_client : &HttpClient = client
+  assert_eq(trait_client.head("http://example.com/").unwrap().status, 200)
+  assert_eq(trait_client.options("http://example.com/").unwrap().status, 200)
+  assert_eq(
+    trait_client.patch("http://example.com/", b"data").unwrap().status,
+    200,
+  )
+  assert_eq(client.calls, 3)
+}
+
+///|
+test "UnifiedClient convenience methods send the requested verb" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
+  let stream = regression_mock_stream(raw, 1, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+  assert_eq(client.head("http://example.com/a").unwrap().status, 200)
+  assert_eq(client.options("http://example.com/a").unwrap().status, 200)
+  assert_eq(client.patch("http://example.com/a", b"x").unwrap().status, 200)
+  let wire = @utf8.decode(stream.output.to_bytes()[:])
+  assert_true(wire.contains("HEAD /a HTTP/1.1"))
+  assert_true(wire.contains("OPTIONS /a HTTP/1.1"))
+  assert_true(wire.contains("PATCH /a HTTP/1.1"))
+}
