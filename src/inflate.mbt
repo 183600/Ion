@@ -675,7 +675,15 @@ pub fn inflate(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
     let cmf = data[0].to_int()
     let flg = data[1].to_int()
     if (cmf & 0x0F) == 8 && (cmf >> 4) <= 7 && ((cmf << 8) | flg) % 31 == 0 {
-      return inflate_zlib(data, limit)
+      let zlib_result = inflate_zlib(data, limit)
+      match zlib_result {
+        Ok(decoded) => return Ok(decoded)
+        Err(zlib_error) =>
+          match inflate_raw(data, limit) {
+            Ok(decoded) => return Ok(decoded)
+            Err(_) => return Err(zlib_error)
+          }
+      }
     }
   }
   inflate_raw(data, limit)

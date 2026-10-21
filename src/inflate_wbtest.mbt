@@ -699,6 +699,14 @@ test "inflate rejects truncated deflate" {
   let data = inflate_bytes_of([0xFF, 0xFF])
   assert_true(inflate(data, 1_000_000) is Err(_))
 }
+
+test "raw deflate resembling a zlib header falls back to raw" {
+  let data = inflate_bytes_of([
+    0x78, 0x01, 0x00, 0xFE, 0xFF, 0x41, 0x01, 0x00, 0x00, 0xFF, 0xFF,
+  ])
+  assert_eq(inflate(data, 1_000_000).unwrap(), b"A")
+}
+
 test "inflate rejects incomplete dynamic Huffman trees" {
   // A literal/length tree with two two-bit codes is incomplete: the remaining
   // two-bit patterns cannot be decoded.
