@@ -298,6 +298,28 @@ test "pre-epoch expiry dates delete cookies" {
   assert_eq(jar.cookie_header_at(url, 0), None)
 }
 
+test "cookie values must use RFC 6265 cookie-octets" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  for value in [
+    "bad=space value",
+    "bad=comma,value",
+    "bad=quote\"value",
+    "bad=back\\slash",
+    "bad=caf\u{e9}",
+  ] {
+    jar.store_at(url, value, 1000)
+  }
+  assert_eq(jar.length(), 0)
+  jar.store_at(url, "quoted=\"value\"", 1000)
+  jar.store_at(url, "empty=", 1000)
+  jar.store_at(url, "equals=a=b", 1000)
+  assert_eq(
+    jar.cookie_header_at(url, 1000),
+    Some("quoted=\"value\"; empty=; equals=a=b"),
+  )
+}
+
 test "an empty Domain attribute invalidates the cookie" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")

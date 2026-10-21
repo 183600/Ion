@@ -104,9 +104,23 @@ fn cookie_valid_name(name : String) -> Bool {
 }
 
 ///|
+fn cookie_octet(ch : Char) -> Bool {
+  ch == '!' || (ch >= '#' && ch <= '+') || (ch >= '-' && ch <= ':') ||
+  (ch >= '<' && ch <= '[') || (ch >= ']' && ch <= '~')
+}
+
 fn cookie_valid_value(value : String) -> Bool {
-  for ch in value {
-    if ch < ' ' || ch == '\u{7f}' || ch == ';' {
+  // RFC 6265 §4.1.1 allows `*cookie-octet` or a double-quoted
+  // `*cookie-octet`. Whitespace, commas, backslashes and non-ASCII bytes are
+  // not cookie-octets and would make the resulting Cookie header ambiguous.
+  let body = if value.length() >= 2 && value.get_char(0) == Some('"') &&
+    value.get_char(value.length() - 1) == Some('"') {
+    value[1:value.length() - 1]
+  } else {
+    value
+  }
+  for ch in body {
+    if !cookie_octet(ch) {
       return false
     }
   }
