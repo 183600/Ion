@@ -931,11 +931,21 @@ fn consume_chunk_trailers(reader : StreamReader) -> Result[Unit, NetError] {
   Ok(())
 }
 
+fn response_transfer_coding_name(value : String) -> String {
+  // transfer-coding = token *( OWS ";" OWS transfer-parameter ); parameters
+  // do not change the coding's identity, so only the name is significant.
+  let token = value.trim().to_owned()
+  match token.find(";") {
+    Some(index) => token[0:index].trim().to_owned().to_lower()
+    None => token.to_lower()
+  }
+}
+
 fn response_is_chunked(headers : Headers) -> Result[Bool, NetError] {
   let mut chunked_seen = false
   for value in headers.get_all("Transfer-Encoding") {
     for part in value.split(",") {
-      let token = part.trim().to_owned().to_lower()
+      let token = response_transfer_coding_name(part.to_owned())
       if token.length() == 0 {
         continue
       }
