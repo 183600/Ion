@@ -507,6 +507,37 @@ test "chunk sizes reject leading and trailing whitespace" {
 }
 
 ///|
+test "chunk extensions must follow HTTP chunk extension syntax" {
+  for value in [
+    "5;",
+    "5;;foo",
+    "5;foo=",
+    "5;foo=\"unterminated",
+    "5;foo=\"bad\\\"",
+    "5;foo=bar baz",
+    "5;foo=\u{1}",
+    "5;foo=bar;\u{7f}",
+    "5;foo=\"a\\\u{1}b\"",
+  ] {
+    let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" + value + "\r\nhello\r\n0\r\n\r\n"
+    let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+    let response = codec.decode_response().unwrap()
+    assert_true(response.body.read(@buffer.new(size_hint=8)) is Err(_))
+  }
+  for value in [
+    "5;foo",
+    "5;foo=bar",
+    "5; foo = \"bar; baz\" ; flag",
+    "5;foo=\"a\\\"b\"",
+    "5;foo=bar ; baz",
+  ] {
+    let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" + value + "\r\nhello\r\n0\r\n\r\n"
+    let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+    assert_eq(codec.decode_response().unwrap().text().unwrap(), "hello")
+  }
+}
+
+///|
 test "Transfer-Encoding only recognizes the chunked token" {
   let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: notchunked\r\nContent-Length: 5\r\n\r\nhello"
   let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))

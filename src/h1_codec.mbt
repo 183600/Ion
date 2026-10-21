@@ -776,13 +776,106 @@ fn ResponseStream::complete(self : ResponseStream, reusable : Bool) -> Unit {
   }
 }
 
+fn skip_chunk_ext_ows(value : String, start : Int) -> Int {
+  let mut index = start
+  while index < value.length() {
+    let ch = value.get_char(index)
+    if ch == Some(' ') || ch == Some('\t') {
+      index = index + 1
+    } else {
+      break
+    }
+  }
+  index
+}
+
+fn is_chunk_quoted_text_char(ch : Char) -> Bool {
+  ch == '\t' || ch == ' ' || ch == '!' || (ch >= '#' && ch <= '[') ||
+  (ch >= ']' && ch <= '~') || ch >= '\u{80}'
+}
+
+fn is_chunk_quoted_pair_char(ch : Char) -> Bool {
+  ch == '\t' || ch == ' ' || (ch >= '!' && ch <= '~') || ch >= '\u{80}'
+}
+
+fn valid_chunk_extensions(value : String) -> Bool {
+  let length = value.length()
+  let mut index = 0
+  while index < length {
+    if value.get_char(index) != Some(';') {
+      return false
+    }
+    index = skip_chunk_ext_ows(value, index + 1)
+    let name_start = index
+    while index < length {
+      let ch = value.get_char(index).unwrap()
+      if !is_header_token_char(ch) {
+        break
+      }
+      index = index + 1
+    }
+    if index == name_start {
+      return false
+    }
+    index = skip_chunk_ext_ows(value, index)
+    if index < length && value.get_char(index) == Some('=') {
+      index = skip_chunk_ext_ows(value, index + 1)
+      if index >= length {
+        return false
+      }
+      if value.get_char(index) == Some('"') {
+        index = index + 1
+        let mut closed = false
+        while index < length {
+          let ch = value.get_char(index).unwrap()
+          if ch == '"' {
+            index = index + 1
+            closed = true
+            break
+          }
+          if ch == '\\' {
+            index = index + 1
+            if index >= length || !is_chunk_quoted_pair_char(value.get_char(index).unwrap()) {
+              return false
+            }
+          } else if !is_chunk_quoted_text_char(ch) {
+            return false
+          }
+          index = index + 1
+        }
+        if !closed {
+          return false
+        }
+      } else {
+        let token_start = index
+        while index < length {
+          let ch = value.get_char(index).unwrap()
+          if !is_header_token_char(ch) {
+            break
+          }
+          index = index + 1
+        }
+        if index == token_start {
+          return false
+        }
+      }
+      index = skip_chunk_ext_ows(value, index)
+    }
+    if index < length && value.get_char(index) != Some(';') {
+      return false
+    }
+  }
+  true
+}
+
 fn read_chunk_size(reader : StreamReader) -> Result[Int, NetError] {
   let line = match read_line(reader) {
     Ok(Some(line)) => line
     Ok(None) => return Err(NetError::ReadError("unexpected end of chunked body"))
     Err(err) => return Err(err)
   }
-  let size_text = match line.find(";") {
+  let extension_index = line.find(";")
+  let size_text = match extension_index {
     Some(index) => line[0:index].to_owned()
     None => line
   }
@@ -796,6 +889,13 @@ fn read_chunk_size(reader : StreamReader) -> Result[Int, NetError] {
   }
   if size < 0 {
     return Err(NetError::ReadError("invalid chunk size"))
+  }
+  match extension_index {
+    Some(index) =>
+      if !valid_chunk_extensions(line[index:].to_owned()) {
+        return Err(NetError::ReadError("invalid chunk extension"))
+      }
+    None => ()
   }
   Ok(size)
 }
