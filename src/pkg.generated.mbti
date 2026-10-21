@@ -279,6 +279,8 @@ type ResponseHead
 type ResponseStream
 pub impl Stream for ResponseStream
 
+type ResponseTransferEncoding
+
 pub struct RootStore {
   certificates : @list.List[Bytes]
 } derive(Eq, @debug.Debug)

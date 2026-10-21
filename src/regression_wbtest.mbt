@@ -538,13 +538,34 @@ test "chunk extensions must follow HTTP chunk extension syntax" {
 }
 
 ///|
-test "Transfer-Encoding only recognizes the chunked token" {
-  let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: notchunked\r\nContent-Length: 5\r\n\r\nhello"
-  let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+test "non-chunked Transfer-Encoding ignores Content-Length" {
+  let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\nContent-Length: 5\r\n\r\nhello world"
+  let stream = regression_mock_stream(raw, 0, 0)
+  let completions : Array[Bool] = []
+  let codec = H1Codec::new_with_completion(
+    stream,
+    fn(reusable) { completions.push(reusable) },
+  )
   let response = codec.decode_response().unwrap()
-  let buf = @buffer.new(size_hint=8)
-  assert_eq(response.body.read(buf).unwrap(), 5)
-  assert_eq(buf.to_bytes(), b"hello")
+  assert_eq(response.text().unwrap(), "hello world")
+  assert_eq(completions, [false])
+  assert_false(stream.is_open)
+}
+
+///|
+test "non-chunked Transfer-Encoding with zero Content-Length is not completed early" {
+  let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\nContent-Length: 0\r\n\r\ndeferred"
+  let stream = regression_mock_stream(raw, 0, 0)
+  let completions : Array[Bool] = []
+  let codec = H1Codec::new_with_completion(
+    stream,
+    fn(reusable) { completions.push(reusable) },
+  )
+  let response = codec.decode_response().unwrap()
+  assert_eq(completions, [])
+  assert_eq(response.text().unwrap(), "deferred")
+  assert_eq(completions, [false])
+  assert_false(stream.is_open)
 }
 
 ///|

@@ -771,6 +771,12 @@ enum ResponseBodyMode {
   BodyUntilEof
 }
 
+enum ResponseTransferEncoding {
+  TransferEncodingAbsent
+  TransferEncodingChunked
+  TransferEncodingUntilEof
+}
+
 enum ChunkReadState {
   ChunkSize
   ChunkData
@@ -972,9 +978,15 @@ fn transfer_coding_name(value : String) -> String {
   }
 }
 
-fn response_is_chunked(headers : Headers) -> Result[Bool, NetError] {
+fn response_transfer_encoding(
+  headers : Headers,
+) -> Result[ResponseTransferEncoding, NetError] {
+  let values = headers.get_all("Transfer-Encoding")
+  if values.length() == 0 {
+    return Ok(TransferEncodingAbsent)
+  }
   let mut chunked_seen = false
-  for value in headers.get_all("Transfer-Encoding") {
+  for value in values {
     for part in split_header_list(value) {
       let token = transfer_coding_name(part)
       if token.length() == 0 {
@@ -988,7 +1000,11 @@ fn response_is_chunked(headers : Headers) -> Result[Bool, NetError] {
       }
     }
   }
-  Ok(chunked_seen)
+  if chunked_seen {
+    Ok(TransferEncodingChunked)
+  } else {
+    Ok(TransferEncodingUntilEof)
+  }
 }
 
 fn response_content_length(headers : Headers) -> Result[Option[Int], NetError] {
@@ -1049,13 +1065,21 @@ fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
     return Ok(())
   }
 
-  let chunked = match response_is_chunked(self.headers) {
+  let transfer_encoding = match response_transfer_encoding(self.headers) {
     Ok(value) => value
     Err(err) => return Err(self.fail(err))
   }
-  if chunked {
-    self.body_mode = BodyChunked
-    return Ok(())
+  match transfer_encoding {
+    TransferEncodingChunked => {
+      self.body_mode = BodyChunked
+      return Ok(())
+    }
+    TransferEncodingUntilEof => {
+      self.body_mode = BodyUntilEof
+      self.close_after_body = true
+      return Ok(())
+    }
+    TransferEncodingAbsent => ()
   }
   let content_length = match response_content_length(self.headers) {
     Ok(value) => value
@@ -1078,7 +1102,7 @@ fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
 }
 
 fn ResponseStream::complete_if_empty(self : ResponseStream) -> Unit {
-  if response_is_chunked(self.headers) is Ok(false) &&
+  if response_transfer_encoding(self.headers) is Ok(TransferEncodingAbsent) &&
     response_content_length(self.headers) is Ok(Some(0)) {
     match self.prepare() {
       Ok(_) => self.finish()
