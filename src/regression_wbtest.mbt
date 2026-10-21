@@ -2536,3 +2536,17 @@ test "connection lease release is idempotent" {
   let idle = connector.pool.val.idle.get(key).unwrap()
   assert_eq(idle.length(), 1)
 }
+///|
+test "form encoding uses the WHATWG safe byte set" {
+  let url = Url::parse("https://example.com/submit").unwrap()
+  let request = Request::new(POST, url).with_form([
+    ("tilde", "~"),
+    ("star", "*"),
+    ("reserved", "-._"),
+    ("spaces", "a b"),
+  ])
+  assert_eq(
+    @utf8.decode(request.body.unwrap()[:]),
+    "tilde=%7E&star=*&reserved=-._&spaces=a+b",
+  )
+}

@@ -542,10 +542,10 @@ pub fn Request::with_header(self : Request, name : String, value : String) -> Re
   Request::{ ..self, headers: self.headers.add(name, value) }
 }
 
-fn is_form_unreserved(byte : Byte) -> Bool {
+fn is_form_safe_byte(byte : Byte) -> Bool {
   (byte >= b'a' && byte <= b'z') || (byte >= b'A' && byte <= b'Z') ||
-  (byte >= b'0' && byte <= b'9') || byte == b'-' || byte == b'.' ||
-  byte == b'_' || byte == b'~'
+  (byte >= b'0' && byte <= b'9') || byte == b'*' || byte == b'-' ||
+  byte == b'.' || byte == b'_'
 }
 
 fn form_encode_component(value : String) -> String {
@@ -555,7 +555,7 @@ fn form_encode_component(value : String) -> String {
   ]
   let output = Buffer(size_hint=value.length())
   for byte in @utf8.encode(value) {
-    if is_form_unreserved(byte) {
+    if is_form_safe_byte(byte) {
       output.write_byte(byte)
     } else if byte == b' ' {
       output.write_byte(b'+')
