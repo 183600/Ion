@@ -54,7 +54,10 @@ fn tcp_dial_host(host : String) -> String {
   host
 }
 
-/// TCP Dialer implementation
+/// Placeholder TCP dialer kept for API compatibility and tests. It validates
+/// hosts and returns `TcpStream` values that perform no socket I/O. Real
+/// connections come from `NativeTcpDialer` (`default_dialer()` on native
+/// targets).
 pub struct TcpDialer {
   timeout_ms : Int
 } derive(Eq, Debug)

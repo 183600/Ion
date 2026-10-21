@@ -34,15 +34,15 @@ fn cli_command_args() -> Array[String] {
 
 /// Command-line entry point for the Feather HTTP/HTTPS client.
 fn print_usage() -> Unit {
-  println("Usage: feather <url>                    send a GET request")
-  println("       feather <method> <url> [body]    send a request with the given method")
-  println("       FEATHER_URL=<url> feather         send a GET request to FEATHER_URL")
-  println("       FEATHER_PROXY=<url> feather     route requests through an HTTP proxy")
-  println("       FEATHER_CA=<pem file> feather   trust an extra CA certificate bundle")
-  println("       FEATHER_CLIENT_CERT=<pem file>  client certificate for mTLS")
-  println("       FEATHER_CLIENT_KEY=<pem file>   client private key for mTLS")
-  println("       FEATHER_INSECURE=1 feather      DISABLE TLS verification (unsafe)")
-  println("       FEATHER_KEYLOG=1 feather        print TLS key material (debug)")
+  println("Usage: feather <url>                          send a GET request")
+  println("       feather <method> <url> [body]          send a request with the given method")
+  println("       FEATHER_URL=<url> feather              send a GET request to FEATHER_URL")
+  println("       FEATHER_PROXY=<url> feather            route requests through an HTTP proxy")
+  println("       FEATHER_CA=<pem file> feather          trust an extra CA certificate bundle")
+  println("       FEATHER_CLIENT_CERT=<pem file>         client certificate for mTLS")
+  println("       FEATHER_CLIENT_KEY=<pem file>          client private key for mTLS")
+  println("       FEATHER_INSECURE=1 feather             DISABLE TLS verification (unsafe)")
+  println("       FEATHER_KEYLOG=1 feather               print TLS key material (debug)")
   println("Methods: get, post, put, delete, head, options, patch")
 }
 

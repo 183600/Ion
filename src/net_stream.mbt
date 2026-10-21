@@ -33,7 +33,10 @@ pub trait Stream {
   fn local_addr(Self) -> Result[String, NetError]
 }
 
-/// TCP Stream implementation
+/// Placeholder TCP stream kept for API compatibility and tests. It validates
+/// the target address and tracks open state, but performs no socket I/O at
+/// all: reads report EOF and writes report success without sending bytes.
+/// Real sockets come from `NativeTcpStream` (via `default_dialer()`).
 pub struct TcpStream {
   // In a real implementation, this would hold the actual socket handle
   host : String

@@ -478,7 +478,13 @@ fn establish_tunnel(
   read_connect_response(stream)
 }
 
-/// Connect to a URL (either HTTP or HTTPS)
+/// Connect to a URL (either HTTP or HTTPS).
+///
+/// The returned stream is also placed in the connection pool, so a later
+/// `connect` or `checkout` for the same origin may take it back while it is
+/// still in use. Callers that need exclusive ownership should prefer
+/// `checkout`, which returns a lease that recycles the stream when the
+/// exchange finishes.
 pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpError] {
   match self.connect_impl(url, true) {
     Ok((stream, _)) => Ok(stream)
