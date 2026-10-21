@@ -3,6 +3,12 @@
 /// cookies are ignored rather than partially stored.
 const MAX_COOKIE_BYTES : Int = 4096
 
+/// RFC 6265 §6.1 requires supporting at least 50 cookies per domain and
+/// 3000 cookies overall. Older cookies are evicted first to stay within
+/// those bounds.
+const MAX_COOKIES_PER_DOMAIN : Int = 50
+const MAX_TOTAL_COOKIES : Int = 3000
+
 /// Minimal RFC 6265 cookie jar.
 ///
 /// It supports the parts of the standard that matter for an HTTP client:
@@ -636,6 +642,73 @@ fn cookie_from_set_cookie(
 }
 
 ///|
+fn cookie_oldest_in_domain(cookies : List[Cookie], domain : String) -> Cookie? {
+  let mut oldest : Cookie? = None
+  for candidate in cookies {
+    if candidate.domain != domain {
+      continue
+    }
+    oldest = match oldest {
+      Some(current) =>
+        if candidate.creation < current.creation {
+          Some(candidate)
+        } else {
+          Some(current)
+        }
+      None => Some(candidate)
+    }
+  }
+  oldest
+}
+
+///|
+fn cookie_oldest(cookies : List[Cookie]) -> Cookie? {
+  let mut oldest : Cookie? = None
+  for candidate in cookies {
+    oldest = match oldest {
+      Some(current) =>
+        if candidate.creation < current.creation {
+          Some(candidate)
+        } else {
+          Some(current)
+        }
+      None => Some(candidate)
+    }
+  }
+  oldest
+}
+
+///|
+fn cookie_evict_for_capacity(
+  cookies : List[Cookie],
+  domain : String,
+) -> List[Cookie] {
+  let mut result = cookies
+  let mut domain_count = 0
+  for existing in result {
+    if existing.domain == domain {
+      domain_count = domain_count + 1
+    }
+  }
+  while domain_count >= MAX_COOKIES_PER_DOMAIN {
+    let oldest = match cookie_oldest_in_domain(result, domain) {
+      Some(cookie) => cookie
+      None => break
+    }
+    result = result.filter(fn(cookie) { cookie.creation != oldest.creation })
+    domain_count = domain_count - 1
+  }
+  while result.length() >= MAX_TOTAL_COOKIES {
+    let oldest = match cookie_oldest(result) {
+      Some(cookie) => cookie
+      None => break
+    }
+    result = result.filter(fn(cookie) { cookie.creation != oldest.creation })
+  }
+  result
+}
+
+///|
 fn CookieJar::store_parsed(
   self : CookieJar,
   cookie : Cookie,
@@ -670,6 +743,7 @@ fn CookieJar::store_parsed(
         creation
       }
     }
+    let remaining = cookie_evict_for_capacity(remaining, cookie.domain)
     self.cookies = remaining.prepend(Cookie::{ ..cookie, creation, })
   } else {
     self.cookies = remaining
