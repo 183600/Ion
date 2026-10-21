@@ -385,7 +385,7 @@ fn read_connect_response(stream : &Stream) -> Result[Bytes, HttpError] {
   let head = Buffer(size_hint=128)
   let limit = 16384
   while head.length() <= limit {
-    let chunk = Buffer(size_hint=1)
+    let chunk = Buffer(size_hint=512)
     let count = match stream.read(chunk) {
       Ok(count) => count
       Err(err) => return Err(NetworkError(err))
