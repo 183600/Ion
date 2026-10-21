@@ -312,6 +312,12 @@ fn cookie_parse_decimal(value : String) -> Int32? {
 
 ///|
 fn cookie_parse_year(value : String) -> Int32? {
+  // RFC 6265 §5.1.1 defines a year as 2*4DIGIT. Keep the historical
+  // single-digit normalization used by browsers, but do not accept longer
+  // numeric tokens that merely happen to have leading zeroes.
+  if value.length() > 4 {
+    return None
+  }
   let year = match cookie_parse_decimal(value) {
     Some(year) => year
     None => return None

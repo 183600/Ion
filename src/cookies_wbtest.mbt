@@ -362,6 +362,16 @@ test "leading-zero expiry years are normalized by value" {
   assert_eq(jar.cookie_header_at(url, expires_at), None)
 }
 
+test "expiry years longer than four digits are ignored" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  jar.store_at(url, "y=1; Expires=Wed, 01 Jan 02026 00:00:00 GMT; Path=/", 0)
+  match jar.cookies().head() {
+    Some(cookie) => assert_eq(cookie.expires_at_ms, None)
+    None => fail("cookie with an invalid expiry year should remain a session cookie")
+  }
+}
+
 test "cookie expiry dates accept RFC date delimiters and token order" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
