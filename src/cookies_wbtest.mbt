@@ -265,3 +265,33 @@ test "updating a cookie preserves its creation order" {
     Some("a=3; b=2"),
   )
 }
+
+test "RFC 850 expiry dates are applied" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  jar.store_at(
+    url,
+    "old=1; Expires=Saturday, 06-Nov-27 08:49:37 GMT; Path=/",
+    0,
+  )
+  let expires_at : UInt64 = 1825490977000L.to_uint64()
+  assert_eq(
+    jar.cookie_header_at(url, expires_at - 1),
+    Some("old=1"),
+  )
+  assert_eq(jar.cookie_header_at(url, expires_at), None)
+}
+
+test "pre-epoch expiry dates delete cookies" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  jar.store_at(url, "old=1; Expires=Wed, 01 Jan 1969 00:00:00 GMT; Path=/", 0)
+  assert_eq(jar.cookie_header_at(url, 0), None)
+}
+
+test "an empty Domain attribute invalidates the cookie" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  jar.store_at(url, "sid=1; Domain=; Path=/", 1000)
+  assert_eq(jar.cookie_header_at(url, 1000), None)
+}

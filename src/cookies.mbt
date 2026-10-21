@@ -276,7 +276,7 @@ fn cookie_parse_year(value : String) -> Int32? {
   } else {
     year
   }
-  if normalized < 1970 || normalized > 9999 {
+  if normalized < 1601 || normalized > 9999 {
     return None
   }
   Some(normalized)
@@ -346,7 +346,7 @@ fn cookie_parse_date(value : String) -> UInt64? {
     }
     tokens = rest
   }
-  if tokens.length() < 4 {
+  if tokens.length() < 3 {
     return None
   }
   // RFC 850: "06-Nov-94 08:49:37 GMT" (the weekday was removed above).
@@ -372,6 +372,9 @@ fn cookie_parse_date(value : String) -> UInt64? {
       None => return None
     }
     return cookie_make_time(year, month, day, clock)
+  }
+  if tokens.length() < 4 {
+    return None
   }
   // IMF-fixdate starts with the day; asctime starts with the month name.
   if cookie_month(tokens[0]) is Some(_) {
@@ -464,13 +467,17 @@ fn cookie_from_set_cookie(
       if candidate.has_prefix(".") {
         candidate = candidate[1:].to_owned()
       }
-      if candidate.length() > 0 &&
-        !is_ip_literal(host) &&
+      if candidate.length() == 0 {
+        // RFC 6265 §5.2.3: an empty Domain attribute causes the cookie to be
+        // ignored rather than falling back to a host-only cookie.
+        return None
+      }
+      if !is_ip_literal(host) &&
         valid_url_host_chars(candidate) &&
         (host == candidate || host.has_suffix("." + candidate)) {
         domain = candidate
         host_only = false
-      } else if candidate.length() > 0 {
+      } else {
         // A Domain attribute that does not cover the request host must not be
         // stored, otherwise a response could set cookies for other sites.
         return None
