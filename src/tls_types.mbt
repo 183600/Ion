@@ -6,6 +6,7 @@ pub enum TlsError {
   InvalidConfig(String)
   IoError(String)
   ConnectionClosed
+  Timeout
 } derive(Eq, Debug)
 
 /// TLS version

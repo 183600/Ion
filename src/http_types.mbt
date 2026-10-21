@@ -27,6 +27,12 @@ fn http_error_from_net(err : NetError) -> HttpError {
 fn normalize_http_error(err : HttpError) -> HttpError {
   match err {
     NetworkError(net) => http_error_from_net(net)
+    TlsError(tls) =>
+      match tls {
+        Timeout => Timeout
+        ConnectionClosed => ConnectionClosed
+        _ => err
+      }
     _ => err
   }
 }

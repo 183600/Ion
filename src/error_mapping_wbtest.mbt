@@ -77,3 +77,61 @@ test "other response body failures stay wrapped in NetworkError" {
   })
   assert_true(response.read_body() is Err(NetworkError(ReadError(_))))
 }
+
+
+struct FailingTlsProvider {
+  error : TlsError
+}
+
+pub impl TlsProvider for FailingTlsProvider with fn new_client(
+  self : FailingTlsProvider,
+  config : TlsConfig,
+) -> Result[&TlsClientCtx, TlsError] {
+  let _ = config
+  Ok(FailingTlsCtx::{ error: self.error })
+}
+
+struct FailingTlsCtx {
+  error : TlsError
+}
+
+pub impl TlsClientCtx for FailingTlsCtx with fn server_name(self : FailingTlsCtx) -> String {
+  let _ = self
+  "failing.example"
+}
+
+pub impl TlsClientCtx for FailingTlsCtx with fn connect(
+  self : FailingTlsCtx,
+  underlying : &Stream,
+) -> Result[&Stream, TlsError] {
+  let _ = underlying
+  Err(self.error)
+}
+
+///|
+test "a timed out TLS handshake surfaces as HttpError::Timeout" {
+  let stream = regression_mock_stream("", 0, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let provider = FailingTlsProvider::{ error: Timeout }
+  let client = UnifiedClient::with_transport(
+    dialer,
+    provider,
+    ClientOptions::new().with_follow_redirects(false),
+  )
+  let url = Url::parse("https://example.com/").unwrap()
+  assert_true(client.request(Request::new(GET, url)) is Err(Timeout))
+}
+
+///|
+test "a closed TLS handshake surfaces as HttpError::ConnectionClosed" {
+  let stream = regression_mock_stream("", 0, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let provider = FailingTlsProvider::{ error: TlsError::ConnectionClosed }
+  let client = UnifiedClient::with_transport(
+    dialer,
+    provider,
+    ClientOptions::new().with_follow_redirects(false),
+  )
+  let url = Url::parse("https://example.com/").unwrap()
+  assert_true(client.request(Request::new(GET, url)) is Err(ConnectionClosed))
+}
