@@ -437,7 +437,8 @@ fn UnifiedClient::do_request_once(
 
   // Add User-Agent header if not present
   let mut request = req
-  if request.get_header("Cookie") is None {
+  let explicit_cookie = request.get_header("Cookie")
+  if explicit_cookie is None {
     match self.connector.cookie_header(request.url) {
       Some(value) => request = request.with_header("Cookie", value)
       None => ()
@@ -530,7 +531,7 @@ fn UnifiedClient::do_request_once(
     let mut next_headers = request.headers.remove("Host")
     // With the jar enabled, let the next hop rebuild `Cookie` for its own
     // origin instead of replaying a header that may have been for this one.
-    if self.connector.cookies_enabled() {
+    if self.connector.cookies_enabled() && explicit_cookie is None {
       next_headers = next_headers.remove("Cookie")
     }
     if !keep_body {
