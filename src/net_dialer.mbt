@@ -99,10 +99,12 @@ pub fn default_dialer() -> NativeTcpDialer {
   NativeTcpDialer::new()
 }
 
-/// Global dialer instance for convenience.
+/// Global dialer instance for targets without a socket transport. It fails
+/// explicitly instead of returning the placeholder `TcpDialer`, which would
+/// only fail later as a confusing HTTP protocol error.
 #cfg(not(target="native"))
-pub fn default_dialer() -> TcpDialer {
-  TcpDialer::new()
+pub fn default_dialer() -> UnavailableTcpDialer {
+  UnavailableTcpDialer::with_timeout(30000)
 }
 
 #cfg(not(target="native"))
@@ -114,7 +116,7 @@ const TCP_TRANSPORT_UNAVAILABLE : String =
 /// placeholder stream, whose empty reads surface as misleading HTTP protocol
 /// errors.
 #cfg(not(target="native"))
-struct UnavailableTcpDialer {
+pub struct UnavailableTcpDialer {
   timeout_ms : Int
 } derive(Eq, Debug)
 
