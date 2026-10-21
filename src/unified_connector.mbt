@@ -128,7 +128,7 @@ fn take_idle_stream_at(
     match remaining.head() {
       Some(entry) => {
         let rest = remaining.unsafe_tail()
-        let expired = if timeout > 0 {
+        let expired = if timeout > 0 && now_ms > entry.last_used_ms {
           now_ms - entry.last_used_ms > timeout.to_uint64()
         } else {
           false

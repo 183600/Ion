@@ -2339,4 +2339,16 @@ test "replacing TLS or proxy settings preserves pool tuning" {
   assert_eq(client.connector.max_connections_per_host(), 2)
 }
 
-
+///|
+test "connector keeps idle connections when the clock moves backwards" {
+  let stream = regression_mock_stream("", 1, 0)
+  let pool = @ref.Ref(ConnectionPoolState::new())
+  let key = "http://example.com:80"
+  pool.val.idle_timeout_ms = 1000
+  pool.val.cache_idle(key, stream, 5000)
+  // A wall-clock adjustment must not make a fresh connection look expired.
+  match take_idle_stream_at(pool, key, 1000) {
+    Some(_) => assert_true(stream.is_open)
+    None => abort("clock rollback should not expire a connection")
+  }
+}
