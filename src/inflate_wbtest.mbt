@@ -762,6 +762,20 @@ test "inflate rejects incomplete dynamic Huffman trees" {
 }
 
 
+test "inflate rejects a dynamic tree without an end-of-block code" {
+  // Raw DEFLATE whose literal/length tree contains only the byte "A" (a
+  // single one-bit code) but omits symbol 256. The block can never terminate.
+  let data = inflate_bytes_of([
+    5, 224, 1, 4, 0, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ])
+  let rejected = match inflate(data, 1_000_000) {
+    Err(ProtocolError(message)) => message.contains("end-of-block")
+    _ => false
+  }
+  assert_true(rejected)
+}
+
 test "inflate enforces the size limit" {
   let compressed = inflate_bytes_of([203, 72, 205, 201, 201, 7, 0])
   assert_true(inflate(compressed, 2) is Err(_))

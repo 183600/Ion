@@ -305,6 +305,9 @@ fn read_dynamic_tables(
   if lit_table.max_len == 0 {
     return Err(inflate_error("missing literal/length Huffman codes"))
   }
+  if lit_lengths[256] == 0 {
+    return Err(inflate_error("missing end-of-block code"))
+  }
   if lit_table.left > 0 && lit_table.max_len != 1 {
     return Err(inflate_error("incomplete literal/length Huffman code"))
   }
