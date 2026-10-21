@@ -226,6 +226,28 @@ fn valid_header_value(value : String) -> Bool {
   true
 }
 
+fn trim_header_ows(value : String) -> String {
+  let mut start = 0
+  while start < value.length() {
+    let ch = value.get_char(start)
+    if ch == Some(' ') || ch == Some('\t') {
+      start = start + 1
+    } else {
+      break
+    }
+  }
+  let mut end = value.length()
+  while end > start {
+    let ch = value.get_char(end - 1)
+    if ch == Some(' ') || ch == Some('\t') {
+      end = end - 1
+    } else {
+      break
+    }
+  }
+  value[start:end].to_owned()
+}
+
 fn valid_request_target(value : String) -> Bool {
   if value.length() == 0 || !valid_encoded_url_chars(value) {
     return false
@@ -632,7 +654,7 @@ fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] 
     if !valid_header_name(name) {
       return Err(ProtocolError("Invalid header format"))
     }
-    let value = line[colon_idx + 1:].to_owned().trim().to_owned()
+    let value = trim_header_ows(line[colon_idx + 1:].to_owned())
     if !valid_header_value(value) {
       return Err(ProtocolError("Invalid header value"))
     }
@@ -764,7 +786,6 @@ fn read_chunk_size(reader : StreamReader) -> Result[Int, NetError] {
     Some(index) => line[0:index].to_owned()
     None => line
   }
-  let size_text = size_text.trim().to_owned()
   if !is_hex_digits(size_text) {
     return Err(NetError::ReadError("invalid chunk size"))
   }
@@ -802,7 +823,7 @@ fn consume_chunk_trailers(reader : StreamReader) -> Result[Unit, NetError] {
       None => return Err(NetError::ReadError("invalid chunked trailer"))
     }
     let name = trailer[0:colon_idx].to_owned()
-    let value = trailer[colon_idx + 1:].to_owned().trim().to_owned()
+    let value = trim_header_ows(trailer[colon_idx + 1:].to_owned())
     if !valid_header_name(name) || !valid_header_value(value) {
       return Err(NetError::ReadError("invalid chunked trailer"))
     }

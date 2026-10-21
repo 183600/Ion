@@ -485,6 +485,28 @@ test "response rejects invalid header names and values" {
 }
 
 ///|
+test "response header values reject bare carriage returns at their edges" {
+  for value in ["a\r", "\ra"] {
+    let raw = "HTTP/1.1 200 OK\r\nX-Test: " + value + "\r\nContent-Length: 0\r\n\r\n"
+    let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+    assert_true(codec.decode_response() is Err(_))
+  }
+}
+
+///|
+test "chunk sizes reject leading and trailing whitespace" {
+  for value in [" 5", "5 ", "\t5", "5\t"] {
+    let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" + value + "\r\nhello\r\n0\r\n\r\n"
+    let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+    let response = codec.decode_response().unwrap()
+    assert_true(response.body.read(@buffer.new(size_hint=8)) is Err(_))
+  }
+  let extended = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5;foo=bar\r\nhello\r\n0\r\n\r\n"
+  let extended_codec = H1Codec::new(regression_mock_stream(extended, 0, 0))
+  assert_eq(extended_codec.decode_response().unwrap().text().unwrap(), "hello")
+}
+
+///|
 test "Transfer-Encoding only recognizes the chunked token" {
   let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: notchunked\r\nContent-Length: 5\r\n\r\nhello"
   let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
@@ -1738,6 +1760,13 @@ test "request encoding rejects malformed Host ports and IPv6 literals" {
 ///|
 test "chunked trailers must be valid header fields" {
   for trailer in ["Bad Trailer: x", "X-Test: a\rb", ": value", "X-Test"] {
+    let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n" +
+      trailer + "\r\n\r\n"
+    let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+    let response = codec.decode_response().unwrap()
+    assert_true(response.read_body() is Err(_))
+  }
+  for trailer in ["X-Test: a\r", "X-Test:\ra"] {
     let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n" +
       trailer + "\r\n\r\n"
     let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
