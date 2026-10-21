@@ -815,7 +815,7 @@ fn ResponseStream::complete(self : ResponseStream, reusable : Bool) -> Unit {
     return
   }
   self.completed = true
-  self.released_to_pool = reusable
+  self.released_to_pool = reusable && self.on_complete is Some(_)
   match self.on_complete {
     Some(callback) => callback(reusable)
     None => ()

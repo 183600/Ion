@@ -174,3 +174,18 @@ test "released response streams do not query pooled connection addresses" {
   assert_true(response.body.local_addr() is Err(Closed))
   assert_true(stream.is_open)
 }
+
+///|
+test "response streams without a completion callback can still inspect their connection" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+  let stream = regression_mock_stream(raw, 1, 0)
+  let codec = H1Codec::new(stream)
+  let response = codec.decode_response().unwrap()
+  assert_eq(response.read_body().unwrap(), b"ok")
+  assert_eq(response.body.peer_addr().unwrap(), "mock:0")
+  assert_eq(response.body.local_addr().unwrap(), "mock:0")
+  assert_true(response.body.set_timeout(4321) is Ok(_))
+  assert_eq(stream.last_timeout, 4321)
+  assert_true(response.body.flush() is Ok(_))
+  assert_true(stream.is_open)
+}
