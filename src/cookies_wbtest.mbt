@@ -356,6 +356,14 @@ test "an empty Domain attribute invalidates the cookie" {
   assert_eq(jar.cookie_header_at(url, 1000), None)
 }
 
+test "a trailing-dot Domain attribute invalidates the cookie" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://www.example.com./")
+  jar.store_at(url, "dot=1; Domain=example.com.; Path=/", 1000)
+  assert_eq(jar.length(), 0)
+  assert_eq(jar.cookie_header_at(url, 1000), None)
+}
+
 test "an IPv4 Domain attribute cannot match a suffix" {
   let jar = CookieJar::new()
   let origin = cookie_test_url("http://127.0.0.1/")

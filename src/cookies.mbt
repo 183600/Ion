@@ -505,6 +505,11 @@ fn cookie_from_set_cookie(
         // ignored rather than falling back to a host-only cookie.
         return None
       }
+      if candidate.has_suffix(".") {
+        // RFC 6265 §5.2.3: a Domain attribute ending in "." must invalidate
+        // the cookie instead of creating a domain-scoped or host-only cookie.
+        return None
+      }
       let numeric_host = is_ipv4_literal(host) || is_ip_literal(host)
       if valid_url_host_chars(candidate) &&
         (host == candidate ||
