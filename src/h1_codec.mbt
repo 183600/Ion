@@ -597,6 +597,11 @@ fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] 
   if status < 100 || status > 599 {
     return Err(ProtocolError("Invalid status code"))
   }
+  for ch in response_line[status_end:].to_owned() {
+    if (ch < ' ' && ch != '\t') || ch == '\u{7f}' {
+      return Err(ProtocolError("Invalid status line"))
+    }
+  }
 
   let mut headers = Headers::new()
   let mut header_count = 0

@@ -507,6 +507,9 @@ fn parse_connect_response_head(head : Bytes) -> Result[Int, HttpError] {
   if status < 100 || status > 599 {
     return Err(ProtocolError("Invalid proxy CONNECT response"))
   }
+  if !valid_header_value(status_line[stop:].to_owned()) {
+    return Err(ProtocolError("Invalid proxy CONNECT response"))
+  }
   let lines = text.split("\r\n").collect()
   let mut index = 1
   let mut header_count = 0

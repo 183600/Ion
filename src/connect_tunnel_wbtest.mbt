@@ -36,6 +36,7 @@ test "CONNECT response parsing rejects malformed header lines" {
     "HTTP/1.1 200 Connection Established\r\nBad Name: x\r\n\r\n",
     "HTTP/1.1 200 Connection Established\r\n: x\r\n\r\n",
     "HTTP/1.1 200 Connection Established\r\nX-Test: a\rb\r\n\r\n",
+    "HTTP/1.1 200 Conn\u{1}ection Established\r\n\r\n",
   ] {
     let stream = regression_mock_stream(raw, 0, 0)
     assert_true(read_connect_response(stream) is Err(ProtocolError(_)))

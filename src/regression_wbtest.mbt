@@ -445,6 +445,15 @@ test "response status line must use the HTTP protocol" {
 }
 
 ///|
+test "response status line rejects control characters in the reason" {
+  let invalid = "HTTP/1.1 200 O\u{1}K\r\nContent-Length: 0\r\n\r\n"
+  let codec = H1Codec::new(regression_mock_stream(invalid, 0, 0))
+  assert_true(codec.decode_response() is Err(_))
+  let tabbed = "HTTP/1.1 200 \tOK\r\nContent-Length: 0\r\n\r\n"
+  let tabbed_codec = H1Codec::new(regression_mock_stream(tabbed, 0, 0))
+  assert_eq(tabbed_codec.decode_response().unwrap().status, 200)
+}
+
 test "truncated response headers are rejected" {
   let raw = "HTTP/1.1 204 No Content\r\n"
   let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
