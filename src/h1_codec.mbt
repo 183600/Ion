@@ -742,6 +742,7 @@ pub fn H1Codec::decode_response(
       is_open: true,
       on_complete: self.on_complete,
       completed: false,
+      released_to_pool: false,
       trailers,
     }
     if self.on_complete is Some(_) {
@@ -805,6 +806,7 @@ struct ResponseStream {
   mut is_open : Bool
   on_complete : ((Bool) -> Unit)?
   mut completed : Bool
+  mut released_to_pool : Bool
   trailers : @ref.Ref[Headers]
 }
 
@@ -813,10 +815,15 @@ fn ResponseStream::complete(self : ResponseStream, reusable : Bool) -> Unit {
     return
   }
   self.completed = true
+  self.released_to_pool = reusable
   match self.on_complete {
     Some(callback) => callback(reusable)
     None => ()
   }
+}
+
+fn ResponseStream::is_released_to_pool(self : ResponseStream) -> Bool {
+  self.completed && self.released_to_pool
 }
 
 fn skip_chunk_ext_ows(value : String, start : Int) -> Int {
@@ -1359,6 +1366,9 @@ pub impl Stream for ResponseStream with fn flush(self : ResponseStream) -> Resul
   if !self.is_open {
     return Err(NetError::Closed)
   }
+  if self.is_released_to_pool() {
+    return Ok(())
+  }
   self.reader.stream.flush()
 }
 
@@ -1383,6 +1393,9 @@ pub impl Stream for ResponseStream with fn close(self : ResponseStream) -> Resul
 pub impl Stream for ResponseStream with fn set_timeout(self : ResponseStream, timeout_ms : Int) -> Result[Unit, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
+  }
+  if self.is_released_to_pool() {
+    return Ok(())
   }
   self.reader.stream.set_timeout(timeout_ms)
 }
