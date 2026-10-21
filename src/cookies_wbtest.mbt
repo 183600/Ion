@@ -117,6 +117,25 @@ test "non-secure origins cannot set Secure cookies" {
 }
 
 ///|
+test "non-secure origins cannot overwrite Secure cookies" {
+  let jar = CookieJar::new()
+  let secure = cookie_test_url("https://example.com/")
+  let plain = cookie_test_url("http://example.com/")
+  jar.store_at(secure, "token=secret; Secure; Path=/", 1000)
+  jar.store_at(plain, "token=attacker; Path=/", 1000)
+  assert_eq(
+    jar.cookie_header_at(secure, 1000),
+    Some("token=secret"),
+  )
+  jar.store_at(plain, "token=; Max-Age=0; Path=/", 1000)
+  assert_eq(
+    jar.cookie_header_at(secure, 1000),
+    Some("token=secret"),
+  )
+  assert_eq(jar.length(), 1)
+}
+
+///|
 test "cookie jar honors Max-Age and deletes expired cookies" {
   let jar = CookieJar::new()
   jar.store_at(

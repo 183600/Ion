@@ -623,7 +623,15 @@ fn CookieJar::store_parsed(
   self : CookieJar,
   cookie : Cookie,
   now_ms : UInt64,
+  from_secure : Bool,
 ) -> Unit {
+  if !from_secure {
+    for existing in self.cookies {
+      if existing.secure && cookie_same_identity(existing, cookie) {
+        return
+      }
+    }
+  }
   let mut remaining = @list.List([])
   let mut preserved_creation : Int? = None
   for existing in self.cookies {
@@ -669,7 +677,7 @@ pub fn CookieJar::store_at(
   now_ms : UInt64,
 ) -> Unit {
   match cookie_from_set_cookie(url, set_cookie, now_ms) {
-    Some(cookie) => self.store_parsed(cookie, now_ms)
+    Some(cookie) => self.store_parsed(cookie, now_ms, url.is_secure())
     None => ()
   }
 }
