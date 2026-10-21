@@ -171,6 +171,9 @@ pub enum NetError {
   IoError(String)
 } derive(Eq, @debug.Debug)
 
+type PrefixStream
+pub impl Stream for PrefixStream
+
 type PrintKeyLogSink
 pub impl KeyLogSink for PrintKeyLogSink
 

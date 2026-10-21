@@ -1,3 +1,75 @@
+/// A stream that replays a fixed prefix of already-read bytes before
+/// delegating to the underlying stream. It is used to hand the first bytes of
+/// a CONNECT tunnel back to the TLS layer after a single socket read may have
+/// delivered them alongside the proxy response headers.
+struct PrefixStream {
+  prefix : Bytes
+  mut offset : Int
+  underlying : &Stream
+  mut is_open : Bool
+}
+
+fn PrefixStream::new(prefix : Bytes, underlying : &Stream) -> PrefixStream {
+  PrefixStream::{ prefix, offset: 0, underlying, is_open: true }
+}
+
+pub impl Stream for PrefixStream with fn read(self : PrefixStream, buf : Buffer) -> Result[Int, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  if self.offset < self.prefix.length() {
+    let remaining = self.prefix.length() - self.offset
+    let take = if remaining < 8192 { remaining } else { 8192 }
+    buf.write_bytes(self.prefix.exact_view(start=self.offset, end=self.offset + take))
+    self.offset = self.offset + take
+    return Ok(take)
+  }
+  self.underlying.read(buf)
+}
+
+pub impl Stream for PrefixStream with fn write(self : PrefixStream, buf : Buffer) -> Result[Int, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  self.underlying.write(buf)
+}
+
+pub impl Stream for PrefixStream with fn flush(self : PrefixStream) -> Result[Unit, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  self.underlying.flush()
+}
+
+pub impl Stream for PrefixStream with fn close(self : PrefixStream) -> Result[Unit, NetError] {
+  if !self.is_open {
+    return Ok(())
+  }
+  self.is_open = false
+  self.underlying.close()
+}
+
+pub impl Stream for PrefixStream with fn set_timeout(self : PrefixStream, timeout_ms : Int) -> Result[Unit, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  self.underlying.set_timeout(timeout_ms)
+}
+
+pub impl Stream for PrefixStream with fn peer_addr(self : PrefixStream) -> Result[String, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  self.underlying.peer_addr()
+}
+
+pub impl Stream for PrefixStream with fn local_addr(self : PrefixStream) -> Result[String, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  self.underlying.local_addr()
+}
+
 struct ActiveConnection {
   id : Int
   key : String
@@ -306,7 +378,10 @@ fn find_head_end(data : Bytes) -> Int? {
   None
 }
 
-fn read_connect_response(stream : &Stream) -> Result[Unit, HttpError] {
+/// Read the proxy's CONNECT response head. Returns any bytes that were read
+/// past the end of the head, which belong to the tunnelled stream and must be
+/// replayed before reading further from `stream`.
+fn read_connect_response(stream : &Stream) -> Result[Bytes, HttpError] {
   let head = Buffer(size_hint=128)
   let limit = 16384
   while head.length() <= limit {
@@ -325,7 +400,9 @@ fn read_connect_response(stream : &Stream) -> Result[Unit, HttpError] {
     match find_head_end(data) {
       Some(head_end) => {
         // Only the head belongs to this exchange; any trailing bytes are the
-        // first bytes of the tunnelled stream and must stay unread.
+        // first bytes of the tunnelled stream and must be replayed by the
+        // caller instead of being discarded.
+        let leftover = data.exact_view(start=head_end, end=data.length()).to_owned()
         let text = @utf8.decode_lossy(data.exact_view(start=0, end=head_end))
         let line_end = match text.find("\r\n") {
           Some(index) => index
@@ -360,7 +437,7 @@ fn read_connect_response(stream : &Stream) -> Result[Unit, HttpError] {
             "proxy CONNECT failed with status " + status.to_string(),
           ))
         }
-        return Ok(())
+        return Ok(leftover)
       }
       None => ()
     }
@@ -382,7 +459,7 @@ fn establish_tunnel(
   stream : &Stream,
   url : Url,
   proxy : Proxy,
-) -> Result[Unit, HttpError] {
+) -> Result[Bytes, HttpError] {
   let authority = connect_authority(url)
   let mut request = "CONNECT " + authority + " HTTP/1.1\r\nHost: " + authority + "\r\n"
   match proxy.authorization {
@@ -487,10 +564,11 @@ fn Connector::connect_impl(
   }
 
   // For HTTPS through a proxy, open a CONNECT tunnel before starting TLS.
+  let mut tunnel_leftover : Bytes = b""
   if scheme == "https" {
     match self.proxy {
       Some(proxy) => match establish_tunnel(raw_stream, url, proxy) {
-        Ok(_) => ()
+        Ok(leftover) => tunnel_leftover = leftover
         Err(err) => {
           let _ = raw_stream.close()
           return Err(err)
@@ -515,6 +593,16 @@ fn Connector::connect_impl(
       }
     }
 
+    // A single socket read during CONNECT may have delivered the first bytes
+    // of the tunnelled stream; replay them ahead of the socket so the TLS
+    // handshake sees the whole record.
+    let tls_underlying : &Stream = if tunnel_leftover.length() > 0 {
+      let prefix : &Stream = PrefixStream::new(tunnel_leftover, raw_stream)
+      prefix
+    } else {
+      raw_stream
+    }
+
     // Create TLS client context
     let tls_ctx = match self.tls_provider.new_client(tls_config) {
       Ok(ctx) => ctx
@@ -525,7 +613,7 @@ fn Connector::connect_impl(
     }
 
     // Perform TLS handshake
-    let tls_stream = match tls_ctx.connect(raw_stream) {
+    let tls_stream = match tls_ctx.connect(tls_underlying) {
       Ok(stream) => stream
       Err(err) => {
         let _ = raw_stream.close()
