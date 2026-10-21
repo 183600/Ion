@@ -32,6 +32,9 @@ type ActiveConnection
 
 type BitReader
 
+type BufferedStream
+pub impl Stream for BufferedStream
+
 type ChunkReadState
 
 pub struct ClientCert {

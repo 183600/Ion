@@ -631,20 +631,113 @@ pub fn default_client() -> UnifiedClient {
   UnifiedClient::new()
 }
 
+struct BufferedStream {
+  data : Bytes
+  mut offset : Int
+  mut is_open : Bool
+}
+
+fn BufferedStream::new(data : Bytes) -> BufferedStream {
+  BufferedStream::{ data, offset: 0, is_open: true }
+}
+
+pub impl Stream for BufferedStream with fn read(self : BufferedStream, buf : Buffer) -> Result[Int, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  let remaining = self.data.length() - self.offset
+  if remaining <= 0 {
+    return Ok(0)
+  }
+  let take = if remaining < 8192 { remaining } else { 8192 }
+  buf.write_bytes(self.data.exact_view(start=self.offset, end=self.offset + take))
+  self.offset = self.offset + take
+  Ok(take)
+}
+
+pub impl Stream for BufferedStream with fn write(self : BufferedStream, buf : Buffer) -> Result[Int, NetError] {
+  let _ = buf
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  Err(NetError::WriteError("buffered response is read-only"))
+}
+
+pub impl Stream for BufferedStream with fn flush(self : BufferedStream) -> Result[Unit, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  Ok(())
+}
+
+pub impl Stream for BufferedStream with fn close(self : BufferedStream) -> Result[Unit, NetError] {
+  self.is_open = false
+  Ok(())
+}
+
+pub impl Stream for BufferedStream with fn set_timeout(self : BufferedStream, timeout_ms : Int) -> Result[Unit, NetError] {
+  let _ = timeout_ms
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  Ok(())
+}
+
+pub impl Stream for BufferedStream with fn peer_addr(self : BufferedStream) -> Result[String, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  Err(NetError::IoError("buffered response has no peer"))
+}
+
+pub impl Stream for BufferedStream with fn local_addr(self : BufferedStream) -> Result[String, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  Err(NetError::IoError("buffered response has no local address"))
+}
+
+fn buffer_one_shot_response(
+  client : UnifiedClient,
+  result : Result[Response, HttpError],
+) -> Result[Response, HttpError] {
+  let response = match result {
+    Ok(response) => response
+    Err(err) => {
+      let _ = client.close_all()
+      return Err(err)
+    }
+  }
+  let body = match response.read_body() {
+    Ok(body) => body
+    Err(err) => {
+      let _ = client.close_all()
+      return Err(err)
+    }
+  }
+  let _ = client.close_all()
+  let buffered = BufferedStream::new(body)
+  let stream : &Stream = buffered
+  Ok(
+    Response::new_with_version(
+      response.version,
+      response.status,
+      response.headers,
+      stream,
+    ).with_max_body_bytes(response.max_body_bytes),
+  )
+}
+
 /// Send a GET request with a one-shot default client, choosing HTTP or HTTPS
 /// automatically from the URL scheme.
 pub fn get(url : String) -> Result[Response, HttpError] {
   let client = default_client()
-  let result = client.get(url)
-  let _ = client.close_all()
-  result
+  buffer_one_shot_response(client, client.get(url))
 }
 
 /// Send a POST request with a one-shot default client, choosing HTTP or HTTPS
 /// automatically from the URL scheme.
 pub fn post(url : String, body : Bytes) -> Result[Response, HttpError] {
   let client = default_client()
-  let result = client.post(url, body)
-  let _ = client.close_all()
-  result
+  buffer_one_shot_response(client, client.post(url, body))
 }

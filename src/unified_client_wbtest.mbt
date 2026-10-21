@@ -122,3 +122,17 @@ test "UnifiedClient exposes pool tuning on the connector" {
   assert_eq(tuned.connector.max_connections_per_host(), 4)
   assert_eq(tuned.connector.idle_timeout(), 1500)
 }
+
+///|
+test "one-shot helpers buffer the body before closing the client" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"
+  let stream = regression_mock_stream(raw, 0, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let options = ClientOptions::new().with_follow_redirects(false)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let response = client.get("http://example.com/").unwrap()
+  let buffered = buffer_one_shot_response(client, Ok(response)).unwrap()
+  assert_eq(buffered.text().unwrap(), "hello")
+  assert_false(stream.is_open)
+}
