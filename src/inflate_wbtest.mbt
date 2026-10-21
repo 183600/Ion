@@ -888,6 +888,18 @@ test "read_body_decoded_with_limit bounds identity and unencoded bodies" {
   assert_true(response.read_body_decoded_with_limit(4) is Err(_))
 }
 
+test "empty encoded response bodies decode to empty" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: 25\r\n\r\n"
+  let stream : &Stream = InflateMockStream::{ input: @utf8.encode(raw), offset: 0 }
+  let response = H1Codec::new(stream).decode_response(head=true).unwrap()
+  assert_eq(response.read_body_decoded().unwrap(), b"")
+
+  let raw = "HTTP/1.1 204 No Content\r\nContent-Encoding: gzip\r\n\r\n"
+  let stream : &Stream = InflateMockStream::{ input: @utf8.encode(raw), offset: 0 }
+  let response = H1Codec::new(stream).decode_response().unwrap()
+  assert_eq(response.read_body_decoded().unwrap(), b"")
+}
+
 test "Content-Encoding decodes multiple encodings in reverse" {
   let payload = inflate_bytes_of([104, 101, 108, 108, 111])
   let stream : &Stream = InflateMockStream::{ input: payload, offset: 0 }

@@ -865,6 +865,9 @@ pub fn Response::read_body_decoded_with_limit(
     Ok(body) => body
     Err(err) => return Err(err)
   }
+  if raw.length() == 0 {
+    return Ok(raw)
+  }
   // Repeated Content-Encoding header lines are equivalent to a single
   // comma-separated value listing the codings in the order they were applied
   // (RFC 7230 §3.2.2), so combine every line before decoding.
