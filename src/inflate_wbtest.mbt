@@ -709,6 +709,8 @@ test "decode_content_encoding handles identity and unknown" {
   let body = inflate_bytes_of([1, 2, 3, 4])
   assert_eq(decode_content_encoding("identity", body, 1000).unwrap(), body)
   assert_eq(decode_content_encoding("", body, 1000).unwrap(), body)
+  assert_true(decode_content_encoding("identity", body, 3) is Err(_))
+  assert_true(decode_content_encoding("", body, 3) is Err(_))
   assert_true(decode_content_encoding("br", body, 1000) is Err(_))
 }
 

@@ -668,10 +668,16 @@ pub fn decode_content_encoding(
   max_bytes : Int,
 ) -> Result[Bytes, HttpError] {
   let normalized = encoding.trim().to_lower()
+  let limit = if max_bytes < 0 { 0 } else { max_bytes }
   match normalized {
-    "" | "identity" => Ok(data)
-    "gzip" | "x-gzip" => gunzip(data, max_bytes)
-    "deflate" => inflate(data, max_bytes)
+    "" | "identity" =>
+      if data.length() > limit {
+        Err(NetworkError(ReadError("response body too large")))
+      } else {
+        Ok(data)
+      }
+    "gzip" | "x-gzip" => gunzip(data, limit)
+    "deflate" => inflate(data, limit)
     _ => Err(ProtocolError("unsupported Content-Encoding: " + encoding))
   }
 }
