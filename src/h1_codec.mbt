@@ -387,8 +387,11 @@ fn request_is_chunked(headers : Headers) -> Result[Bool, HttpError] {
     return Err(InvalidHeader("Transfer-Encoding"))
   }
   let mut seen = false
-  for part in values.nth(0).unwrap().split(",") {
-    let token = part.trim().to_owned().to_lower()
+  for part in split_header_list(values.nth(0).unwrap()) {
+    let token = transfer_coding_name(part)
+    if token.length() == 0 {
+      continue
+    }
     if token != "chunked" || seen {
       return Err(InvalidHeader("Transfer-Encoding"))
     }
@@ -959,7 +962,7 @@ fn consume_chunk_trailers(reader : StreamReader) -> Result[Unit, NetError] {
   Ok(())
 }
 
-fn response_transfer_coding_name(value : String) -> String {
+fn transfer_coding_name(value : String) -> String {
   // transfer-coding = token *( OWS ";" OWS transfer-parameter ); parameters
   // do not change the coding's identity, so only the name is significant.
   let token = value.trim().to_owned()
@@ -973,7 +976,7 @@ fn response_is_chunked(headers : Headers) -> Result[Bool, NetError] {
   let mut chunked_seen = false
   for value in headers.get_all("Transfer-Encoding") {
     for part in split_header_list(value) {
-      let token = response_transfer_coding_name(part)
+      let token = transfer_coding_name(part)
       if token.length() == 0 {
         continue
       }
