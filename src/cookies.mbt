@@ -523,15 +523,25 @@ fn CookieJar::store_parsed(
   now_ms : UInt64,
 ) -> Unit {
   let mut remaining = @list.List([])
+  let mut preserved_creation : Int? = None
   for existing in self.cookies {
-    if !cookie_same_identity(existing, cookie) &&
-      !cookie_expired(existing, now_ms) {
+    if cookie_same_identity(existing, cookie) {
+      if !cookie_expired(existing, now_ms) {
+        preserved_creation = Some(existing.creation)
+      }
+    } else if !cookie_expired(existing, now_ms) {
       remaining = remaining.prepend(existing)
     }
   }
   if !cookie_expired(cookie, now_ms) {
-    let creation = self.next_creation
-    self.next_creation = creation + 1
+    let creation = match preserved_creation {
+      Some(creation) => creation
+      None => {
+        let creation = self.next_creation
+        self.next_creation = creation + 1
+        creation
+      }
+    }
     self.cookies = remaining.prepend(Cookie::{ ..cookie, creation, })
   } else {
     self.cookies = remaining

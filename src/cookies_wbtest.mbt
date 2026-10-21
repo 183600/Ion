@@ -253,3 +253,15 @@ test "redirect responses can set cookies for the next hop" {
   let second_request = wire.substring(start=next_index)
   assert_true(second_request.contains("Cookie: sid=jar"))
 }
+
+test "updating a cookie preserves its creation order" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  jar.store_at(url, "a=1; Path=/", 1000)
+  jar.store_at(url, "b=2; Path=/", 1000)
+  jar.store_at(url, "a=3; Path=/", 1000)
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://example.com/x"), 1000),
+    Some("a=3; b=2"),
+  )
+}
