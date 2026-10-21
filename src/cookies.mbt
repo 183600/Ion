@@ -630,7 +630,8 @@ fn CookieJar::store_parsed(
 ) -> Unit {
   if !from_secure {
     for existing in self.cookies {
-      if existing.secure && cookie_same_identity(existing, cookie) {
+      if existing.secure && !cookie_expired(existing, now_ms) &&
+        cookie_same_identity(existing, cookie) {
         return
       }
     }
