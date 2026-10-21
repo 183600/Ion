@@ -1,7 +1,9 @@
 /// HTTP proxy configuration.
 ///
-/// Feather supports plain `http://` forward proxies. Plain HTTP requests are
-/// sent in absolute-form and HTTPS requests are tunnelled with `CONNECT`.
+/// Feather supports `http://` and `https://` forward proxies. Plain HTTP
+/// requests are sent in absolute-form and HTTPS requests are tunnelled with
+/// `CONNECT`. An `https://` proxy is reached over TLS before either form is
+/// used, so the proxy connection itself is encrypted too.
 pub struct Proxy {
   url : Url
   authorization : String?
@@ -73,14 +75,13 @@ fn proxy_basic_authorization(userinfo : String) -> String {
   @base64.encode(credentials.to_bytes())
 }
 
-/// Create a proxy from an `http://[user:password@]host[:port]` URL.
-pub fn Proxy::new(url : String) -> Result[Proxy, HttpError] {
+fn proxy_from_url(url : String, scheme : String) -> Result[Proxy, HttpError] {
   let parsed = match Url::parse(url) {
     Ok(parsed) => parsed
     Err(err) => return Err(err)
   }
-  if parsed.scheme.to_lower() != "http" {
-    return Err(InvalidUrl("Only http proxies are supported"))
+  if parsed.scheme.to_lower() != scheme {
+    return Err(InvalidUrl("Only " + scheme + " proxies are supported"))
   }
   // `Url` cannot distinguish an absent query/fragment from an empty one, so
   // also reject the raw delimiters. This catches URLs such as
@@ -95,6 +96,19 @@ pub fn Proxy::new(url : String) -> Result[Proxy, HttpError] {
     None => None
   }
   Ok(Proxy::{ url: parsed, authorization })
+}
+
+/// Create an HTTP proxy from an `http://`
+/// `[user:password@]host[:port]` URL.
+pub fn Proxy::new(url : String) -> Result[Proxy, HttpError] {
+  proxy_from_url(url, "http")
+}
+
+/// Create an HTTPS proxy from an `https://`
+/// `[user:password@]host[:port]` URL. The connection to the proxy is
+/// protected with TLS before any proxy request is sent.
+pub fn Proxy::new_https(url : String) -> Result[Proxy, HttpError] {
+  proxy_from_url(url, "https")
 }
 
 /// Create a proxy that authenticates with the given credentials.
@@ -118,6 +132,11 @@ pub fn Proxy::new_with_basic_auth(
 /// Host and port of the proxy server.
 pub fn Proxy::authority(self : Proxy) -> String {
   self.url.authority()
+}
+
+/// Whether the connection to the proxy itself must use TLS.
+pub fn Proxy::is_secure(self : Proxy) -> Bool {
+  self.url.scheme.to_lower() == "https"
 }
 
 /// Authorization header value for the proxy, if credentials were supplied.

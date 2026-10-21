@@ -440,13 +440,35 @@ fn Connector::connection_key(self : Connector, url : Url) -> String {
   let origin = url.scheme.to_lower() + "://" + url.host.to_lower() + ":" + url.port.to_string()
   match self.proxy {
     Some(proxy) =>
-      "proxy://" +
+      "proxy:" +
+      proxy.url.scheme.to_lower() +
+      "://" +
       proxy.url.host.to_lower() +
       ":" +
       proxy.url.port.to_string() +
       "|" +
       origin
     None => origin
+  }
+}
+
+/// TLS settings for reaching an HTTPS proxy. The proxy always speaks HTTP/1.1,
+/// so it must not inherit an ALPN list meant for the origin (for example one
+/// that advertises `h2`). Client certificates are origin credentials and are
+/// deliberately not sent to the proxy.
+fn Connector::proxy_tls_config(self : Connector, proxy : Proxy) -> TlsConfig {
+  let base = match self.tls_config {
+    Some(config) => config
+    None => TlsConfig::new(proxy.url.host)
+  }
+  TlsConfig::{
+    server_name: proxy.url.host,
+    alpn: @list.List(["http/1.1"]),
+    root_store: base.root_store,
+    client_auth: None,
+    verify: base.verify,
+    min_version: base.min_version,
+    key_log: base.key_log,
   }
 }
 
@@ -674,6 +696,12 @@ fn Connector::connect_impl(
       if !valid_tcp_host(proxy.url.host) || !valid_tcp_port(proxy.url.port) {
         return Err(InvalidUrl("Invalid proxy address"))
       }
+      if proxy.is_secure() {
+        match self.proxy_tls_config(proxy).validate() {
+          Ok(_) => ()
+          Err(err) => return Err(TlsError(err))
+        }
+      }
     }
     None => ()
   }
@@ -727,14 +755,40 @@ fn Connector::connect_impl(
     }
   }
 
+  // An HTTPS proxy is reached over TLS before the proxy protocol starts. The
+  // resulting stream carries either absolute-form HTTP or the CONNECT tunnel.
+  let proxy_stream : &Stream = match self.proxy {
+    Some(proxy) =>
+      if proxy.is_secure() {
+        let config = self.proxy_tls_config(proxy)
+        let ctx = match self.tls_provider.new_client(config) {
+          Ok(ctx) => ctx
+          Err(err) => {
+            let _ = raw_stream.close()
+            return Err(TlsError(err))
+          }
+        }
+        match ctx.connect(raw_stream) {
+          Ok(stream) => stream
+          Err(err) => {
+            let _ = raw_stream.close()
+            return Err(TlsError(err))
+          }
+        }
+      } else {
+        raw_stream
+      }
+    None => raw_stream
+  }
+
   // For HTTPS through a proxy, open a CONNECT tunnel before starting TLS.
   let mut tunnel_leftover : Bytes = b""
   if scheme == "https" {
     match self.proxy {
-      Some(proxy) => match establish_tunnel(raw_stream, url, proxy) {
+      Some(proxy) => match establish_tunnel(proxy_stream, url, proxy) {
         Ok(leftover) => tunnel_leftover = leftover
         Err(err) => {
-          let _ = raw_stream.close()
+          let _ = proxy_stream.close()
           return Err(err)
         }
       }
@@ -752,7 +806,7 @@ fn Connector::connect_impl(
     let tls_config = match tls_config.validate() {
       Ok(_) => tls_config
       Err(err) => {
-        let _ = raw_stream.close()
+        let _ = proxy_stream.close()
         return Err(TlsError(err))
       }
     }
@@ -761,17 +815,17 @@ fn Connector::connect_impl(
     // of the tunnelled stream; replay them ahead of the socket so the TLS
     // handshake sees the whole record.
     let tls_underlying : &Stream = if tunnel_leftover.length() > 0 {
-      let prefix : &Stream = PrefixStream::new(tunnel_leftover, raw_stream)
+      let prefix : &Stream = PrefixStream::new(tunnel_leftover, proxy_stream)
       prefix
     } else {
-      raw_stream
+      proxy_stream
     }
 
     // Create TLS client context
     let tls_ctx = match self.tls_provider.new_client(tls_config) {
       Ok(ctx) => ctx
       Err(err) => {
-        let _ = raw_stream.close()
+        let _ = proxy_stream.close()
         return Err(TlsError(err))
       }
     }
@@ -780,7 +834,7 @@ fn Connector::connect_impl(
     let tls_stream = match tls_ctx.connect(tls_underlying) {
       Ok(stream) => stream
       Err(err) => {
-        let _ = raw_stream.close()
+        let _ = proxy_stream.close()
         return Err(TlsError(err))
       }
     }
@@ -790,11 +844,11 @@ fn Connector::connect_impl(
     }
     Ok((tls_stream, false))
   } else {
-    // For HTTP, use the raw stream directly
+    // For plain HTTP, use the proxy stream (raw or TLS-to-proxy) directly.
     if cache_new {
-      self.pool.val.cache_idle(conn_key, raw_stream, @env.now())
+      self.pool.val.cache_idle(conn_key, proxy_stream, @env.now())
     }
-    Ok((raw_stream, false))
+    Ok((proxy_stream, false))
   }
 }
 

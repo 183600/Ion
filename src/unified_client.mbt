@@ -212,12 +212,17 @@ pub fn UnifiedClient::with_proxy(self : UnifiedClient, proxy : Proxy) -> Unified
 }
 
 /// Route HTTP requests through the proxy described by `url`
-/// (`http://[user:password@]host[:port]`).
+/// (`http://` or `https://` `[user:password@]host[:port]`).
 pub fn UnifiedClient::with_proxy_url(
   self : UnifiedClient,
   url : String,
 ) -> Result[UnifiedClient, HttpError] {
-  let proxy = match Proxy::new(url) {
+  let proxy = if url.to_lower().has_prefix("https://") {
+    Proxy::new_https(url)
+  } else {
+    Proxy::new(url)
+  }
+  let proxy = match proxy {
     Ok(proxy) => proxy
     Err(err) => return Err(err)
   }

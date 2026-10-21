@@ -227,7 +227,9 @@ pub struct Proxy {
 } derive(Eq, @debug.Debug)
 pub fn Proxy::authority(Self) -> String
 pub fn Proxy::authorization(Self) -> String?
+pub fn Proxy::is_secure(Self) -> Bool
 pub fn Proxy::new(String) -> Result[Self, HttpError]
+pub fn Proxy::new_https(String) -> Result[Self, HttpError]
 pub fn Proxy::new_with_basic_auth(String, Int32, String, String) -> Result[Self, HttpError]
 
 pub struct Request {
@@ -397,6 +399,7 @@ pub struct Url {
 } derive(Eq, @debug.Debug)
 pub fn Url::authority(Self) -> String
 pub fn Url::is_secure(Self) -> Bool
+pub fn Url::join(Self, String) -> Result[Self, HttpError]
 pub fn Url::new(String, String, Int32) -> Self
 pub fn Url::origin(Self) -> String
 pub fn Url::parse(String) -> Result[Self, HttpError]
