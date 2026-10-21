@@ -926,7 +926,7 @@ fn read_chunk_size(reader : StreamReader) -> Result[Int, NetError] {
   }
   let extension_index = line.find(";")
   let size_text = match extension_index {
-    Some(index) => line[0:index].trim().to_owned()
+    Some(index) => trim_header_ows(line[0:index].to_owned())
     None => line
   }
   if !is_hex_digits(size_text) {

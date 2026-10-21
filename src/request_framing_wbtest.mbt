@@ -129,6 +129,14 @@ test "chunk size without extensions rejects trailing whitespace" {
 }
 
 ///|
+test "chunk size rejects embedded control characters before extensions" {
+  let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r;foo=bar\r\nhello\r\n0\r\n\r\n"
+  let codec = H1Codec::new(regression_mock_stream(raw, 4096, 4096))
+  let response = codec.decode_response().unwrap()
+  assert_true(response.read_body() is Err(NetworkError(ReadError(_))))
+}
+
+///|
 test "non-chunked responses have no trailers" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
   let codec = H1Codec::new(regression_mock_stream(raw, 4096, 4096))
