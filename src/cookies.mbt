@@ -296,7 +296,7 @@ fn cookie_parse_year(value : String) -> Int32? {
     Some(year) => year
     None => return None
   }
-  let normalized = if value.length() <= 2 {
+  let normalized = if year < 100 {
     if year >= 70 {
       1900 + year
     } else {
@@ -456,22 +456,22 @@ fn cookie_parse_date(value : String) -> UInt64? {
 }
 
 ///|
-fn cookie_parse_max_age(value : String) -> Int32? {
+fn cookie_parse_max_age(value : String) -> Int64? {
   let text = value.trim().to_owned()
   if text.length() == 0 {
     return None
   }
   let negative = text.get_char(0) == Some('-')
   let digits = if negative { text[1:].to_owned() } else { text }
-  let seconds = match cookie_parse_decimal(digits) {
-    Some(seconds) => seconds
-    None => return None
+  if !is_decimal_digits(digits) {
+    return None
   }
-  if negative {
-    Some(-seconds)
-  } else {
-    Some(seconds)
+  let seconds = try {
+    @string.parse_int64(text[:])
+  } catch {
+    _ => if negative { -1L } else { 9223372036854775807L }
   }
+  Some(seconds)
 }
 
 ///|
@@ -546,8 +546,13 @@ fn cookie_from_set_cookie(
           if seconds <= 0 {
             expires_at_ms = Some(0)
           } else {
-            let delta = seconds.to_int64() * 1000L
-            expires_at_ms = Some(now_ms + delta.to_uint64())
+            let max_ms = 0xFFFFFFFFFFFFFFFFUL
+            let seconds = seconds.to_uint64()
+            if seconds > (max_ms - now_ms) / 1000UL {
+              expires_at_ms = Some(max_ms)
+            } else {
+              expires_at_ms = Some(now_ms + seconds * 1000UL)
+            }
           }
         }
         None => ()

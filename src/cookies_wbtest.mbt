@@ -150,6 +150,29 @@ test "cookie jar honors Max-Age and deletes expired cookies" {
 }
 
 ///|
+test "Max-Age values beyond Int32 are honored" {
+  let url = cookie_test_url("http://example.com/")
+  let jar = CookieJar::new()
+  jar.store_at(url, "m=1; Max-Age=2147483648; Path=/", 1000)
+  let expires_at : UInt64 = 2147483649000L.to_uint64()
+  assert_eq(jar.cookie_header_at(url, expires_at - 1), Some("m=1"))
+  assert_eq(jar.cookie_header_at(url, expires_at), None)
+
+  let jar = CookieJar::new()
+  jar.store_at(url, "m=1; Max-Age=999999999999999999999999; Path=/", 1000)
+  match jar.cookies().head() {
+    Some(cookie) =>
+      assert_eq(cookie.expires_at_ms, Some(0xFFFFFFFFFFFFFFFFUL))
+    None => fail("huge Max-Age should keep the cookie")
+  }
+
+  let jar = CookieJar::new()
+  jar.store_at(url, "m=1; Max-Age=2147483648; Path=/", 1000)
+  jar.store_at(url, "m=; Max-Age=-999999999999999999999; Path=/", 1000)
+  assert_eq(jar.cookie_header_at(url, 1000), None)
+}
+
+///|
 test "cookie jar parses Expires dates in the standard formats" {
   let jar = CookieJar::new()
   jar.store_at(
@@ -315,6 +338,25 @@ test "single-digit expiry years are normalized" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
   jar.store_at(url, "y=1; Expires=Wed, 01 Jan 5 00:00:00 GMT; Path=/", 0)
+  let expires_at : UInt64 = 1104537600000L.to_uint64()
+  assert_eq(jar.cookie_header_at(url, expires_at - 1), Some("y=1"))
+  assert_eq(jar.cookie_header_at(url, expires_at), None)
+}
+
+test "leading-zero expiry years are normalized by value" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  jar.store_at(url, "y=1; Expires=Wed, 01 Jan 069 00:00:00 GMT; Path=/", 0)
+  let expires_at : UInt64 = 3124224000000L.to_uint64()
+  assert_eq(jar.cookie_header_at(url, expires_at - 1), Some("y=1"))
+  assert_eq(jar.cookie_header_at(url, expires_at), None)
+
+  let jar = CookieJar::new()
+  jar.store_at(url, "y=1; Expires=Wed, 01 Jan 070 00:00:00 GMT; Path=/", 0)
+  assert_eq(jar.cookie_header_at(url, 1000), None)
+
+  let jar = CookieJar::new()
+  jar.store_at(url, "y=1; Expires=Wed, 01 Jan 0005 00:00:00 GMT; Path=/", 0)
   let expires_at : UInt64 = 1104537600000L.to_uint64()
   assert_eq(jar.cookie_header_at(url, expires_at - 1), Some("y=1"))
   assert_eq(jar.cookie_header_at(url, expires_at), None)
