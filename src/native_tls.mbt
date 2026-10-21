@@ -246,6 +246,7 @@ pub impl Stream for NativeTlsStream with fn read(
       match native_tls_flush(self.tls, self.underlying) {
         TlsIoData => ()
         TlsIoTimeout => return Err(NetError::Timeout)
+        TlsIoClosed => return Err(NetError::Closed)
         _ => return Err(NetError::ReadError("TLS flush failed"))
       }
       match native_tls_feed(self.tls, self.underlying) {
@@ -259,6 +260,7 @@ pub impl Stream for NativeTlsStream with fn read(
       match native_tls_flush(self.tls, self.underlying) {
         TlsIoData => continue
         TlsIoTimeout => return Err(NetError::Timeout)
+        TlsIoClosed => return Err(NetError::Closed)
         _ => return Err(NetError::ReadError("TLS flush failed"))
       }
     }
@@ -284,6 +286,7 @@ pub impl Stream for NativeTlsStream with fn write(
       match native_tls_flush(self.tls, self.underlying) {
         TlsIoData => ()
         TlsIoTimeout => return Err(NetError::Timeout)
+        TlsIoClosed => return Err(NetError::Closed)
         _ => return Err(NetError::WriteError("TLS flush failed"))
       }
       continue
@@ -291,8 +294,7 @@ pub impl Stream for NativeTlsStream with fn write(
     if count == -1 {
       match native_tls_feed(self.tls, self.underlying) {
         TlsIoData => continue
-        TlsIoClosed =>
-          return Err(NetError::WriteError("TLS connection closed unexpectedly"))
+        TlsIoClosed => return Err(NetError::Closed)
         TlsIoTimeout => return Err(NetError::Timeout)
         TlsIoFailure(_) => return Err(NetError::WriteError("TLS read failed"))
       }
@@ -301,6 +303,7 @@ pub impl Stream for NativeTlsStream with fn write(
       match native_tls_flush(self.tls, self.underlying) {
         TlsIoData => continue
         TlsIoTimeout => return Err(NetError::Timeout)
+        TlsIoClosed => return Err(NetError::Closed)
         _ => return Err(NetError::WriteError("TLS flush failed"))
       }
     }
@@ -318,6 +321,7 @@ pub impl Stream for NativeTlsStream with fn flush(
   match native_tls_flush(self.tls, self.underlying) {
     TlsIoData => self.underlying.flush()
     TlsIoTimeout => Err(NetError::Timeout)
+    TlsIoClosed => Err(NetError::Closed)
     _ => Err(NetError::WriteError("TLS flush failed"))
   }
 }

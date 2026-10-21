@@ -108,3 +108,109 @@ test "native TLS sends SNI only for host names" {
     assert_eq(feather_tls_sni_name(tls, buffer, 128), 0)
   }
 }
+
+///|
+#cfg(target="native")
+struct ClosedTlsUnderlying {}
+
+///|
+#cfg(target="native")
+pub impl Stream for ClosedTlsUnderlying with fn read(
+  self : ClosedTlsUnderlying,
+  buf : Buffer,
+) -> Result[Int, NetError] {
+  let _ = self
+  let _ = buf
+  Err(NetError::Closed)
+}
+
+///|
+#cfg(target="native")
+pub impl Stream for ClosedTlsUnderlying with fn write(
+  self : ClosedTlsUnderlying,
+  buf : Buffer,
+) -> Result[Int, NetError] {
+  let _ = self
+  let _ = buf
+  Err(NetError::Closed)
+}
+
+///|
+#cfg(target="native")
+pub impl Stream for ClosedTlsUnderlying with fn flush(
+  self : ClosedTlsUnderlying,
+) -> Result[Unit, NetError] {
+  let _ = self
+  Ok(())
+}
+
+///|
+#cfg(target="native")
+pub impl Stream for ClosedTlsUnderlying with fn close(
+  self : ClosedTlsUnderlying,
+) -> Result[Unit, NetError] {
+  let _ = self
+  Ok(())
+}
+
+///|
+#cfg(target="native")
+pub impl Stream for ClosedTlsUnderlying with fn set_timeout(
+  self : ClosedTlsUnderlying,
+  timeout_ms : Int,
+) -> Result[Unit, NetError] {
+  let _ = self
+  let _ = timeout_ms
+  Ok(())
+}
+
+///|
+#cfg(target="native")
+pub impl Stream for ClosedTlsUnderlying with fn peer_addr(
+  self : ClosedTlsUnderlying,
+) -> Result[String, NetError] {
+  let _ = self
+  Ok("mock:0")
+}
+
+///|
+#cfg(target="native")
+pub impl Stream for ClosedTlsUnderlying with fn local_addr(
+  self : ClosedTlsUnderlying,
+) -> Result[String, NetError] {
+  let _ = self
+  Ok("mock:0")
+}
+
+///|
+#cfg(target="native")
+fn closed_tls_stream() -> NativeTlsStream {
+  let tls = feather_tls_new(
+    @utf8.encode("example.com"),
+    b"",
+    0,
+    0,
+    0,
+    b"",
+    0,
+    b"",
+    0,
+    b"",
+    0,
+  )
+  let underlying : &Stream = ClosedTlsUnderlying::{}
+  NativeTlsStream::{ tls, underlying, key_log: None, is_open: true }
+}
+
+///|
+#cfg(target="native")
+test "native TLS I/O reports a closed transport as Closed" {
+  let reader = closed_tls_stream()
+  assert_true(reader.read(Buffer()) is Err(Closed))
+  let writer = closed_tls_stream()
+  let data = Buffer(size_hint=1)
+  data.write_byte(b'x')
+  assert_true(writer.write(data) is Err(Closed))
+  let flushing = closed_tls_stream()
+  assert_true(flushing.flush() is Ok(_))
+}
