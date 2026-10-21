@@ -282,6 +282,15 @@ test "RFC 850 expiry dates are applied" {
   assert_eq(jar.cookie_header_at(url, expires_at), None)
 }
 
+test "single-digit expiry years are normalized" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  jar.store_at(url, "y=1; Expires=Wed, 01 Jan 5 00:00:00 GMT; Path=/", 0)
+  let expires_at : UInt64 = 1104537600000L.to_uint64()
+  assert_eq(jar.cookie_header_at(url, expires_at - 1), Some("y=1"))
+  assert_eq(jar.cookie_header_at(url, expires_at), None)
+}
+
 test "pre-epoch expiry dates delete cookies" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")

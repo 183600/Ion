@@ -267,7 +267,7 @@ fn cookie_parse_year(value : String) -> Int32? {
     Some(year) => year
     None => return None
   }
-  let normalized = if value.length() == 2 {
+  let normalized = if value.length() <= 2 {
     if year >= 70 {
       1900 + year
     } else {
