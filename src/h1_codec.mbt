@@ -1404,11 +1404,17 @@ pub impl Stream for ResponseStream with fn peer_addr(self : ResponseStream) -> R
   if !self.is_open {
     return Err(NetError::Closed)
   }
+  if self.is_released_to_pool() {
+    return Err(NetError::Closed)
+  }
   self.reader.stream.peer_addr()
 }
 
 pub impl Stream for ResponseStream with fn local_addr(self : ResponseStream) -> Result[String, NetError] {
   if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  if self.is_released_to_pool() {
     return Err(NetError::Closed)
   }
   self.reader.stream.local_addr()

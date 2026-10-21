@@ -157,3 +157,20 @@ test "released response streams do not retimeout the pooled connection" {
   assert_true(response.body.flush() is Ok(_))
   assert_true(stream.is_open)
 }
+
+///|
+test "released response streams do not query pooled connection addresses" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+  let stream = regression_mock_stream(raw, 1, 0)
+  let completions : Array[Bool] = []
+  let codec = H1Codec::new_with_completion(
+    stream,
+    fn(reusable) { completions.push(reusable) },
+  )
+  let response = codec.decode_response().unwrap()
+  assert_eq(response.read_body().unwrap(), b"ok")
+  assert_eq(completions, [true])
+  assert_true(response.body.peer_addr() is Err(Closed))
+  assert_true(response.body.local_addr() is Err(Closed))
+  assert_true(stream.is_open)
+}
