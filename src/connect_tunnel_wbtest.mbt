@@ -13,6 +13,35 @@ test "connect response keeps bytes read past the head" {
   assert_eq(@utf8.decode_lossy(leftover[:]), tunnel)
 }
 
+test "CONNECT response parsing skips informational responses" {
+  let raw = "HTTP/1.1 100 Continue\r\n\r\n" +
+    "HTTP/1.1 103 Early Hints\r\nLink: </style.css>\r\n\r\n" +
+    "HTTP/1.1 200 Connection Established\r\n\r\nTUNNEL"
+  let stream = regression_mock_stream(raw, 0, 0)
+  let leftover = read_connect_response(stream).unwrap()
+  assert_eq(@utf8.decode_lossy(leftover[:]), "TUNNEL")
+}
+
+test "CONNECT response parsing skips informational responses split across reads" {
+  let raw = "HTTP/1.1 100 Continue\r\n\r\n" +
+    "HTTP/1.1 200 Connection Established\r\n\r\n"
+  let stream = regression_mock_stream(raw, 7, 0)
+  assert_true(read_connect_response(stream) is Ok(_))
+}
+
+test "CONNECT response parsing rejects malformed header lines" {
+  for raw in [
+    "HTTP/1.1 200 Connection Established\r\nBadHeader\r\n\r\n",
+    "HTTP/1.1 200 Connection Established\r\n Folded: x\r\n\r\n",
+    "HTTP/1.1 200 Connection Established\r\nBad Name: x\r\n\r\n",
+    "HTTP/1.1 200 Connection Established\r\n: x\r\n\r\n",
+    "HTTP/1.1 200 Connection Established\r\nX-Test: a\rb\r\n\r\n",
+  ] {
+    let stream = regression_mock_stream(raw, 0, 0)
+    assert_true(read_connect_response(stream) is Err(ProtocolError(_)))
+  }
+}
+
 test "prefix stream replays leftover bytes before the underlying stream" {
   let underlying = regression_mock_stream("REST", 0, 0)
   let stream = PrefixStream::new(@utf8.encode("TUNNELDATA"), underlying)

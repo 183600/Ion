@@ -467,12 +467,86 @@ fn find_head_end(data : Bytes) -> Int? {
   None
 }
 
-/// Read the proxy's CONNECT response head. Returns any bytes that were read
-/// past the end of the head, which belong to the tunnelled stream and must be
-/// replayed before reading further from `stream`.
+/// Validate one CONNECT response head and return its status code. Header
+/// lines are checked here (rather than ignored) so a malformed response cannot
+/// make arbitrary tunnel bytes look like the end of the header section.
+fn parse_connect_response_head(head : Bytes) -> Result[Int, HttpError] {
+  let text = @utf8.decode_lossy(head)
+  let line_end = match text.find("\r\n") {
+    Some(index) => index
+    None => return Err(ProtocolError("Invalid proxy CONNECT response"))
+  }
+  let status_line = text[0:line_end].to_owned()
+  let first_space = match status_line.find(" ") {
+    Some(index) => index
+    None => return Err(ProtocolError("Invalid proxy CONNECT response"))
+  }
+  let version = status_line[0:first_space].to_owned()
+  if version != "HTTP/1.1" && version != "HTTP/1.0" {
+    return Err(ProtocolError("Unsupported HTTP version"))
+  }
+  let mut start = first_space
+  while start < status_line.length() &&
+    status_line.get_char(start) == Some(' ') {
+    start = start + 1
+  }
+  let mut stop = start
+  while stop < status_line.length() &&
+    status_line.get_char(stop) != Some(' ') {
+    stop = stop + 1
+  }
+  let status_text = status_line[start:stop].to_owned()
+  if stop - start != 3 || !is_decimal_digits(status_text) {
+    return Err(ProtocolError("Invalid proxy CONNECT response"))
+  }
+  let status = try {
+    @string.parse_int(status_text[:])
+  } catch {
+    _ => return Err(ProtocolError("Invalid proxy CONNECT response"))
+  }
+  if status < 100 || status > 599 {
+    return Err(ProtocolError("Invalid proxy CONNECT response"))
+  }
+  let lines = text.split("\r\n").collect()
+  let mut index = 1
+  let mut header_count = 0
+  while index < lines.length() {
+    let line = lines[index]
+    if line.length() == 0 {
+      return Ok(status)
+    }
+    if line.get_char(0) == Some(' ') || line.get_char(0) == Some('\t') {
+      return Err(ProtocolError("Invalid proxy CONNECT response headers"))
+    }
+    header_count = header_count + 1
+    if header_count > MAX_RESPONSE_HEADERS {
+      return Err(ProtocolError("Too many proxy CONNECT response headers"))
+    }
+    let colon_idx = match line.find(":") {
+      Some(value) => value
+      None => return Err(ProtocolError("Invalid proxy CONNECT response headers"))
+    }
+    let name = line[0:colon_idx].to_owned()
+    if !valid_header_name(name) {
+      return Err(ProtocolError("Invalid proxy CONNECT response headers"))
+    }
+    let raw_value = line[colon_idx + 1:].to_owned()
+    if !valid_header_value(raw_value) {
+      return Err(ProtocolError("Invalid proxy CONNECT response headers"))
+    }
+    index = index + 1
+  }
+  Err(ProtocolError("Invalid proxy CONNECT response"))
+}
+
+/// Read the proxy's CONNECT response head. Informational responses (except
+/// `101 Switching Protocols`) are skipped. Returns any bytes that were read
+/// past the end of the final head, which belong to the tunnelled stream and
+/// must be replayed before reading further from `stream`.
 fn read_connect_response(stream : &Stream) -> Result[Bytes, HttpError] {
   let head = Buffer(size_hint=128)
   let limit = 16384
+  let mut offset = 0
   while head.length() <= limit {
     let chunk = Buffer(size_hint=512)
     let count = match stream.read(chunk) {
@@ -490,56 +564,41 @@ fn read_connect_response(stream : &Stream) -> Result[Bytes, HttpError] {
     }
     head.write_bytes(bytes)
     let data = head.to_bytes()
-    match find_head_end(data) {
-      Some(head_end) => {
-        if head_end > limit {
-          return Err(ProtocolError("proxy CONNECT response headers too large"))
+    let mut progressed = true
+    while progressed {
+      progressed = false
+      let remaining = data.exact_view(start=offset, end=data.length()).to_owned()
+      match find_head_end(remaining) {
+        Some(relative_end) => {
+          let head_end = offset + relative_end
+          if head_end > limit {
+            return Err(ProtocolError("proxy CONNECT response headers too large"))
+          }
+          let status = match parse_connect_response_head(
+            data.exact_view(start=offset, end=head_end).to_owned(),
+          ) {
+            Ok(value) => value
+            Err(err) => return Err(err)
+          }
+          if status >= 100 && status < 200 && status != 101 {
+            offset = head_end
+            progressed = true
+          } else {
+            if status < 200 || status > 299 {
+              return Err(ProtocolError(
+                "proxy CONNECT failed with status " + status.to_string(),
+              ))
+            }
+            // Only the final head belongs to this exchange; any trailing
+            // bytes are the first bytes of the tunnelled stream and must be
+            // replayed by the caller instead of being discarded.
+            return Ok(
+              data.exact_view(start=head_end, end=data.length()).to_owned(),
+            )
+          }
         }
-        // Only the head belongs to this exchange; any trailing bytes are the
-        // first bytes of the tunnelled stream and must be replayed by the
-        // caller instead of being discarded.
-        let leftover = data.exact_view(start=head_end, end=data.length()).to_owned()
-        let text = @utf8.decode_lossy(data.exact_view(start=0, end=head_end))
-        let line_end = match text.find("\r\n") {
-          Some(index) => index
-          None => return Err(ProtocolError("Invalid proxy CONNECT response"))
-        }
-        let status_line = text[0:line_end].to_owned()
-        let first_space = match status_line.find(" ") {
-          Some(index) => index
-          None => return Err(ProtocolError("Invalid proxy CONNECT response"))
-        }
-        let version = status_line[0:first_space].to_owned()
-        if version != "HTTP/1.1" && version != "HTTP/1.0" {
-          return Err(ProtocolError("Unsupported HTTP version"))
-        }
-        let mut start = first_space
-        while start < status_line.length() &&
-          status_line.get_char(start) == Some(' ') {
-          start = start + 1
-        }
-        let mut stop = start
-        while stop < status_line.length() &&
-          status_line.get_char(stop) != Some(' ') {
-          stop = stop + 1
-        }
-        let status_text = status_line[start:stop].to_owned()
-        if stop - start != 3 || !is_decimal_digits(status_text) {
-          return Err(ProtocolError("Invalid proxy CONNECT response"))
-        }
-        let status = try {
-          @string.parse_int(status_text[:])
-        } catch {
-          _ => return Err(ProtocolError("Invalid proxy CONNECT response"))
-        }
-        if status < 200 || status > 299 {
-          return Err(ProtocolError(
-            "proxy CONNECT failed with status " + status.to_string(),
-          ))
-        }
-        return Ok(leftover)
+        None => ()
       }
-      None => ()
     }
   }
   Err(ProtocolError("proxy CONNECT response headers too large"))
