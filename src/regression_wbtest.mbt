@@ -2377,3 +2377,32 @@ test "CONNECT failure is reported when tunnel data follows the head" {
   let stream = regression_mock_stream("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\nPRESHUTDOWN", 0, 0)
   assert_true(read_connect_response(stream) is Err(ProtocolError(_)))
 }
+
+///|
+test "request encoding emits headers in insertion order" {
+  let stream = regression_mock_stream("", 0, 0)
+  let codec = H1Codec::new(stream)
+  let url = Url::parse("http://example.com/").unwrap()
+  let request = Request::new(GET, url)
+    .with_header("X-First", "1")
+    .with_header("X-Second", "2")
+  assert_true(codec.encode_request(request) is Ok(_))
+  let wire = @utf8.decode(stream.output.to_bytes()[:])
+  assert_true(
+    wire.has_suffix(
+      "Host: example.com\r\nUser-Agent: Feather/0.1.0\r\nX-First: 1\r\nX-Second: 2\r\n\r\n",
+    ),
+  )
+}
+
+///|
+test "response headers iterate in wire order" {
+  let raw = "HTTP/1.1 200 OK\r\nX-One: 1\r\nX-Two: 2\r\nContent-Length: 0\r\n\r\n"
+  let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+  let response = codec.decode_response().unwrap()
+  let seen : Array[String] = []
+  for header in response.headers.iter() {
+    seen.push(header.name + "=" + header.value)
+  }
+  assert_eq(seen, ["X-One=1", "X-Two=2", "Content-Length=0"])
+}

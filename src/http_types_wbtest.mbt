@@ -103,3 +103,16 @@ test "Response creation" {
   
   assert_eq(response.status, 200)
 }
+
+test "Headers iter yields insertion order" {
+  let headers = Headers::new()
+    .add("A", "1")
+    .add("B", "2")
+    .add("a", "3")
+  let seen : Array[String] = []
+  for header in headers.iter() {
+    seen.push(header.name + "=" + header.value)
+  }
+  assert_eq(seen, ["A=1", "B=2", "a=3"])
+  assert_eq(headers.get_all("A"), @list.List(["1", "3"]))
+}

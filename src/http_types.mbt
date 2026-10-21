@@ -101,8 +101,15 @@ pub fn Headers::remove(self : Headers, name : String) -> Headers {
   Headers::{ headers: self.headers.filter(fn(h) { h.name.to_lower() != lower_name }) }
 }
 
+/// Iterate the headers in insertion order, matching `get_all`.
 pub fn Headers::iter(self : Headers) -> Iter[Header] {
-  self.headers.iter()
+  // `add` prepends, so the stored list is reverse insertion order; flip it
+  // back so callers see the same order as `get_all`.
+  let mut ordered = @list.List([])
+  for header in self.headers.iter() {
+    ordered = ordered.prepend(header)
+  }
+  ordered.iter()
 }
 
 pub fn Headers::length(self : Headers) -> Int {
