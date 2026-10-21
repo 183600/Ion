@@ -62,6 +62,22 @@ test "transfer coding lists ignore commas inside quoted parameters" {
 }
 
 ///|
+test "invalid transfer coding parameters are rejected" {
+  for value in [
+    "chunked;foo",
+    "chunked;foo=",
+    "chunked;=bar",
+    "chunked;foo=\"unterminated",
+    "chunked;foo=bar baz",
+  ] {
+    let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: " + value + "\r\n\r\n"
+    let codec = H1Codec::new(regression_mock_stream(raw, 4096, 4096))
+    let response = codec.decode_response().unwrap()
+    assert_true(response.read_body() is Err(NetworkError(ReadError(_))))
+  }
+}
+
+///|
 test "chunked transfer coding parameters are recognized" {
   let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked;foo=bar\r\nContent-Length: 5\r\n\r\n5\r\nhello\r\n0\r\n\r\n"
   let codec = H1Codec::new(regression_mock_stream(raw, 4096, 4096))

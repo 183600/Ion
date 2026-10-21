@@ -388,10 +388,13 @@ fn request_is_chunked(headers : Headers) -> Result[Bool, HttpError] {
   }
   let mut seen = false
   for part in split_header_list(values.nth(0).unwrap()) {
-    let token = transfer_coding_name(part)
-    if token.length() == 0 {
+    if part.trim().length() == 0 {
       continue
     }
+    if !valid_transfer_coding(part) {
+      return Err(InvalidHeader("Transfer-Encoding"))
+    }
+    let token = transfer_coding_name(part)
     if token != "chunked" || seen {
       return Err(InvalidHeader("Transfer-Encoding"))
     }
@@ -968,6 +971,86 @@ fn consume_chunk_trailers(reader : StreamReader) -> Result[Unit, NetError] {
   Ok(())
 }
 
+fn valid_transfer_coding(value : String) -> Bool {
+  let length = value.length()
+  let mut index = skip_chunk_ext_ows(value, 0)
+  let name_start = index
+  while index < length {
+    let ch = value.get_char(index).unwrap()
+    if !is_header_token_char(ch) {
+      break
+    }
+    index = index + 1
+  }
+  if index == name_start {
+    return false
+  }
+  index = skip_chunk_ext_ows(value, index)
+  while index < length {
+    if value.get_char(index) != Some(';') {
+      return false
+    }
+    index = skip_chunk_ext_ows(value, index + 1)
+    let parameter_start = index
+    while index < length {
+      let ch = value.get_char(index).unwrap()
+      if !is_header_token_char(ch) {
+        break
+      }
+      index = index + 1
+    }
+    if index == parameter_start {
+      return false
+    }
+    index = skip_chunk_ext_ows(value, index)
+    if index >= length || value.get_char(index) != Some('=') {
+      return false
+    }
+    index = skip_chunk_ext_ows(value, index + 1)
+    if index >= length {
+      return false
+    }
+    if value.get_char(index) == Some('"') {
+      index = index + 1
+      let mut closed = false
+      while index < length {
+        let ch = value.get_char(index).unwrap()
+        if ch == '"' {
+          index = index + 1
+          closed = true
+          break
+        }
+        if ch == '\\' {
+          index = index + 1
+          if index >= length || !is_chunk_quoted_pair_char(value.get_char(index).unwrap()) {
+            return false
+          }
+        } else if !is_chunk_quoted_text_char(ch) {
+          return false
+        }
+        index = index + 1
+      }
+      if !closed {
+        return false
+      }
+    } else {
+      let token_start = index
+      while index < length {
+        let ch = value.get_char(index).unwrap()
+        if !is_header_token_char(ch) {
+          break
+        }
+        index = index + 1
+      }
+      if index == token_start {
+        return false
+      }
+    }
+    index = skip_chunk_ext_ows(value, index)
+  }
+  true
+}
+
 fn transfer_coding_name(value : String) -> String {
   // transfer-coding = token *( OWS ";" OWS transfer-parameter ); parameters
   // do not change the coding's identity, so only the name is significant.
@@ -988,10 +1071,13 @@ fn response_transfer_encoding(
   let mut chunked_seen = false
   for value in values {
     for part in split_header_list(value) {
-      let token = transfer_coding_name(part)
-      if token.length() == 0 {
+      if part.trim().length() == 0 {
         continue
       }
+      if !valid_transfer_coding(part) {
+        return Err(NetError::ReadError("invalid Transfer-Encoding"))
+      }
+      let token = transfer_coding_name(part)
       if chunked_seen {
         return Err(NetError::ReadError("invalid Transfer-Encoding"))
       }

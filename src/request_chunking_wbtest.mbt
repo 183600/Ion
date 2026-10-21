@@ -5,6 +5,9 @@ test "request chunked transfer coding parameters are recognized" {
     "chunked;foo=bar",
     "CHUNKED ; foo=bar",
     "chunked;foo=\"a,b\"",
+    "chunked; foo = \"a b\"",
+    "chunked;foo=\"a\\\"b\"",
+    "chunked ; foo=bar ; baz=qux",
     "chunked,",
     ", chunked",
     ",chunked, ,",
@@ -31,6 +34,11 @@ test "request rejects unsupported or repeated transfer codings" {
     "chunked, gzip",
     "chunked, chunked",
     "chunked;foo=\"a,b\", gzip",
+    "chunked;foo",
+    "chunked;foo=",
+    "chunked;=bar",
+    "chunked;foo=\"unterminated",
+    "chunked;foo=bar baz",
   ] {
     let stream = regression_mock_stream("", 0, 0)
     let codec = H1Codec::new(stream)
