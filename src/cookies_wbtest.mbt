@@ -302,6 +302,15 @@ test "RFC 850 expiry dates are applied" {
   assert_eq(jar.cookie_header_at(url, expires_at), None)
 }
 
+test "RFC 850 expiry dates without GMT are applied" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  jar.store_at(url, "old=1; Expires=06-Nov-27 08:49:37; Path=/", 0)
+  let expires_at : UInt64 = 1825490977000L.to_uint64()
+  assert_eq(jar.cookie_header_at(url, expires_at - 1), Some("old=1"))
+  assert_eq(jar.cookie_header_at(url, expires_at), None)
+}
+
 test "single-digit expiry years are normalized" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
@@ -366,6 +375,18 @@ test "impossible expiry dates are ignored" {
   assert_eq(jar.cookie_header_at(url, after_2030), Some("bad=1; also=1"))
   jar.store_at(url, "leap=1; Expires=Thu, 29 Feb 2024 00:00:00 GMT; Path=/", 0)
   assert_eq(jar.cookie_header_at(url, after_2030), Some("bad=1; also=1"))
+}
+
+test "expiry dates with extra tokens are ignored" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  let after_2030 : UInt64 = 2000000000000L.to_uint64()
+  jar.store_at(
+    url,
+    "extra=1; Expires=Wed, 21 Oct 2026 07:28:00 GMT extra; Path=/",
+    0,
+  )
+  assert_eq(jar.cookie_header_at(url, after_2030), Some("extra=1"))
 }
 
 ///|

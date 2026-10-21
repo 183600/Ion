@@ -381,7 +381,7 @@ fn cookie_parse_date(value : String) -> UInt64? {
     }
     tokens = rest
   }
-  if tokens.length() < 3 {
+  if tokens.length() < 2 || tokens.length() > 5 {
     return None
   }
   // RFC 850: "06-Nov-94 08:49:37 GMT" (the weekday was removed above).
