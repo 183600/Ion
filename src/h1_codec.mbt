@@ -1069,6 +1069,7 @@ fn response_transfer_encoding(
     return Ok(TransferEncodingAbsent)
   }
   let mut chunked_seen = false
+  let mut coding_seen = false
   for value in values {
     for part in split_header_list(value) {
       if part.trim().length() == 0 {
@@ -1077,6 +1078,7 @@ fn response_transfer_encoding(
       if !valid_transfer_coding(part) {
         return Err(NetError::ReadError("invalid Transfer-Encoding"))
       }
+      coding_seen = true
       let token = transfer_coding_name(part)
       if chunked_seen {
         return Err(NetError::ReadError("invalid Transfer-Encoding"))
@@ -1085,6 +1087,9 @@ fn response_transfer_encoding(
         chunked_seen = true
       }
     }
+  }
+  if !coding_seen {
+    return Err(NetError::ReadError("invalid Transfer-Encoding"))
   }
   if chunked_seen {
     Ok(TransferEncodingChunked)
