@@ -57,7 +57,10 @@ pub fn ClientOptions::with_max_response_body_bytes(Self, Int32) -> Self
 pub fn ClientOptions::with_timeout(Self, Int32) -> Self
 pub fn ClientOptions::with_user_agent(Self, String) -> Self
 
-type ConnectionLease
+pub struct ConnectionLease {
+  // private fields
+}
+pub fn ConnectionLease::release(Self, Bool) -> Unit
 
 type ConnectionPoolState
 

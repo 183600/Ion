@@ -191,15 +191,22 @@ pub struct Connector {
   pool : @ref.Ref[ConnectionPoolState]
 }
 
-struct ConnectionLease {
-  id : Int
-  key : String
-  stream : &Stream
-  reused : Bool
-  pool : @ref.Ref[ConnectionPoolState]
+pub struct ConnectionLease {
+  priv id : Int
+  priv key : String
+  priv stream : &Stream
+  priv reused : Bool
+  priv mut released : Bool
+  priv pool : @ref.Ref[ConnectionPoolState]
 }
 
-fn ConnectionLease::release(self : ConnectionLease, reusable : Bool) -> Unit {
+/// Release the checked-out connection, returning it to the pool when it is
+/// still usable. Releasing a lease more than once is a no-op.
+pub fn ConnectionLease::release(self : ConnectionLease, reusable : Bool) -> Unit {
+  if self.released {
+    return
+  }
+  self.released = true
   let id = self.id
   self.pool.val.active = self.pool.val.active.filter(fn(entry) { entry.id != id })
   if reusable {
@@ -747,7 +754,14 @@ pub fn Connector::checkout(
   )
   Ok((
     stream,
-    ConnectionLease::{ id, key: conn_key, stream, reused, pool: self.pool },
+    ConnectionLease::{
+      id,
+      key: conn_key,
+      stream,
+      reused,
+      released: false,
+      pool: self.pool,
+    },
   ))
 }
 

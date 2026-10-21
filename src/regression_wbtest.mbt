@@ -2476,3 +2476,17 @@ test "response headers iterate in wire order" {
   }
   assert_eq(seen, ["X-One=1", "X-Two=2", "Content-Length=0"])
 }
+
+///|
+test "connection lease release is idempotent" {
+  let stream = regression_mock_stream("", 1, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let url = Url::parse("http://example.com/").unwrap()
+  let (_stream, lease) = connector.checkout(url).unwrap()
+  lease.release(true)
+  lease.release(true)
+  let key = connector.connection_key(url)
+  let idle = connector.pool.val.idle.get(key).unwrap()
+  assert_eq(idle.length(), 1)
+}
