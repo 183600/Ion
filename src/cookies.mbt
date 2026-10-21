@@ -164,8 +164,18 @@ fn cookie_expired(cookie : Cookie, now_ms : UInt64) -> Bool {
 }
 
 ///|
-fn cookie_domain_matches(cookie : Cookie, host : String) -> Bool {
+fn cookie_canonical_host(host : String) -> String {
   let host = host.to_lower()
+  if host.length() > 1 && host.has_suffix(".") {
+    host[0:host.length() - 1].to_owned()
+  } else {
+    host
+  }
+}
+
+///|
+fn cookie_domain_matches(cookie : Cookie, host : String) -> Bool {
+  let host = cookie_canonical_host(host)
   if cookie.host_only {
     return host == cookie.domain
   }
@@ -480,7 +490,7 @@ fn cookie_from_set_cookie(
   if !cookie_valid_name(name) || !cookie_valid_value(value) {
     return None
   }
-  let host = url.host.to_lower()
+  let host = cookie_canonical_host(url.host)
   let mut domain = host
   let mut host_only = true
   let mut path = cookie_default_path(url)

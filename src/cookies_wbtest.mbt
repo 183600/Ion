@@ -364,6 +364,36 @@ test "a trailing-dot Domain attribute invalidates the cookie" {
   assert_eq(jar.cookie_header_at(url, 1000), None)
 }
 
+test "cookie hosts ignore a trailing root dot" {
+  let jar = CookieJar::new()
+  jar.store_at(
+    cookie_test_url("http://Example.COM./"),
+    "root=1; Path=/",
+    1000,
+  )
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://example.com/"), 1000),
+    Some("root=1"),
+  )
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://example.com./"), 1000),
+    Some("root=1"),
+  )
+  let ip = cookie_test_url("http://127.0.0.1./")
+  jar.store_at(ip, "leak=1; Domain=0.0.1; Path=/", 1000)
+  assert_eq(jar.length(), 1)
+  jar.store_at(ip, "ip=1; Domain=127.0.0.1; Path=/", 1000)
+  assert_eq(jar.length(), 2)
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://127.0.0.1/"), 1000),
+    Some("ip=1"),
+  )
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://sub.127.0.0.1/"), 1000),
+    None,
+  )
+}
+
 test "an IPv4 Domain attribute cannot match a suffix" {
   let jar = CookieJar::new()
   let origin = cookie_test_url("http://127.0.0.1/")
