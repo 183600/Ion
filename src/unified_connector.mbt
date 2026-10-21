@@ -289,6 +289,23 @@ fn Connector::connection_key(self : Connector, url : Url) -> String {
   }
 }
 
+/// Locate the end of the header section (`CRLFCRLF`) and return the offset just
+/// past it. The terminator is searched for rather than only inspected at the
+/// end of the buffer because a single read may deliver the whole CONNECT
+/// response plus tunnel data that belongs to the peer's next protocol.
+fn find_head_end(data : Bytes) -> Int? {
+  let length = data.length()
+  let mut index = 0
+  while index + 3 < length {
+    if data[index] == b'\r' && data[index + 1] == b'\n' &&
+      data[index + 2] == b'\r' && data[index + 3] == b'\n' {
+      return Some(index + 4)
+    }
+    index = index + 1
+  }
+  None
+}
+
 fn read_connect_response(stream : &Stream) -> Result[Unit, HttpError] {
   let head = Buffer(size_hint=128)
   let limit = 16384
@@ -305,11 +322,11 @@ fn read_connect_response(stream : &Stream) -> Result[Unit, HttpError] {
     }
     head.write_bytes(chunk.to_bytes())
     let data = head.to_bytes()
-    if data.length() >= 4 {
-      let end = data.length() - 1
-      if data[end - 3] == b'\r' && data[end - 2] == b'\n' &&
-        data[end - 1] == b'\r' && data[end] == b'\n' {
-        let text = @utf8.decode_lossy(data[:])
+    match find_head_end(data) {
+      Some(head_end) => {
+        // Only the head belongs to this exchange; any trailing bytes are the
+        // first bytes of the tunnelled stream and must stay unread.
+        let text = @utf8.decode_lossy(data.exact_view(start=0, end=head_end))
         let line_end = match text.find("\r\n") {
           Some(index) => index
           None => return Err(ProtocolError("Invalid proxy CONNECT response"))
@@ -324,13 +341,13 @@ fn read_connect_response(stream : &Stream) -> Result[Unit, HttpError] {
           status_line.get_char(start) == Some(' ') {
           start = start + 1
         }
-        let mut end = start
-        while end < status_line.length() &&
-          status_line.get_char(end) != Some(' ') {
-          end = end + 1
+        let mut stop = start
+        while stop < status_line.length() &&
+          status_line.get_char(stop) != Some(' ') {
+          stop = stop + 1
         }
-        let status_text = status_line[start:end].to_owned()
-        if end - start != 3 || !is_decimal_digits(status_text) {
+        let status_text = status_line[start:stop].to_owned()
+        if stop - start != 3 || !is_decimal_digits(status_text) {
           return Err(ProtocolError("Invalid proxy CONNECT response"))
         }
         let status = try {
@@ -345,6 +362,7 @@ fn read_connect_response(stream : &Stream) -> Result[Unit, HttpError] {
         }
         return Ok(())
       }
+      None => ()
     }
   }
   Err(ProtocolError("proxy CONNECT response headers too large"))

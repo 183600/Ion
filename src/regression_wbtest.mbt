@@ -2352,3 +2352,28 @@ test "connector keeps idle connections when the clock moves backwards" {
     None => abort("clock rollback should not expire a connection")
   }
 }
+
+///|
+test "CONNECT response parsing tolerates tunnel data in the same read" {
+  let raw = "HTTP/1.1 200 Connection Established\r\nProxy-Agent: proxy\r\n\r\nPRESHUTDOWN"
+  let stream = regression_mock_stream(raw, 0, 0)
+  assert_true(read_connect_response(stream) is Ok(_))
+}
+
+///|
+test "CONNECT response parsing still accepts a head split across reads" {
+  let stream = regression_mock_stream("HTTP/1.1 200 Connection Established\r\nA: b\r\n\r\n", 3, 0)
+  assert_true(read_connect_response(stream) is Ok(_))
+}
+
+///|
+test "CONNECT response parsing rejects a head without a terminator" {
+  let stream = regression_mock_stream("HTTP/1.1 200 Connection Established\r\nA: b\r\n", 0, 0)
+  assert_true(read_connect_response(stream) is Err(_))
+}
+
+///|
+test "CONNECT failure is reported when tunnel data follows the head" {
+  let stream = regression_mock_stream("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\nPRESHUTDOWN", 0, 0)
+  assert_true(read_connect_response(stream) is Err(ProtocolError(_)))
+}
