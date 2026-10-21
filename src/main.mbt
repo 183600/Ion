@@ -90,15 +90,21 @@ fn report(err : HttpError) -> Unit {
   println("error: " + @debug.to_string(err))
 }
 
-fn print_response(response : Response) -> Unit {
+fn print_response(response : Response) -> Bool {
   println(response.version + " " + response.status.to_string())
   for header in response.headers.iter() {
     println(header.name + ": " + header.value)
   }
   println("")
   match response.text() {
-    Ok(body) => println(body)
-    Err(err) => report(err)
+    Ok(body) => {
+      println(body)
+      true
+    }
+    Err(err) => {
+      report(err)
+      false
+    }
   }
 }
 
@@ -123,10 +129,7 @@ fn run_request(method : HttpMethod, url : String, body : String) -> Bool {
   }
   let succeeded = if method == GET && body.length() == 0 {
     match client.get(url) {
-      Ok(response) => {
-        print_response(response)
-        true
-      }
+      Ok(response) => print_response(response)
       Err(err) => {
         report(err)
         false
@@ -140,10 +143,7 @@ fn run_request(method : HttpMethod, url : String, body : String) -> Bool {
           request = request.with_body(@utf8.encode(body))
         }
         match client.request(request) {
-          Ok(response) => {
-            print_response(response)
-            true
-          }
+          Ok(response) => print_response(response)
           Err(err) => {
             report(err)
             false

@@ -77,3 +77,9 @@ impl KeyLogSink for CapturingKeyLogSink with fn log(
   let _ = environment
   self.lines.push(@utf8.decode_lossy(keylog))
 }
+
+///|
+test "CLI reports response body read errors" {
+  let response = Response::new(200, Headers::new(), ReadErrorStream::{ is_open: true })
+  assert_false(print_response(response))
+}
