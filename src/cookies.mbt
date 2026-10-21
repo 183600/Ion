@@ -167,10 +167,14 @@ fn cookie_expired(cookie : Cookie, now_ms : UInt64) -> Bool {
 fn cookie_domain_matches(cookie : Cookie, host : String) -> Bool {
   let host = host.to_lower()
   if cookie.host_only {
-    host == cookie.domain
-  } else {
-    host == cookie.domain || host.has_suffix("." + cookie.domain)
+    return host == cookie.domain
   }
+  if host == cookie.domain {
+    return true
+  }
+  // RFC 6265 §5.1.3 only allows a suffix match when the request host is a
+  // host name; an IP address must never match a domain cookie's suffix.
+  !is_ipv4_literal(host) && !is_ip_literal(host) && host.has_suffix("." + cookie.domain)
 }
 
 ///|

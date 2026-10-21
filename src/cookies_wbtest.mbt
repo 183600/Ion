@@ -450,3 +450,25 @@ test "cookie jar treats IP Domain attributes as host-only" {
     Some("v6=1"),
   )
 }
+
+///|
+test "cookie domain suffixes never match IP address hosts" {
+  let jar = CookieJar::new()
+  jar.store_at(
+    cookie_test_url("http://0.0.1/"),
+    "leak=1; Domain=0.0.1; Path=/",
+    1000,
+  )
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://0.0.1/"), 1000),
+    Some("leak=1"),
+  )
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://127.0.0.1/"), 1000),
+    None,
+  )
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://[::1]/"), 1000),
+    None,
+  )
+}
