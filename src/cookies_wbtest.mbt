@@ -605,3 +605,46 @@ test "cookie expiry rejects month names with unknown suffixes" {
   )
   assert_eq(jar.cookie_header_at(url, after_2030), Some("junk=1"))
 }
+
+///|
+test "cookie jar enforces __Secure- prefix" {
+  let jar = CookieJar::new()
+  let plain = cookie_test_url("http://example.com/")
+  let secure = cookie_test_url("https://example.com/")
+  jar.store_at(plain, "__Secure-id=1; Path=/", 1000)
+  assert_eq(jar.length(), 0)
+  jar.store_at(secure, "__Secure-id=2; Secure; Path=/", 1000)
+  assert_eq(
+    jar.cookie_header_at(secure, 1000),
+    Some("__Secure-id=2"),
+  )
+  assert_eq(jar.cookie_header_at(plain, 1000), None)
+}
+
+///|
+test "cookie jar enforces __Host- prefix" {
+  let jar = CookieJar::new()
+  let secure = cookie_test_url("https://example.com/account")
+  jar.store_at(secure, "__Host-id=1; Secure; Path=/", 1000)
+  assert_eq(jar.length(), 1)
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("https://example.com/x"), 1000),
+    Some("__Host-id=1"),
+  )
+  // A Domain attribute makes the cookie domain-scoped.
+  jar.store_at(
+    secure,
+    "__Host-id=2; Secure; Path=/; Domain=example.com",
+    1000,
+  )
+  assert_eq(jar.length(), 1)
+  // A path other than "/" is not allowed.
+  jar.store_at(secure, "__Host-id=3; Secure; Path=/account", 1000)
+  assert_eq(jar.length(), 1)
+  // Missing Secure is not allowed even over HTTPS.
+  jar.store_at(secure, "__Host-id=4; Path=/", 1000)
+  assert_eq(jar.length(), 1)
+  // Prefix matching is case-sensitive.
+  jar.store_at(secure, "__host-id=5; Path=/", 1000)
+  assert_eq(jar.length(), 2)
+}

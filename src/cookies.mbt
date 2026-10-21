@@ -598,6 +598,14 @@ fn cookie_from_set_cookie(
   if secure && !url.is_secure() {
     return None
   }
+  // RFC 6265bis §4.1.3: prefixes let servers ask clients to enforce stronger
+  // guarantees than the cookie syntax alone provides.
+  if name.has_prefix("__Secure-") && !secure {
+    return None
+  }
+  if name.has_prefix("__Host-") && (!host_only || path != "/") {
+    return None
+  }
   Some(Cookie::{
     name,
     value,
