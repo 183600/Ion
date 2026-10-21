@@ -39,6 +39,8 @@ fn print_usage() -> Unit {
   println("       FEATHER_URL=<url> feather         send a GET request to FEATHER_URL")
   println("       FEATHER_PROXY=<url> feather     route requests through an HTTP proxy")
   println("       FEATHER_CA=<pem file> feather   trust an extra CA certificate bundle")
+  println("       FEATHER_CLIENT_CERT=<pem file>  client certificate for mTLS")
+  println("       FEATHER_CLIENT_KEY=<pem file>   client private key for mTLS")
   println("       FEATHER_INSECURE=1 feather      DISABLE TLS verification (unsafe)")
   println("       FEATHER_KEYLOG=1 feather        print TLS key material (debug)")
   println("Methods: get, post, put, delete, head, options, patch")
@@ -76,23 +78,41 @@ fn read_file(path : String) -> Bytes? {
   None
 }
 
-/// Build the TLS configuration from the FEATHER_CA / FEATHER_INSECURE
-/// environment variables, if either is set.
-fn env_tls_config() -> TlsConfig? {
+/// Read a non-empty path from the environment.
+fn env_path(name : String) -> String? {
+  match @env.get_env_var(name) {
+    Some(value) => if value.length() > 0 { Some(value) } else { None }
+    None => None
+  }
+}
+
+/// Build the TLS configuration from the FEATHER_CA / FEATHER_INSECURE /
+/// FEATHER_KEYLOG / FEATHER_CLIENT_CERT / FEATHER_CLIENT_KEY environment
+/// variables, if any is set. Client-certificate problems are hard errors:
+/// a half-configured mTLS pair would otherwise fail later as an opaque
+/// handshake failure against a server that requires client certificates.
+fn env_tls_config() -> Result[TlsConfig?, HttpError] {
   let insecure = match @env.get_env_var("FEATHER_INSECURE") {
     Some(value) => value == "1" || value.to_lower() == "true"
     None => false
   }
-  let ca_path = match @env.get_env_var("FEATHER_CA") {
-    Some(value) => if value.length() > 0 { Some(value) } else { None }
-    None => None
-  }
+  let ca_path = env_path("FEATHER_CA")
   let key_log = match @env.get_env_var("FEATHER_KEYLOG") {
     Some(value) => value == "1" || value.to_lower() == "true"
     None => false
   }
-  if !insecure && ca_path is None && !key_log {
-    return None
+  let cert_path = env_path("FEATHER_CLIENT_CERT")
+  let key_path = env_path("FEATHER_CLIENT_KEY")
+  match (cert_path, key_path) {
+    (Some(_), None) =>
+      return Err(TlsError(InvalidConfig("FEATHER_CLIENT_KEY is required when FEATHER_CLIENT_CERT is set")))
+    (None, Some(_)) =>
+      return Err(TlsError(InvalidConfig("FEATHER_CLIENT_CERT is required when FEATHER_CLIENT_KEY is set")))
+    (None, None) => ()
+    (Some(_), Some(_)) => ()
+  }
+  if !insecure && ca_path is None && !key_log && cert_path is None {
+    return Ok(None)
   }
   let mut config = TlsConfig::new("")
   if insecure {
@@ -109,7 +129,17 @@ fn env_tls_config() -> TlsConfig? {
   if key_log {
     config = config.with_key_log(PrintKeyLogSink::{})
   }
-  Some(config)
+  match (cert_path, key_path) {
+    (Some(cert), Some(key)) =>
+      match (read_file(cert), read_file(key)) {
+        (Some(cert_pem), Some(key_pem)) =>
+          config = config.with_client_auth(ClientCert::new(cert_pem, key_pem))
+        (None, _) => return Err(TlsError(InvalidConfig("could not read client certificate: " + cert)))
+        (_, None) => return Err(TlsError(InvalidConfig("could not read client private key: " + key)))
+      }
+    (_, _) => ()
+  }
+  Ok(Some(config))
 }
 
 fn report(err : HttpError) -> Unit {
@@ -137,8 +167,12 @@ fn print_response(response : Response) -> Bool {
 fn run_request(method : HttpMethod, url : String, body : String) -> Bool {
   let mut client = UnifiedClient::new()
   match env_tls_config() {
-    Some(config) => client = client.with_tls_config(config)
-    None => ()
+    Ok(Some(config)) => client = client.with_tls_config(config)
+    Ok(None) => ()
+    Err(err) => {
+      report(err)
+      return false
+    }
   }
   match @env.get_env_var("FEATHER_PROXY") {
     Some(value) => if value.length() > 0 {
