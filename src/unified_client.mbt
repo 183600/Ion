@@ -68,8 +68,8 @@ fn default_client_tls_provider() -> OpenSslTlsProvider {
 }
 
 #cfg(not(target="native"))
-fn default_client_tls_provider() -> MockTlsProvider {
-  MockTlsProvider::new("default")
+fn default_client_tls_provider() -> UnavailableTlsProvider {
+  UnavailableTlsProvider::new()
 }
 
 /// Create a new UnifiedClient with default options

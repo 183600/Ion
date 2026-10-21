@@ -21,3 +21,12 @@ test "default TLS provider refuses to run without native TLS" {
     provider.new_client(TlsConfig::new("example.com")) is Err(InvalidConfig(_)),
   )
 }
+
+///|
+#cfg(not(target="native"))
+test "default client does not silently use the mock TLS provider" {
+  let provider = default_client_tls_provider()
+  assert_true(
+    provider.new_client(TlsConfig::new("example.com")) is Err(InvalidConfig(_)),
+  )
+}
