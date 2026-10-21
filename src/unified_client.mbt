@@ -365,6 +365,7 @@ fn redirect_method(status : Int, method : HttpMethod) -> (HttpMethod, Bool) {
       } else {
         (method, true)
       }
+    300 | 307 | 308 => (method, true)
     _ => (method, true)
   }
 }
@@ -579,7 +580,8 @@ fn UnifiedClient::do_request_once(
 
 /// Check if status code indicates a redirect
 fn is_redirect(status : Int) -> Bool {
-  status == 301 || status == 302 || status == 303 || status == 307 || status == 308
+  status == 300 || status == 301 || status == 302 || status == 303 ||
+  status == 307 || status == 308
 }
 
 /// Send a form-encoded POST request.
