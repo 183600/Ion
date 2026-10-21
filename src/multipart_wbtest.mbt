@@ -116,3 +116,22 @@ test "UnifiedClient sends multipart requests" {
   assert_true(wire.contains("name=\"title\"\r\n\r\nhello"))
   assert_true(wire.contains("filename=\"a.txt\"\r\nContent-Type: text/plain\r\n\r\npayload"))
 }
+
+test "multipart preserves content type parameters and sanitizes controls" {
+  let request = Request::new(POST, multipart_test_url()).with_multipart(
+    [("note\u{0}name", "value")],
+    [
+      MultipartFile::new(
+        "upload",
+        "a\u{0}b.txt",
+        "text/plain; charset=\"utf-8\"",
+        @utf8.encode("payload"),
+      ),
+    ],
+  )
+  let body = multipart_body_text(request)
+  assert_true(body.contains("name=\"note name\""))
+  assert_true(body.contains("filename=\"a b.txt\""))
+  assert_true(body.contains("Content-Type: text/plain; charset=\"utf-8\"\r\n\r\n"))
+  assert_false(body.contains("\u{0}"))
+}

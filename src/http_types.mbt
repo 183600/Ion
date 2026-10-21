@@ -614,13 +614,29 @@ pub fn MultipartFile::new(
   MultipartFile::{ field_name, file_name, content_type, data }
 }
 
+fn multipart_is_control(byte : Byte) -> Bool {
+  byte < b' ' || byte == b'\x7f'
+}
+
 fn multipart_param(value : String) -> String {
   let output = Buffer(size_hint=value.length())
   for byte in @utf8.encode(value) {
     if byte == b'"' || byte == b'\\' {
       output.write_byte(b'\\')
       output.write_byte(byte)
-    } else if byte == b'\r' || byte == b'\n' {
+    } else if multipart_is_control(byte) {
+      output.write_byte(b' ')
+    } else {
+      output.write_byte(byte)
+    }
+  }
+  @utf8.decode_lossy(output.to_bytes()[:])
+}
+
+fn multipart_header_value(value : String) -> String {
+  let output = Buffer(size_hint=value.length())
+  for byte in @utf8.encode(value) {
+    if multipart_is_control(byte) {
       output.write_byte(b' ')
     } else {
       output.write_byte(byte)
@@ -714,7 +730,7 @@ fn multipart_body(
         "--" + boundary + "\r\nContent-Disposition: form-data; name=\"" +
         multipart_param(file.field_name) + "\"; filename=\"" +
         multipart_param(file.file_name) + "\"\r\nContent-Type: " +
-        multipart_param(file.content_type) + "\r\n\r\n",
+        multipart_header_value(file.content_type) + "\r\n\r\n",
       ),
     )
     body.write_bytes(file.data)
