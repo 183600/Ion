@@ -422,3 +422,31 @@ test "cookie expiry accepts full month names" {
   let year_2100 : UInt64 = 4102444800000L.to_uint64()
   assert_eq(jar.cookie_header_at(url, year_2100), None)
 }
+
+///|
+test "cookie jar treats IP Domain attributes as host-only" {
+  let jar = CookieJar::new()
+  jar.store_at(
+    cookie_test_url("http://127.0.0.1/"),
+    "ip=1; Domain=127.0.0.1; Path=/",
+    1000,
+  )
+  jar.store_at(
+    cookie_test_url("http://[::1]/"),
+    "v6=1; Domain=::1; Path=/",
+    1000,
+  )
+  assert_eq(jar.length(), 2)
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://127.0.0.1/"), 1000),
+    Some("ip=1"),
+  )
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://sub.127.0.0.1/"), 1000),
+    None,
+  )
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://[::1]/"), 1000),
+    Some("v6=1"),
+  )
+}

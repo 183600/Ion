@@ -512,7 +512,9 @@ fn cookie_from_set_cookie(
         (host == candidate ||
           (!numeric_host && host.has_suffix("." + candidate))) {
         domain = candidate
-        host_only = false
+        // RFC 6265bis: a Domain attribute for an IP address host is ignored,
+        // leaving the cookie host-only instead of domain-scoped.
+        host_only = numeric_host
       } else {
         // A Domain attribute that does not cover the request host must not be
         // stored, otherwise a response could set cookies for other sites.
