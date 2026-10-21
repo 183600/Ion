@@ -785,7 +785,7 @@ pub fn Response::new(status : Int, headers : Headers, body : &Stream) -> Respons
     status,
     headers,
     body,
-    max_body_bytes: DEFAULT_MAX_RESPONSE_BODY_BYTES,
+    max_body_bytes: DEFAULT_MAX_BODY_BYTES,
   }
 }
 
@@ -800,7 +800,7 @@ pub fn Response::new_with_version(
     status,
     headers,
     body,
-    max_body_bytes: DEFAULT_MAX_RESPONSE_BODY_BYTES,
+    max_body_bytes: DEFAULT_MAX_BODY_BYTES,
   }
 }
 
@@ -813,8 +813,6 @@ fn Response::with_max_body_bytes(
     max_body_bytes: if max_body_bytes < 0 { 0 } else { max_body_bytes },
   }
 }
-
-const DEFAULT_MAX_RESPONSE_BODY_BYTES : Int = 67108864
 
 /// Read the complete response body with an explicit size limit.
 pub fn Response::read_body_with_limit(

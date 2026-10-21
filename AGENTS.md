@@ -12,6 +12,10 @@ All sources live flat under `src/`:
 - `native_tls.mbt`, `tls_native_stub.c` — native OpenSSL TLS provider.
 - `tls_types.mbt`, `tls_provider.mbt` — TLS config and mock provider.
 - `http_types.mbt`, `h1_codec.mbt` — HTTP types and HTTP/1.1 codec.
+- `inflate.mbt` — DEFLATE / zlib / gzip decompression (puff-style).
+- `cookies.mbt` — RFC 6265 cookie jar and matching.
+- `proxy.mbt` — HTTP forward proxy and CONNECT tunnel support.
+- `compat.mbt` — shared validation helpers (digits, charset checks, `List` alias).
 - `unified_connector.mbt`, `unified_client.mbt` — pooling connector + client.
 - `main.mbt` — CLI entry point.
 

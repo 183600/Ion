@@ -326,16 +326,6 @@ fn read_dynamic_tables(
   Ok((lit_table, dist_table))
 }
 
-fn inflate_codes(
-  br : BitReader,
-  out : Array[Byte],
-  lit : Huffman,
-  dist : Huffman,
-  max_bytes : Int,
-) -> Result[Unit, HttpError] {
-  inflate_codes_with_window(br, out, lit, dist, max_bytes, 32768)
-}
-
 fn inflate_codes_with_window(
   br : BitReader,
   out : Array[Byte],

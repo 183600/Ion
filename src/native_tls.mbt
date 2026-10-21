@@ -65,17 +65,6 @@ fn native_tls_error_message(tls : NativeTlsHandle) -> String {
   @utf8.decode_lossy(buffer.exact_view(start=0, end=length))
 }
 
-fn native_tls_error(tls : NativeTlsHandle, fallback : String) -> TlsError {
-  let message = native_tls_error_message(tls)
-  if feather_tls_verify_error(tls) != 0 {
-    return CertificateValidationFailed(message)
-  }
-  if message == "TLS operation failed" {
-    return IoError(fallback)
-  }
-  IoError(message)
-}
-
 fn native_tls_handshake_error(tls : NativeTlsHandle) -> TlsError {
   let message = native_tls_error_message(tls)
   if feather_tls_verify_error(tls) != 0 {

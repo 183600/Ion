@@ -20,7 +20,7 @@ pub fn ClientOptions::new() -> ClientOptions {
     timeout_ms: 30000,
     follow_redirects: true,
     max_redirects: 10,
-    max_response_body_bytes: DEFAULT_MAX_RESPONSE_BODY_BYTES,
+    max_response_body_bytes: DEFAULT_MAX_BODY_BYTES,
   }
 }
 

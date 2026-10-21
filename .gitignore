@@ -5,6 +5,15 @@
 # MoonBit package cache
 .mooncakes/
 
+# Logs and OS artifacts
+*.log
+.DS_Store
+
+# Editor swap files
+*.swp
+*.swo
+*~
+
 # opencode / loop scratch files
 opencode.json
 opencode.jsonc
@@ -12,3 +21,4 @@ opencode.jsonc
 .opencode_issues.md
 REPORT*.md
 autodl_budget*.json
+

@@ -130,7 +130,7 @@ test "native TLS sends SNI only for host names" {
 #cfg(target="native")
 test "native TLS rejects server names with embedded NUL bytes" {
   let tls = feather_tls_new(
-    @utf8.encode("example.com\x00evil"),
+    @utf8.encode("example.com\u{0}evil"),
     b"",
     0,
     0,

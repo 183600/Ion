@@ -7,7 +7,7 @@ test "CONNECT authority brackets IPvFuture hosts" {
 
 test "connect response keeps bytes read past the head" {
   let head = "HTTP/1.1 200 Connection Established\r\n\r\n"
-  let tunnel = "\x16\x03\x01\x00\x05hello"
+  let tunnel = "\u{16}\u{3}\u{1}\u{0}\u{5}hello"
   let stream = regression_mock_stream(head + tunnel, 0, 0)
   let leftover = read_connect_response(stream).unwrap()
   assert_eq(@utf8.decode_lossy(leftover[:]), tunnel)

@@ -18,12 +18,10 @@ extern "C" fn feather_tcp_is_alive(fd : Int) -> Int = "feather_tcp_is_alive"
 #borrow(output)
 extern "C" fn feather_tcp_local_addr(fd : Int, output : Bytes, capacity : Int) -> Int = "feather_tcp_local_addr"
 
-#borrow(host)
-#borrow(output)
+#borrow(host, output)
 extern "C" fn feather_tcp_resolve(host : Bytes, output : Bytes, capacity : Int) -> Int = "feather_tcp_resolve"
 
-#borrow(path)
-#borrow(output)
+#borrow(path, output)
 extern "C" fn feather_read_file(path : Bytes, output : Bytes, capacity : Int) -> Int = "feather_read_file"
 
 const NATIVE_TCP_READ_CHUNK : Int = 8192

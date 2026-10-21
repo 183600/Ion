@@ -49,10 +49,6 @@ pub impl TlsClientCtx for MockTlsClientCtx with fn connect(self : MockTlsClientC
   if self.is_connected {
     return Err(ProtocolError("TLS context is already connected"))
   }
-  if self.config.verify == SkipVerification {
-    println("WARNING: TLS certificate verification is disabled!")
-  }
-
   self.is_connected = true
   let tls_stream = TlsStream::{ underlying, config: self.config, is_open: true }
   Ok(tls_stream)
