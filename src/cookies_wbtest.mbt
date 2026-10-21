@@ -362,6 +362,36 @@ test "leading-zero expiry years are normalized by value" {
   assert_eq(jar.cookie_header_at(url, expires_at), None)
 }
 
+test "cookie expiry dates accept RFC date delimiters and token order" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  let expiry : UInt64 = 1792567680000L.to_uint64()
+  for value in [
+    "a=1; Expires=Wed,\t21-Oct-2026\t07:28:00\tGMT; Path=/",
+    "b=2; Expires=07:28:00,2026-Oct-21; Path=/",
+    "c=3; Expires=2026/October/21 07:28:00 GMT; Path=/",
+  ] {
+    jar.store_at(url, value, 0)
+  }
+  assert_eq(
+    jar.cookie_header_at(url, expiry - 1),
+    Some("a=1; b=2; c=3"),
+  )
+  assert_eq(jar.cookie_header_at(url, expiry), None)
+}
+
+test "cookie expiry dates with one unknown token are ignored" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  jar.store_at(
+    url,
+    "extra=1; Expires=Wed, 21 Oct 2026 07:28:00 junk; Path=/",
+    0,
+  )
+  let after_2030 : UInt64 = 2000000000000L.to_uint64()
+  assert_eq(jar.cookie_header_at(url, after_2030), Some("extra=1"))
+}
+
 test "pre-epoch expiry dates delete cookies" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")

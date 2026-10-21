@@ -202,13 +202,33 @@ fn cookie_path_matches(cookie_path : String, request_path : String) -> Bool {
 }
 
 ///|
-fn cookie_trimmed_tokens(value : String) -> Array[String] {
+// RFC 6265 §5.1.1: date-tokens are separated by any delimiter character,
+// not just spaces. Colons remain inside time tokens.
+fn cookie_is_date_delimiter(ch : Char) -> Bool {
+  ch == '\t' || (ch >= ' ' && ch <= '/') || (ch >= ';' && ch <= '@') ||
+  (ch >= '[' && ch <= '`') || (ch >= '{' && ch <= '~')
+}
+
+///|
+fn cookie_date_tokens(value : String) -> Array[String] {
   let tokens : Array[String] = []
-  for part in value.split(" ") {
-    let token = part.trim().to_owned()
-    if token.length() > 0 {
-      tokens.push(token)
+  let mut start = 0
+  let mut index = 0
+  while index < value.length() {
+    let delimiter = match value.get_char(index) {
+      Some(ch) => cookie_is_date_delimiter(ch)
+      None => false
     }
+    if delimiter {
+      if index > start {
+        tokens.push(value[start:index].to_owned())
+      }
+      start = index + 1
+    }
+    index = index + 1
+  }
+  if start < value.length() {
+    tokens.push(value[start:].to_owned())
   }
   tokens
 }
@@ -372,83 +392,83 @@ fn cookie_make_time(
 }
 
 ///|
-/// Parse the three date formats historically used by `Expires` (RFC 6265
-/// §5.1.1): IMF-fixdate, RFC 850 and asctime.
+/// Parse an `Expires` value using the RFC 6265 §5.1.1 date algorithm: split
+/// on delimiter characters, ignore a weekday, and recognize the day, month,
+/// time and year tokens regardless of their order. Formats with unexpected
+/// extra tokens are ignored rather than guessed at.
 fn cookie_parse_date(value : String) -> UInt64? {
   let text = value.trim().to_owned()
   if text.length() == 0 {
     return None
   }
-  let mut tokens = cookie_trimmed_tokens(text)
-  if tokens.length() > 0 && cookie_weekday(tokens[0]) {
-    let rest : Array[String] = []
-    let mut index = 1
-    while index < tokens.length() {
-      rest.push(tokens[index])
-      index = index + 1
+  let raw_tokens = cookie_date_tokens(text)
+  let tokens : Array[String] = []
+  for token in raw_tokens {
+    if !cookie_weekday(token) {
+      tokens.push(token)
     }
-    tokens = rest
   }
   if tokens.length() < 2 || tokens.length() > 5 {
     return None
   }
-  // RFC 850: "06-Nov-94 08:49:37 GMT" (the weekday was removed above).
-  if tokens[0].contains("-") {
-    let date_parts = tokens[0].split("-").collect()
-    if date_parts.length() != 3 {
-      return None
+  let mut day : Int32? = None
+  let mut month : Int32? = None
+  let mut year : Int32? = None
+  let mut clock : (Int32, Int32, Int32)? = None
+  let mut zones = 0
+  for token in tokens {
+    if token.contains(":") {
+      if clock is Some(_) {
+        return None
+      }
+      clock = cookie_parse_clock(token)
+      if clock is None {
+        return None
+      }
+    } else if cookie_month(token) is Some(_) {
+      if month is Some(_) {
+        return None
+      }
+      month = cookie_month(token)
+    } else if is_decimal_digits(token) {
+      // A one- or two-digit number is a day-of-month until that slot is
+      // filled; longer numbers can only be years. This also keeps the
+      // historical single-digit-year normalization used by browsers.
+      if day is None && token.length() <= 2 {
+        day = cookie_parse_decimal(token)
+      } else if year is None {
+        year = cookie_parse_year(token)
+        if year is None {
+          return None
+        }
+      } else {
+        return None
+      }
+    } else {
+      let zone = token.to_lower()
+      if zone == "gmt" || zone == "utc" || zone == "ut" || zone == "z" {
+        zones = zones + 1
+        if zones > 1 {
+          return None
+        }
+      } else {
+        return None
+      }
     }
-    let day = match cookie_parse_decimal(date_parts[0].to_owned()) {
-      Some(value) => value
-      None => return None
-    }
-    let month = match cookie_month(date_parts[1].to_owned()) {
-      Some(value) => value
-      None => return None
-    }
-    let year = match cookie_parse_year(date_parts[2].to_owned()) {
-      Some(value) => value
-      None => return None
-    }
-    let clock = match cookie_parse_clock(tokens[1]) {
-      Some(value) => value
-      None => return None
-    }
-    return cookie_make_time(year, month, day, clock)
   }
-  if tokens.length() < 4 {
-    return None
-  }
-  // IMF-fixdate starts with the day; asctime starts with the month name.
-  if cookie_month(tokens[0]) is Some(_) {
-    let month = cookie_month(tokens[0]).unwrap()
-    let day = match cookie_parse_decimal(tokens[1]) {
-      Some(value) => value
-      None => return None
-    }
-    let clock = match cookie_parse_clock(tokens[2]) {
-      Some(value) => value
-      None => return None
-    }
-    let year = match cookie_parse_year(tokens[3]) {
-      Some(value) => value
-      None => return None
-    }
-    return cookie_make_time(year, month, day, clock)
-  }
-  let day = match cookie_parse_decimal(tokens[0]) {
+  let day = match day {
     Some(value) => value
     None => return None
   }
-  let month = match cookie_month(tokens[1]) {
+  let month = match month {
     Some(value) => value
     None => return None
   }
-  let year = match cookie_parse_year(tokens[2]) {
+  let year = match year {
     Some(value) => value
     None => return None
   }
-  let clock = match cookie_parse_clock(tokens[3]) {
+  let clock = match clock {
     Some(value) => value
     None => return None
   }
