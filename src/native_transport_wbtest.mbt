@@ -38,6 +38,9 @@ test "native dial hosts strip IPv6 brackets" {
   assert_eq(tcp_dial_host("[fe80::1%eth0]"), "fe80::1%eth0")
   assert_eq(tcp_dial_host("[fe80::1%25eth0]"), "fe80::1%eth0")
   assert_eq(tcp_dial_host("fe80::1%25eth0"), "fe80::1%eth0")
+  assert_eq(tcp_dial_host("[fe80::1%25eth%30]"), "fe80::1%eth0")
+  assert_eq(tcp_dial_host("[fe80::1%eth%30]"), "fe80::1%eth0")
+  assert_eq(tcp_dial_host("[fe80::1%25%25foo]"), "fe80::1%%foo")
   assert_eq(tcp_dial_host("example.com"), "example.com")
   assert_eq(tcp_dial_host("[v1.foo]"), "[v1.foo]")
 }

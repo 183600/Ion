@@ -28,13 +28,37 @@ fn valid_tcp_port(port : Int) -> Bool {
 }
 
 #cfg(target="native")
+fn decode_zone_percent(zone : String) -> String {
+  let bytes = @utf8.encode(zone)
+  let output = @buffer.new()
+  let mut index = 0
+  while index < bytes.length() {
+    if bytes[index] == b'%' && index + 2 < bytes.length() {
+      let high = proxy_hex_value(bytes[index + 1])
+      let low = proxy_hex_value(bytes[index + 2])
+      if high >= 0 && low >= 0 {
+        output.write_byte(((high * 16 + low).to_byte()))
+        index = index + 3
+        continue
+      }
+    }
+    output.write_byte(bytes[index])
+    index = index + 1
+  }
+  @utf8.decode_lossy(output.to_bytes()[:])
+}
+
+#cfg(target="native")
 fn decode_ipv6_zone(value : String) -> String {
   match value.find("%") {
     Some(index) => {
       let zone = value[index + 1:].to_owned()
-      if zone.length() > 2 && zone.has_prefix("25") {
-        return value[0:index + 1].to_owned() + zone[2:].to_owned()
+      let zone = if zone.length() > 2 && zone.has_prefix("25") {
+        zone[2:].to_owned()
+      } else {
+        zone
       }
+      return value[0:index + 1].to_owned() + decode_zone_percent(zone)
     }
     None => ()
   }
