@@ -99,3 +99,24 @@ test "chunked transfer coding parameters are recognized" {
   let response = codec.decode_response().unwrap()
   assert_true(response.read_body() is Err(NetworkError(ReadError(_))))
 }
+
+///|
+test "chunked response trailers are exposed after the body" {
+  let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\nX-Checksum: abc\r\nX-Multi: one\r\nX-Multi: two\r\n\r\n"
+  let codec = H1Codec::new(regression_mock_stream(raw, 4096, 4096))
+  let response = codec.decode_response().unwrap()
+  assert_eq(response.trailers().length(), 0)
+  assert_eq(response.read_body().unwrap(), b"hello")
+  assert_eq(response.trailers().get("x-checksum"), Some("abc"))
+  assert_eq(response.trailers().get_all("X-Multi").nth(0), Some("one"))
+  assert_eq(response.trailers().get_all("X-Multi").nth(1), Some("two"))
+}
+
+///|
+test "non-chunked responses have no trailers" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+  let codec = H1Codec::new(regression_mock_stream(raw, 4096, 4096))
+  let response = codec.decode_response().unwrap()
+  assert_eq(response.read_body().unwrap(), b"ok")
+  assert_eq(response.trailers().length(), 0)
+}

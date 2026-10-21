@@ -724,6 +724,7 @@ pub fn H1Codec::decode_response(
       continue
     }
 
+    let trailers = @ref.Ref(Headers::new())
     let response_stream = ResponseStream::{
       reader: self.reader,
       version: response_head.version,
@@ -741,6 +742,7 @@ pub fn H1Codec::decode_response(
       is_open: true,
       on_complete: self.on_complete,
       completed: false,
+      trailers,
     }
     if self.on_complete is Some(_) {
       if is_head || response_head.status == 101 || response_head.status == 204 ||
@@ -760,7 +762,7 @@ pub fn H1Codec::decode_response(
         response_head.status,
         response_head.headers,
         response_stream,
-      ).with_max_body_bytes(self.max_body_bytes),
+      ).with_trailers(trailers).with_max_body_bytes(self.max_body_bytes),
     )
   }
   Err(ProtocolError("Invalid response"))
@@ -803,6 +805,7 @@ struct ResponseStream {
   mut is_open : Bool
   on_complete : ((Bool) -> Unit)?
   mut completed : Bool
+  trailers : @ref.Ref[Headers]
 }
 
 fn ResponseStream::complete(self : ResponseStream, reusable : Bool) -> Unit {
@@ -940,8 +943,12 @@ fn read_chunk_size(reader : StreamReader) -> Result[Int, NetError] {
   Ok(size)
 }
 
-fn consume_chunk_trailers(reader : StreamReader) -> Result[Unit, NetError] {
+fn consume_chunk_trailers(
+  reader : StreamReader,
+  trailers : @ref.Ref[Headers],
+) -> Result[Unit, NetError] {
   let mut trailer_count = 0
+  let mut collected = Headers::new()
   while true {
     let trailer = match read_line(reader) {
       Ok(Some(trailer)) => trailer
@@ -949,6 +956,7 @@ fn consume_chunk_trailers(reader : StreamReader) -> Result[Unit, NetError] {
       Err(err) => return Err(err)
     }
     if trailer.length() == 0 {
+      trailers.val = collected
       return Ok(())
     }
     if trailer.get_char(0) == Some(' ') || trailer.get_char(0) == Some('\t') {
@@ -967,6 +975,7 @@ fn consume_chunk_trailers(reader : StreamReader) -> Result[Unit, NetError] {
     if !valid_header_name(name) || !valid_header_value(value) {
       return Err(NetError::ReadError("invalid chunked trailer"))
     }
+    collected = collected.add(name, value)
   }
   Ok(())
 }
@@ -1288,7 +1297,7 @@ pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buf
               Err(err) => return Err(self.fail(err))
             }
             if size == 0 {
-              match consume_chunk_trailers(self.reader) {
+              match consume_chunk_trailers(self.reader, self.trailers) {
                 Ok(_) => ()
                 Err(err) => return Err(self.fail(err))
               }

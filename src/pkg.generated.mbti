@@ -257,6 +257,7 @@ pub struct Response {
   headers : Headers
   body : &Stream
   max_body_bytes : Int32
+  // private fields
 }
 pub fn Response::get_header(Self, String) -> String?
 pub fn Response::get_header_all(Self, String) -> @list.List[String]
@@ -271,6 +272,7 @@ pub fn Response::read_body_decoded(Self) -> Result[Bytes, HttpError]
 pub fn Response::read_body_decoded_with_limit(Self, Int32) -> Result[Bytes, HttpError]
 pub fn Response::read_body_with_limit(Self, Int32) -> Result[Bytes, HttpError]
 pub fn Response::text(Self) -> Result[String, HttpError]
+pub fn Response::trailers(Self) -> Headers
 
 type ResponseBodyMode
 

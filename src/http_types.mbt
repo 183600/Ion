@@ -777,6 +777,7 @@ pub struct Response {
   headers : Headers
   body : &Stream // Stream for reading response body
   max_body_bytes : Int
+  priv trailers : @ref.Ref[Headers]
 }
 
 pub fn Response::new(status : Int, headers : Headers, body : &Stream) -> Response {
@@ -786,6 +787,7 @@ pub fn Response::new(status : Int, headers : Headers, body : &Stream) -> Respons
     headers,
     body,
     max_body_bytes: DEFAULT_MAX_BODY_BYTES,
+    trailers: @ref.Ref(Headers::new()),
   }
 }
 
@@ -801,7 +803,15 @@ pub fn Response::new_with_version(
     headers,
     body,
     max_body_bytes: DEFAULT_MAX_BODY_BYTES,
+    trailers: @ref.Ref(Headers::new()),
   }
+}
+
+fn Response::with_trailers(
+  self : Response,
+  trailers : @ref.Ref[Headers],
+) -> Response {
+  Response::{ ..self, trailers }
 }
 
 fn Response::with_max_body_bytes(
@@ -812,6 +822,12 @@ fn Response::with_max_body_bytes(
     ..self,
     max_body_bytes: if max_body_bytes < 0 { 0 } else { max_body_bytes },
   }
+}
+
+/// Headers from the chunked trailer section. They are populated once the
+/// response body has been read to completion.
+pub fn Response::trailers(self : Response) -> Headers {
+  self.trailers.val
 }
 
 /// Read the complete response body with an explicit size limit.
