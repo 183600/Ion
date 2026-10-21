@@ -472,9 +472,10 @@ fn cookie_from_set_cookie(
         // ignored rather than falling back to a host-only cookie.
         return None
       }
-      if !is_ip_literal(host) &&
-        valid_url_host_chars(candidate) &&
-        (host == candidate || host.has_suffix("." + candidate)) {
+      let numeric_host = is_ipv4_literal(host) || is_ip_literal(host)
+      if valid_url_host_chars(candidate) &&
+        (host == candidate ||
+          (!numeric_host && host.has_suffix("." + candidate))) {
         domain = candidate
         host_only = false
       } else {
