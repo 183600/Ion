@@ -163,17 +163,8 @@ pub fn UnifiedClient::with_tls_config(
   self : UnifiedClient,
   config : TlsConfig,
 ) -> UnifiedClient {
-  let _ = self.connector.close_all()
-  let mut connector = Connector::new(
-    self.connector.dialer,
-    self.connector.tls_provider,
-  ).with_timeout(self.connector.timeout_ms).with_tls_config(config)
-  match self.connector.proxy {
-    Some(proxy) => connector = connector.with_proxy(proxy)
-    None => ()
-  }
   UnifiedClient::{
-    connector,
+    connector: self.connector.with_tls_config(config),
     options: self.options,
     redirect_count: 0,
   }
@@ -183,17 +174,8 @@ pub fn UnifiedClient::with_tls_config(
 /// `CONNECT`. Existing pooled connections are closed because they were made
 /// directly.
 pub fn UnifiedClient::with_proxy(self : UnifiedClient, proxy : Proxy) -> UnifiedClient {
-  let _ = self.connector.close_all()
-  let mut connector = Connector::new(
-    self.connector.dialer,
-    self.connector.tls_provider,
-  ).with_timeout(self.connector.timeout_ms).with_proxy(proxy)
-  match self.connector.tls_config {
-    Some(config) => connector = connector.with_tls_config(config)
-    None => ()
-  }
   UnifiedClient::{
-    connector,
+    connector: self.connector.with_proxy(proxy),
     options: self.options,
     redirect_count: 0,
   }

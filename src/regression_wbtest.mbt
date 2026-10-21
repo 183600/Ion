@@ -2251,6 +2251,21 @@ test "HTTPS through a proxy opens a CONNECT tunnel before TLS" {
 }
 
 ///|
+test "HTTPS proxy CONNECT always includes the target port" {
+  let raw = "HTTP/1.1 200 Connection Established\r\n\r\n"
+  let stream = regression_mock_stream(raw, 4096, 4096)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_proxy(
+    Proxy::new("http://proxy.example:3128").unwrap(),
+  )
+  let url = Url::parse("https://example.com/").unwrap()
+  let _ = connector.connect(url).unwrap()
+  let wire = @utf8.decode(stream.output.to_bytes()[:])
+  assert_true(wire.has_prefix("CONNECT example.com:443 HTTP/1.1\r\n"))
+  assert_true(wire.contains("Host: example.com:443\r\n"))
+}
+
+///|
 test "failed proxy CONNECT returns an error" {
   let raw = "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n"
   let stream = regression_mock_stream(raw, 4096, 4096)
@@ -2307,6 +2322,21 @@ test "with_proxy_url parses and applies a proxy string" {
   let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
   assert_true(client.with_proxy_url("http://proxy.example:8080") is Ok(_))
   assert_true(client.with_proxy_url("ftp://proxy.example") is Err(_))
+}
+
+///|
+test "replacing TLS or proxy settings preserves pool tuning" {
+  let connector = Connector::new(TcpDialer::new(), MockTlsProvider::new("test"))
+  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+    .with_max_idle_per_host(3)
+    .with_idle_timeout(1234)
+    .with_max_connections_per_host(2)
+  let client = client
+    .with_tls_config(TlsConfig::new("example.com"))
+    .with_proxy(Proxy::new("http://proxy.example:3128").unwrap())
+  assert_eq(client.connector.max_idle_per_host(), 3)
+  assert_eq(client.connector.idle_timeout(), 1234)
+  assert_eq(client.connector.max_connections_per_host(), 2)
 }
 
 

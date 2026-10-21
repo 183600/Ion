@@ -30,6 +30,16 @@ fn ConnectionPoolState::new() -> ConnectionPoolState {
   }
 }
 
+fn ConnectionPoolState::empty_with_settings(self : ConnectionPoolState) -> ConnectionPoolState {
+  ConnectionPoolState::{
+    idle: Map([]),
+    active: @list.List([]),
+    next_id: 0,
+    max_idle: self.max_idle,
+    idle_timeout_ms: self.idle_timeout_ms,
+  }
+}
+
 /// Number of connections still checked out for `key`.
 fn ConnectionPoolState::active_count(self : ConnectionPoolState, key : String) -> Int {
   let mut count = 0
@@ -179,6 +189,7 @@ pub fn Connector::with_timeout(self : Connector, timeout_ms : Int) -> Connector 
 /// Existing pooled connections were established with the previous
 /// configuration, so they must not be reused.
 pub fn Connector::with_tls_config(self : Connector, config : TlsConfig) -> Connector {
+  let pool = @ref.Ref(self.pool.val.empty_with_settings())
   let _ = self.close_all()
   Connector::{
     dialer: self.dialer,
@@ -187,13 +198,14 @@ pub fn Connector::with_tls_config(self : Connector, config : TlsConfig) -> Conne
     proxy: self.proxy,
     timeout_ms: self.timeout_ms,
     max_connections_per_host: self.max_connections_per_host,
-    pool: @ref.Ref(ConnectionPoolState::new()),
+    pool,
   }
 }
 
 /// Route every request through an HTTP proxy. Existing pooled connections were
 /// made directly, so they are closed and cannot be reused.
 pub fn Connector::with_proxy(self : Connector, proxy : Proxy) -> Connector {
+  let pool = @ref.Ref(self.pool.val.empty_with_settings())
   let _ = self.close_all()
   Connector::{
     dialer: self.dialer,
@@ -202,7 +214,7 @@ pub fn Connector::with_proxy(self : Connector, proxy : Proxy) -> Connector {
     proxy: Some(proxy),
     timeout_ms: self.timeout_ms,
     max_connections_per_host: self.max_connections_per_host,
-    pool: @ref.Ref(ConnectionPoolState::new()),
+    pool,
   }
 }
 
@@ -338,12 +350,22 @@ fn read_connect_response(stream : &Stream) -> Result[Unit, HttpError] {
   Err(ProtocolError("proxy CONNECT response headers too large"))
 }
 
+fn connect_authority(url : Url) -> String {
+  let host_text = if url.host.contains(":") &&
+    !(url.host.has_prefix("[") && url.host.has_suffix("]")) {
+    "[" + url.host + "]"
+  } else {
+    url.host
+  }
+  host_text + ":" + url.port.to_string()
+}
+
 fn establish_tunnel(
   stream : &Stream,
   url : Url,
   proxy : Proxy,
 ) -> Result[Unit, HttpError] {
-  let authority = url.authority()
+  let authority = connect_authority(url)
   let mut request = "CONNECT " + authority + " HTTP/1.1\r\nHost: " + authority + "\r\n"
   match proxy.authorization {
     Some(value) => request = request + "Proxy-Authorization: " + value + "\r\n"

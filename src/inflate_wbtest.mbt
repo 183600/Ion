@@ -813,6 +813,17 @@ test "read_body_decoded_with_limit bounds the decoded output" {
   assert_eq(response.read_body_decoded_with_limit(5).unwrap(), inflate_bytes_of([104, 101, 108, 108, 111]))
 }
 
+test "read_body_decoded_with_limit bounds identity and unencoded bodies" {
+  let stream : &Stream = InflateMockStream::{ input: b"hello", offset: 0 }
+  let response = Response::new(200, Headers::new(), stream)
+  assert_true(response.read_body_decoded_with_limit(4) is Err(_))
+
+  let stream : &Stream = InflateMockStream::{ input: b"hello", offset: 0 }
+  let headers = Headers::new().set("Content-Encoding", "identity")
+  let response = Response::new(200, headers, stream)
+  assert_true(response.read_body_decoded_with_limit(4) is Err(_))
+}
+
 test "Content-Encoding decodes multiple encodings in reverse" {
   let payload = inflate_bytes_of([104, 101, 108, 108, 111])
   let stream : &Stream = InflateMockStream::{ input: payload, offset: 0 }

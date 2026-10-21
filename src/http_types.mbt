@@ -664,6 +664,7 @@ pub fn Response::read_body_decoded_with_limit(
   self : Response,
   max_bytes : Int,
 ) -> Result[Bytes, HttpError] {
+  let limit = if max_bytes < 0 { 0 } else { max_bytes }
   let raw = match self.read_body() {
     Ok(body) => body
     Err(err) => return Err(err)
@@ -673,6 +674,9 @@ pub fn Response::read_body_decoded_with_limit(
   // (RFC 7230 §3.2.2), so combine every line before decoding.
   let values = self.get_header_all("Content-Encoding")
   if values.length() == 0 {
+    if raw.length() > limit {
+      return Err(NetworkError(ReadError("response body too large")))
+    }
     return Ok(raw)
   }
   let mut combined = ""
@@ -682,7 +686,14 @@ pub fn Response::read_body_decoded_with_limit(
     }
     combined = combined + value
   }
-  decode_encodings(combined, raw, max_bytes)
+  let decoded = match decode_encodings(combined, raw, limit) {
+    Ok(decoded) => decoded
+    Err(err) => return Err(err)
+  }
+  if decoded.length() > limit {
+    return Err(NetworkError(ReadError("response body too large")))
+  }
+  Ok(decoded)
 }
 
 /// Apply a (possibly comma-separated) `Content-Encoding` header. Encodings are
