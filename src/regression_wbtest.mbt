@@ -2306,6 +2306,25 @@ test "HTTPS through a proxy opens a CONNECT tunnel before TLS" {
 }
 
 ///|
+test "HTTPS tunnels do not forward caller proxy authorization to the origin" {
+  let raw = "HTTP/1.1 200 Connection Established\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+  let stream = regression_mock_stream(raw, 4096, 4096)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_proxy(
+    Proxy::new("http://proxy.example:3128").unwrap(),
+  )
+  let options = ClientOptions::new().with_follow_redirects(false)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let url = Url::parse("https://example.com/").unwrap()
+  let request = Request::new(GET, url)
+    .with_header("Proxy-Authorization", "Basic secret")
+  let response = client.request(request).unwrap()
+  assert_eq(response.text().unwrap(), "ok")
+  let wire = @utf8.decode(stream.output.to_bytes()[:])
+  assert_true(!wire.contains("Proxy-Authorization"))
+}
+
+///|
 test "HTTPS proxy CONNECT always includes the target port" {
   let raw = "HTTP/1.1 200 Connection Established\r\n\r\n"
   let stream = regression_mock_stream(raw, 4096, 4096)

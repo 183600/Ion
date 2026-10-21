@@ -456,7 +456,7 @@ fn UnifiedClient::do_request_once(
 
   // When a proxy is configured, plain HTTP is sent in absolute-form and the
   // proxy credentials are attached. HTTPS tunnels authenticate during CONNECT,
-  // so the header is only added here for non-tunnelled requests.
+  // so caller-supplied proxy credentials must not be forwarded to the origin.
   let absolute_form = self.connector.uses_absolute_form(request.url)
   if absolute_form {
     if request.get_header("Proxy-Authorization") is None {
@@ -465,6 +465,8 @@ fn UnifiedClient::do_request_once(
         None => ()
       }
     }
+  } else {
+    request = request.without_header("Proxy-Authorization")
   }
 
   // Encode and send request
