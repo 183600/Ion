@@ -26,6 +26,9 @@ int32_t feather_read_file(moonbit_bytes_t path, moonbit_bytes_t output, int32_t 
   if (path_len <= 0 || path_len >= 4096) {
     return -EINVAL;
   }
+  if (capacity < 0 || capacity > Moonbit_array_length(output)) {
+    return -EINVAL;
+  }
   if (memchr(path, '\0', (size_t)path_len) != NULL) {
     return -EINVAL;
   }
@@ -194,7 +197,10 @@ int32_t feather_tcp_read(int32_t fd, moonbit_bytes_t buffer, int32_t capacity) {
   if (fd < 0) {
     return -EBADF;
   }
-  if (capacity <= 0) {
+  if (capacity < 0 || capacity > Moonbit_array_length(buffer)) {
+    return -EINVAL;
+  }
+  if (capacity == 0) {
     return 0;
   }
   for (;;) {
@@ -217,7 +223,10 @@ int32_t feather_tcp_write(int32_t fd, moonbit_bytes_t buffer, int32_t length) {
   if (fd < 0) {
     return -EBADF;
   }
-  if (length <= 0) {
+  if (length < 0 || length > Moonbit_array_length(buffer)) {
+    return -EINVAL;
+  }
+  if (length == 0) {
     return 0;
   }
   for (;;) {
@@ -258,6 +267,9 @@ MOONBIT_FFI_EXPORT
 int32_t feather_tcp_local_addr(int32_t fd, moonbit_bytes_t output, int32_t capacity) {
   if (fd < 0) {
     return -EBADF;
+  }
+  if (capacity < 0 || capacity > Moonbit_array_length(output)) {
+    return -EINVAL;
   }
   struct sockaddr_storage addr;
   socklen_t length = sizeof(addr);
@@ -347,6 +359,9 @@ MOONBIT_FFI_EXPORT
 int32_t feather_tcp_resolve(moonbit_bytes_t host, moonbit_bytes_t output, int32_t capacity) {
   int32_t host_len = Moonbit_array_length(host);
   if (host_len <= 0 || host_len >= 1024) {
+    return -EINVAL;
+  }
+  if (capacity < 0 || capacity > Moonbit_array_length(output)) {
     return -EINVAL;
   }
   if (memchr(host, '\0', (size_t)host_len) != NULL) {

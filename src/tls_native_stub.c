@@ -88,6 +88,16 @@ FeatherTls *feather_tls_new(
     feather_tls_finalize, sizeof(FeatherTls));
   memset(tls, 0, sizeof(FeatherTls));
 
+  if (alpn_length < 0 || alpn_length > Moonbit_array_length(alpn) ||
+      roots_length < 0 || roots_length > Moonbit_array_length(roots) ||
+      certificate_length < 0 ||
+      certificate_length > Moonbit_array_length(certificate) ||
+      private_key_length < 0 ||
+      private_key_length > Moonbit_array_length(private_key)) {
+    tls->last_error = -EINVAL;
+    return tls;
+  }
+
   int32_t name_length = Moonbit_array_length(server_name);
   if (name_length <= 0 || name_length >= 1024 ||
       memchr(server_name, '\0', (size_t)name_length) != NULL) {
@@ -309,7 +319,13 @@ int32_t feather_tls_capture_keylog(FeatherTls *tls, int32_t enabled) {
 
 MOONBIT_FFI_EXPORT
 int32_t feather_tls_drain_keylog(FeatherTls *tls, moonbit_bytes_t buffer, int32_t capacity) {
-  if (tls == NULL || capacity <= 0) {
+  if (tls == NULL) {
+    return 0;
+  }
+  if (capacity < 0 || capacity > Moonbit_array_length(buffer)) {
+    return -1;
+  }
+  if (capacity == 0) {
     return 0;
   }
   int length = tls->keylog_length;
@@ -349,7 +365,11 @@ int32_t feather_tls_handshake(FeatherTls *tls) {
 
 MOONBIT_FFI_EXPORT
 int32_t feather_tls_read(FeatherTls *tls, moonbit_bytes_t buffer, int32_t capacity) {
-  if (tls == NULL || tls->ssl == NULL || capacity <= 0) {
+  if (tls == NULL || tls->ssl == NULL || capacity < 0 ||
+      capacity > Moonbit_array_length(buffer)) {
+    return -3;
+  }
+  if (capacity == 0) {
     return -3;
   }
   int result = SSL_read(tls->ssl, buffer, capacity);
@@ -380,7 +400,12 @@ int32_t feather_tls_write(
   int32_t offset,
   int32_t length
 ) {
-  if (tls == NULL || tls->ssl == NULL || offset < 0 || length <= 0) {
+  if (tls == NULL || tls->ssl == NULL || offset < 0 || length < 0 ||
+      offset > Moonbit_array_length(buffer) ||
+      length > Moonbit_array_length(buffer) - offset) {
+    return -3;
+  }
+  if (length == 0) {
     return -3;
   }
   int result = SSL_write(tls->ssl, buffer + offset, length);
@@ -400,7 +425,11 @@ int32_t feather_tls_write(
 
 MOONBIT_FFI_EXPORT
 int32_t feather_tls_receive_pending(FeatherTls *tls, moonbit_bytes_t buffer, int32_t capacity) {
-  if (tls == NULL || tls->ssl == NULL || capacity <= 0) {
+  if (tls == NULL || tls->ssl == NULL || capacity < 0 ||
+      capacity > Moonbit_array_length(buffer)) {
+    return -1;
+  }
+  if (capacity == 0) {
     return -1;
   }
   BIO *write_bio = SSL_get_wbio(tls->ssl);
@@ -416,7 +445,11 @@ int32_t feather_tls_receive_pending(FeatherTls *tls, moonbit_bytes_t buffer, int
 
 MOONBIT_FFI_EXPORT
 int32_t feather_tls_send_input(FeatherTls *tls, moonbit_bytes_t buffer, int32_t length) {
-  if (tls == NULL || tls->ssl == NULL || length <= 0) {
+  if (tls == NULL || tls->ssl == NULL || length < 0 ||
+      length > Moonbit_array_length(buffer)) {
+    return -1;
+  }
+  if (length == 0) {
     return -1;
   }
   BIO *read_bio = SSL_get_rbio(tls->ssl);
@@ -446,7 +479,8 @@ int32_t feather_tls_verify_error(FeatherTls *tls) {
 
 MOONBIT_FFI_EXPORT
 int32_t feather_tls_alpn(FeatherTls *tls, moonbit_bytes_t buffer, int32_t capacity) {
-  if (tls == NULL || tls->ssl == NULL || capacity <= 0) {
+  if (tls == NULL || tls->ssl == NULL || capacity < 0 ||
+      capacity > Moonbit_array_length(buffer) || capacity == 0) {
     return 0;
   }
   const unsigned char *protocol = NULL;
@@ -464,7 +498,8 @@ int32_t feather_tls_alpn(FeatherTls *tls, moonbit_bytes_t buffer, int32_t capaci
 
 MOONBIT_FFI_EXPORT
 int32_t feather_tls_sni_name(FeatherTls *tls, moonbit_bytes_t buffer, int32_t capacity) {
-  if (tls == NULL || tls->ssl == NULL || capacity <= 0) {
+  if (tls == NULL || tls->ssl == NULL || capacity < 0 ||
+      capacity > Moonbit_array_length(buffer) || capacity == 0) {
     return 0;
   }
   const char *name = SSL_get_servername(tls->ssl, TLSEXT_NAMETYPE_host_name);
@@ -485,7 +520,13 @@ int32_t feather_tls_last_error_message(
   moonbit_bytes_t buffer,
   int32_t capacity
 ) {
-  if (tls == NULL || capacity <= 0) {
+  if (tls == NULL) {
+    return 0;
+  }
+  if (capacity < 0 || capacity > Moonbit_array_length(buffer)) {
+    return 0;
+  }
+  if (capacity == 0) {
     return 0;
   }
   const char *message = NULL;

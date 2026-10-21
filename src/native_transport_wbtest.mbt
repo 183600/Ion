@@ -71,6 +71,34 @@ extern "C" fn feather_read_file_nul_probe(
 
 ///|
 #cfg(target="native")
+#borrow(host, output)
+extern "C" fn feather_tcp_resolve_capacity_probe(
+  host : Bytes,
+  output : Bytes,
+  capacity : Int,
+) -> Int = "feather_tcp_resolve"
+
+///|
+#cfg(target="native")
+#borrow(path, output)
+extern "C" fn feather_read_file_capacity_probe(
+  path : Bytes,
+  output : Bytes,
+  capacity : Int,
+) -> Int = "feather_read_file"
+
+///|
+#cfg(target="native")
+test "native FFI rejects capacities beyond the output buffer" {
+  let host = @utf8.encode("localhost")
+  let output = Bytes::new(8)
+  assert_eq(feather_tcp_resolve_capacity_probe(host, output, 9), -22)
+  let path = @utf8.encode("/dev/null")
+  assert_eq(feather_read_file_capacity_probe(path, output, 9), -22)
+}
+
+///|
+#cfg(target="native")
 test "native TCP FFI rejects embedded NUL bytes" {
   let host = @utf8.encode("localhost\u{0}evil")
   assert_eq(feather_tcp_connect_nul_probe(host, 1, 10), -22)
