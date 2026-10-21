@@ -97,6 +97,26 @@ test "cookie jar only sends Secure cookies over HTTPS" {
 }
 
 ///|
+test "non-secure origins cannot set Secure cookies" {
+  let jar = CookieJar::new()
+  jar.store_at(
+    cookie_test_url("http://example.com/"),
+    "token=secret; Secure; Path=/",
+    1000,
+  )
+  assert_eq(jar.length(), 0)
+  jar.store_at(
+    cookie_test_url("https://example.com/"),
+    "token=secret; Secure; Path=/",
+    1000,
+  )
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("https://example.com/x"), 1000),
+    Some("token=secret"),
+  )
+}
+
+///|
 test "cookie jar honors Max-Age and deletes expired cookies" {
   let jar = CookieJar::new()
   jar.store_at(

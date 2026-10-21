@@ -547,6 +547,11 @@ fn cookie_from_set_cookie(
     }
     index = index + 1
   }
+  // RFC 6265 §5.3: a non-secure origin must not be able to set a Secure
+  // cookie, even though the jar would never send it over plain HTTP.
+  if secure && !url.is_secure() {
+    return None
+  }
   Some(Cookie::{
     name,
     value,
