@@ -226,7 +226,15 @@ FeatherTls *feather_tls_new(
   int is_ip = inet_pton(AF_INET, host_for_verify, &ipv4) == 1 ||
       inet_pton(AF_INET6, host_for_verify, &ipv6) == 1;
 
-  if (!is_ip && SSL_set_tlsext_host_name(tls->ssl, name) != 1) {
+  // DNS names may be written with a trailing dot (an explicit root label).
+  // SNI and certificate verification use the canonical form without it.
+  char canonical_name[1024];
+  memcpy(canonical_name, name, (size_t)name_length + 1);
+  if (!is_ip && name_length > 1 && canonical_name[name_length - 1] == '.') {
+    canonical_name[name_length - 1] = '\0';
+  }
+
+  if (!is_ip && SSL_set_tlsext_host_name(tls->ssl, canonical_name) != 1) {
     feather_tls_record_error(tls);
     return tls;
   }
@@ -239,7 +247,7 @@ FeatherTls *feather_tls_new(
         feather_tls_record_error(tls);
         return tls;
       }
-    } else if (SSL_set1_host(tls->ssl, name) != 1) {
+    } else if (SSL_set1_host(tls->ssl, canonical_name) != 1) {
       feather_tls_record_error(tls);
       return tls;
     }
