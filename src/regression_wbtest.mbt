@@ -1868,6 +1868,12 @@ test "streams reporting progress without data are rejected" {
   let codec = H1Codec::new(stream)
   assert_true(codec.decode_response() is Err(NetworkError(ReadError(_))))
 }
+
+///|
+test "proxy CONNECT rejects streams reporting progress without data" {
+  let stream = NoProgressStream::{ is_open: true }
+  assert_true(read_connect_response(stream) is Err(NetworkError(ReadError(_))))
+}
 ///|
 test "response status helpers and URL scheme checks" {
   let response = Response::new(204, Headers::new(), regression_mock_stream("", 4096, 4096))

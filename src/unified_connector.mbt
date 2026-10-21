@@ -484,7 +484,11 @@ fn read_connect_response(stream : &Stream) -> Result[Bytes, HttpError] {
         "proxy closed the connection during CONNECT",
       )))
     }
-    head.write_bytes(chunk.to_bytes())
+    let bytes = chunk.to_bytes()
+    if bytes.length() == 0 {
+      return Err(NetworkError(ReadError("stream returned no data")))
+    }
+    head.write_bytes(bytes)
     let data = head.to_bytes()
     match find_head_end(data) {
       Some(head_end) => {
