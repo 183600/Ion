@@ -9,6 +9,8 @@
 const INFLATE_MAX_BITS : Int = 15
 const INFLATE_MAX_LIT_CODES : Int = 288
 const INFLATE_MAX_DIST_CODES : Int = 32
+const INFLATE_MAX_DYNAMIC_LIT_CODES : Int = 286
+const INFLATE_MAX_DYNAMIC_DIST_CODES : Int = 30
 const INFLATE_MAX_CL_CODES : Int = 19
 
 let inflate_length_base : Array[Int] = [
@@ -203,8 +205,8 @@ fn read_dynamic_tables(
     Ok(v) => v + 4
     Err(err) => return Err(err)
   }
-  if hlit > INFLATE_MAX_LIT_CODES || hdist > INFLATE_MAX_DIST_CODES {
-    return Err(inflate_error("invalid dynamic block header"))
+  if hlit > INFLATE_MAX_DYNAMIC_LIT_CODES || hdist > INFLATE_MAX_DYNAMIC_DIST_CODES {
+    return Err(inflate_error("too many length or distance symbols"))
   }
   let cl_lengths = Array::make(INFLATE_MAX_CL_CODES, 0)
   let mut i = 0

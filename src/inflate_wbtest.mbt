@@ -792,6 +792,19 @@ test "inflate rejects a dynamic tree without an end-of-block code" {
   assert_true(rejected)
 }
 
+test "inflate rejects oversized dynamic alphabets" {
+  // Final dynamic block with HLIT=287: the literal/length alphabet is limited
+  // to 286 codes by RFC 1951.
+  // Final dynamic block with HDIST=31: only 30 distance codes are allowed.
+  for data in [[0xF5, 0x00, 0x00], [0x05, 0x1E, 0x00]] {
+    let rejected = match inflate(inflate_bytes_of(data), 1_000_000) {
+      Err(ProtocolError(message)) => message.contains("too many length or distance symbols")
+      _ => false
+    }
+    assert_true(rejected)
+  }
+}
+
 test "inflate enforces the size limit" {
   let compressed = inflate_bytes_of([203, 72, 205, 201, 201, 7, 0])
   assert_true(inflate(compressed, 2) is Err(_))
