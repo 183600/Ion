@@ -624,19 +624,21 @@ fn Connector::connect_impl(
     }
   }
 
-  // Check if we have a cached connection
-  match take_idle_stream(self.pool, conn_key) {
-    Some(stream) => return Ok((stream, true))
-    None => ()
-  }
-
-  // Refuse to exceed the per-host connection cap once no idle connection is
-  // available. The check is done before dialing so no socket is wasted.
+  // Refuse to exceed the per-host connection cap before taking an idle
+  // connection, otherwise a pool with more idle entries than the cap could
+  // hand out enough streams to exceed it. The check is done before dialing so
+  // no socket is wasted.
   if self.max_connections_per_host > 0 &&
     self.pool.val.active_count(conn_key) >= self.max_connections_per_host {
     return Err(NetworkError(ConnectionFailed(
       "connection limit reached for " + conn_key,
     )))
+  }
+
+  // Check if we have a cached connection
+  match take_idle_stream(self.pool, conn_key) {
+    Some(stream) => return Ok((stream, true))
+    None => ()
   }
 
   // Dial the proxy when one is configured, otherwise dial the origin.

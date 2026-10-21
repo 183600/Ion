@@ -2152,6 +2152,24 @@ test "connector enforces a per-host connection cap" {
 }
 
 ///|
+test "connection cap also limits reuse of extra idle connections" {
+  let first = regression_mock_stream("", 1, 0)
+  let second = regression_mock_stream("", 1, 0)
+  let streams : Array[&Stream] = [first, second]
+  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let url = Url::parse("http://example.com/").unwrap()
+  let (_s0, lease0) = connector.checkout(url).unwrap()
+  let (_s1, lease1) = connector.checkout(url).unwrap()
+  lease0.release(true)
+  lease1.release(true)
+  let capped = connector.with_max_connections_per_host(1)
+  let (_s2, lease2) = capped.checkout(url).unwrap()
+  assert_true(capped.checkout(url) is Err(_))
+  lease2.release(false)
+}
+
+///|
 test "connector connection cap is counted per host" {
   let first = regression_mock_stream("", 1, 0)
   let second = regression_mock_stream("", 1, 0)
