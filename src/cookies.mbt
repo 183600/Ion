@@ -563,6 +563,13 @@ fn cookie_from_set_cookie(
         // the cookie instead of creating a domain-scoped or host-only cookie.
         return None
       }
+      if !candidate.contains(".") && candidate != host {
+        // A single-label Domain such as "com" is a public suffix, not a
+        // domain the request host can control. Reject it so a site cannot
+        // set a supercookie for every host under that label. A single-label
+        // request host itself (for example "localhost") remains usable.
+        return None
+      }
       let numeric_host = is_ipv4_literal(host) || is_ip_literal(host)
       if valid_url_host_chars(candidate) &&
         (host == candidate ||

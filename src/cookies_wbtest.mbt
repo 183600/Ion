@@ -491,6 +491,28 @@ test "an empty Domain attribute invalidates the cookie" {
   assert_eq(jar.cookie_header_at(url, 1000), None)
 }
 
+test "a single-label Domain attribute cannot target a public suffix" {
+  let jar = CookieJar::new()
+  jar.store_at(
+    cookie_test_url("http://example.com/"),
+    "leak=1; Domain=com; Path=/",
+    1000,
+  )
+  jar.store_at(
+    cookie_test_url("http://localhost/"),
+    "local=1; Domain=localhost; Path=/",
+    1000,
+  )
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://other.com/"), 1000),
+    None,
+  )
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://localhost/"), 1000),
+    Some("local=1"),
+  )
+}
+
 test "a trailing-dot Domain attribute invalidates the cookie" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://www.example.com./")
