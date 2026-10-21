@@ -595,6 +595,7 @@ fn inflate_gzip(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
     if (flags & 0xE0) != 0 {
       return Err(inflate_error("reserved gzip flags set"))
     }
+    let header_start = offset
     let mut cursor = offset + 10
     if (flags & 0x04) != 0 {
       // FEXTRA
@@ -614,6 +615,14 @@ fn inflate_gzip(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
     }
     if (flags & 0x02) != 0 {
       // FHCRC
+      if cursor + 2 > data.length() {
+        return Err(inflate_error("truncated gzip header CRC"))
+      }
+      let stored_header_crc = data[cursor].to_int() | (data[cursor + 1].to_int() << 8)
+      let computed_header_crc = crc32(data[header_start:cursor].to_bytes()) & 0xFFFF
+      if computed_header_crc != stored_header_crc {
+        return Err(inflate_error("gzip header CRC mismatch"))
+      }
       cursor = cursor + 2
     }
     if cursor >= data.length() || data.length() - cursor < 8 {

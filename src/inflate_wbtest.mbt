@@ -695,6 +695,20 @@ test "inflate rejects bad gzip magic" {
   assert_true(gunzip(data, 1_000_000) is Err(_))
 }
 
+test "gzip validates the optional header CRC" {
+  let valid = inflate_bytes_of([
+    31, 139, 8, 2, 0, 0, 0, 0, 0, 255, 144, 201, 115, 4, 0, 139, 158, 217,
+    211, 1, 0, 0, 0,
+  ])
+  assert_eq(gunzip(valid, 1_000_000).unwrap(), b"A")
+  let corrupt = inflate_bytes_of([
+    31, 139, 8, 2, 0, 0, 0, 0, 0, 255, 145, 201, 115, 4, 0, 139, 158, 217,
+    211, 1, 0, 0, 0,
+  ])
+  assert_true(gunzip(corrupt, 1_000_000) is Err(_))
+}
+
+
 test "inflate rejects truncated deflate" {
   let data = inflate_bytes_of([0xFF, 0xFF])
   assert_true(inflate(data, 1_000_000) is Err(_))
