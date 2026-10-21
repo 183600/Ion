@@ -89,7 +89,8 @@ FeatherTls *feather_tls_new(
   memset(tls, 0, sizeof(FeatherTls));
 
   int32_t name_length = Moonbit_array_length(server_name);
-  if (name_length <= 0 || name_length >= 1024) {
+  if (name_length <= 0 || name_length >= 1024 ||
+      memchr(server_name, '\0', (size_t)name_length) != NULL) {
     tls->last_error = -EINVAL;
     return tls;
   }
@@ -213,7 +214,9 @@ FeatherTls *feather_tls_new(
   char verify_name[1024];
   memcpy(verify_name, name, (size_t)name_length + 1);
   char *host_for_verify = verify_name;
-  if (name_length >= 2 && name[0] == '[' && name[name_length - 1] == ']') {
+  int is_bracketed = name_length >= 2 && name[0] == '[' &&
+      name[name_length - 1] == ']';
+  if (is_bracketed) {
     host_for_verify = verify_name + 1;
     host_for_verify[name_length - 2] = '\0';
   }
@@ -235,13 +238,20 @@ FeatherTls *feather_tls_new(
 
   // DNS names may be written with a trailing dot (an explicit root label).
   // SNI and certificate verification use the canonical form without it.
+  // Bracketed literals (IPv6 and IPvFuture) are never valid SNI host names.
   char canonical_name[1024];
-  memcpy(canonical_name, name, (size_t)name_length + 1);
-  if (!is_ip && name_length > 1 && canonical_name[name_length - 1] == '.') {
-    canonical_name[name_length - 1] = '\0';
+  if (is_bracketed) {
+    size_t host_length = strlen(host_for_verify);
+    memcpy(canonical_name, host_for_verify, host_length + 1);
+  } else {
+    memcpy(canonical_name, name, (size_t)name_length + 1);
+    if (!is_ip && name_length > 1 && canonical_name[name_length - 1] == '.') {
+      canonical_name[name_length - 1] = '\0';
+    }
   }
 
-  if (!is_ip && SSL_set_tlsext_host_name(tls->ssl, canonical_name) != 1) {
+  if (!is_ip && !is_bracketed &&
+      SSL_set_tlsext_host_name(tls->ssl, canonical_name) != 1) {
     feather_tls_record_error(tls);
     return tls;
   }

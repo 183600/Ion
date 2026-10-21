@@ -107,7 +107,7 @@ test "native TLS sends SNI only for host names" {
   let length = feather_tls_sni_name(dotted, buffer, 128)
   assert_eq(@utf8.decode_lossy(buffer.exact_view(start=0, end=length)), "example.com")
 
-  for address in ["127.0.0.1", "127.0.0.1.", "[::1]", "fe80::1%eth0"] {
+  for address in ["127.0.0.1", "127.0.0.1.", "[::1]", "fe80::1%eth0", "[v1.foo]"] {
     let tls = feather_tls_new(
       @utf8.encode(address),
       b"",
@@ -124,6 +124,25 @@ test "native TLS sends SNI only for host names" {
     assert_eq(feather_tls_ready(tls), 1)
     assert_eq(feather_tls_sni_name(tls, buffer, 128), 0)
   }
+}
+
+///|
+#cfg(target="native")
+test "native TLS rejects server names with embedded NUL bytes" {
+  let tls = feather_tls_new(
+    @utf8.encode("example.com\x00evil"),
+    b"",
+    0,
+    0,
+    0,
+    b"",
+    0,
+    b"",
+    0,
+    b"",
+    0,
+  )
+  assert_eq(feather_tls_ready(tls), 0)
 }
 
 ///|
