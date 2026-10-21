@@ -532,6 +532,7 @@ fn cookie_from_set_cookie(
   let mut expires_at_ms : UInt64? = None
   let mut max_age_seen = false
   let mut domain_attribute_seen = false
+  let mut path_attribute_seen = false
   let mut index = 1
   while index < parts.length() {
     let (raw_attribute, raw_attribute_value) = cookie_split_first(
@@ -572,6 +573,7 @@ fn cookie_from_set_cookie(
     } else if attribute == "path" {
       if attribute_value.has_prefix("/") {
         path = attribute_value
+        path_attribute_seen = true
       }
     } else if attribute == "secure" {
       secure = true
@@ -614,7 +616,11 @@ fn cookie_from_set_cookie(
     return None
   }
   if name.has_prefix("__Host-") &&
-    (!secure || !host_only || path != "/" || domain_attribute_seen) {
+    (!secure ||
+      !host_only ||
+      !path_attribute_seen ||
+      path != "/" ||
+      domain_attribute_seen) {
     return None
   }
   Some(Cookie::{

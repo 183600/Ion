@@ -697,6 +697,12 @@ test "cookie jar enforces __Host- prefix" {
   // Missing Secure is not allowed even over HTTPS.
   jar.store_at(secure, "__Host-id=4; Path=/", 1000)
   assert_eq(jar.length(), 1)
+  // Missing Path is not allowed even when the default path is "/".
+  jar.store_at(secure, "__Host-id=5; Secure", 1000)
+  assert_eq(jar.length(), 1)
+  // An invalid Path attribute falls back to the default and is not allowed.
+  jar.store_at(secure, "__Host-id=6; Secure; Path=account", 1000)
+  assert_eq(jar.length(), 1)
   assert_eq(
     jar.cookie_header_at(cookie_test_url("https://example.com/x"), 1000),
     Some("__Host-id=1"),
