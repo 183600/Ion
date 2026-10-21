@@ -2410,6 +2410,21 @@ test "CONNECT response parsing rejects a head without a terminator" {
 }
 
 ///|
+test "CONNECT response parsing rejects an oversized head in one read" {
+  let raw = "HTTP/1.1 200 Connection Established\r\nX-Fill: " +
+    "a".repeat(16384) +
+    "\r\n\r\n"
+  let stream = regression_mock_stream(raw, 0, 0)
+  assert_true(read_connect_response(stream) is Err(ProtocolError(_)))
+}
+
+///|
+test "CONNECT response parsing rejects an invalid HTTP version" {
+  let stream = regression_mock_stream("FOO 200 Connection Established\r\n\r\n", 0, 0)
+  assert_true(read_connect_response(stream) is Err(ProtocolError(_)))
+}
+
+///|
 test "CONNECT failure is reported when tunnel data follows the head" {
   let stream = regression_mock_stream("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\nPRESHUTDOWN", 0, 0)
   assert_true(read_connect_response(stream) is Err(ProtocolError(_)))

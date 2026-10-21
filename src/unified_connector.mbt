@@ -430,6 +430,9 @@ fn read_connect_response(stream : &Stream) -> Result[Bytes, HttpError] {
     let data = head.to_bytes()
     match find_head_end(data) {
       Some(head_end) => {
+        if head_end > limit {
+          return Err(ProtocolError("proxy CONNECT response headers too large"))
+        }
         // Only the head belongs to this exchange; any trailing bytes are the
         // first bytes of the tunnelled stream and must be replayed by the
         // caller instead of being discarded.
@@ -443,6 +446,10 @@ fn read_connect_response(stream : &Stream) -> Result[Bytes, HttpError] {
         let first_space = match status_line.find(" ") {
           Some(index) => index
           None => return Err(ProtocolError("Invalid proxy CONNECT response"))
+        }
+        let version = status_line[0:first_space].to_owned()
+        if version != "HTTP/1.1" && version != "HTTP/1.0" {
+          return Err(ProtocolError("Unsupported HTTP version"))
         }
         let mut start = first_space
         while start < status_line.length() &&
