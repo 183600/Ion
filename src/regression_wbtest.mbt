@@ -1544,6 +1544,31 @@ test "URL rejects malformed percent escapes outside the host" {
 }
 
 ///|
+test "URL rejects unsafe characters outside the host" {
+  for raw in [
+    "http://example.com/a b",
+    "http://example.com/a\"b",
+    "http://example.com/a<b",
+    "http://example.com/a>b",
+    "http://example.com/a^b",
+    "http://example.com/a`b",
+    "http://example.com/a{b",
+    "http://example.com/a|b",
+    "http://example.com/a}b",
+    "http://example.com/?x=\"",
+    "http://example.com/#x<",
+  ] {
+    assert_true(Url::parse(raw) is Err(_))
+  }
+  for raw in [
+    "http://example.com/a%20b",
+    "http://example.com/?x=%7C",
+    "http://example.com/#x%7D",
+  ] {
+    assert_true(Url::parse(raw) is Ok(_))
+  }
+}
+
 test "URL validates userinfo characters" {
   for raw in [
     "http://user%zz@example.com/",

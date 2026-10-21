@@ -197,7 +197,9 @@ fn valid_encoded_url_chars(value : String) -> Bool {
       Some(ch) => ch
       None => return false
     }
-    if ch == '\\' {
+    if ch <= ' ' || ch == '\u{7f}' || ch == '\\' || ch == '"' || ch == '<' ||
+      ch == '>' || ch == '^' || ch == '\u{60}' || ch == '{' || ch == '|' ||
+      ch == '}' {
       return false
     }
     if ch == '%' {
