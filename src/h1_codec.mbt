@@ -679,12 +679,14 @@ pub fn H1Codec::decode_response(
 
     self.last_is_head = false
     self.close_after_request = false
-    return Ok(Response::new_with_version(
-      response_head.version,
-      response_head.status,
-      response_head.headers,
-      response_stream,
-    ))
+    return Ok(
+      Response::new_with_version(
+        response_head.version,
+        response_head.status,
+        response_head.headers,
+        response_stream,
+      ).with_max_body_bytes(self.max_body_bytes),
+    )
   }
   Err(ProtocolError("Invalid response"))
 }

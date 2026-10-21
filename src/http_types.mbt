@@ -594,10 +594,17 @@ pub struct Response {
   status : Int
   headers : Headers
   body : &Stream // Stream for reading response body
+  max_body_bytes : Int
 }
 
 pub fn Response::new(status : Int, headers : Headers, body : &Stream) -> Response {
-  Response::{ version: "HTTP/1.1", status, headers, body }
+  Response::{
+    version: "HTTP/1.1",
+    status,
+    headers,
+    body,
+    max_body_bytes: DEFAULT_MAX_RESPONSE_BODY_BYTES,
+  }
 }
 
 pub fn Response::new_with_version(
@@ -606,7 +613,23 @@ pub fn Response::new_with_version(
   headers : Headers,
   body : &Stream,
 ) -> Response {
-  Response::{ version, status, headers, body }
+  Response::{
+    version,
+    status,
+    headers,
+    body,
+    max_body_bytes: DEFAULT_MAX_RESPONSE_BODY_BYTES,
+  }
+}
+
+fn Response::with_max_body_bytes(
+  self : Response,
+  max_body_bytes : Int,
+) -> Response {
+  Response::{
+    ..self,
+    max_body_bytes: if max_body_bytes < 0 { 0 } else { max_body_bytes },
+  }
 }
 
 const DEFAULT_MAX_RESPONSE_BODY_BYTES : Int = 67108864
@@ -647,16 +670,16 @@ pub fn Response::read_body_with_limit(
   Ok(output.to_bytes())
 }
 
-/// Read the complete response body, enforcing the default size limit.
+/// Read the complete response body, enforcing the response's size limit.
 pub fn Response::read_body(self : Response) -> Result[Bytes, HttpError] {
-  self.read_body_with_limit(DEFAULT_MAX_RESPONSE_BODY_BYTES)
+  self.read_body_with_limit(self.max_body_bytes)
 }
 
 /// Read the complete response body and transparently decode any
 /// `Content-Encoding` that Feather understands (`gzip`, `deflate`).
 /// Other encodings return an error; a missing/`identity` encoding is a no-op.
 pub fn Response::read_body_decoded(self : Response) -> Result[Bytes, HttpError] {
-  self.read_body_decoded_with_limit(DEFAULT_MAX_RESPONSE_BODY_BYTES)
+  self.read_body_decoded_with_limit(self.max_body_bytes)
 }
 
 /// Like `read_body_decoded`, but bounds the decoded output by `max_bytes`.

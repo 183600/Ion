@@ -831,3 +831,22 @@ test "Content-Encoding decodes multiple encodings in reverse" {
   let response = Response::new(200, headers, stream)
   assert_eq(response.read_body_decoded().unwrap(), payload)
 }
+
+test "client response body limit bounds decoded output" {
+  // This gzip member is 25 bytes but expands to 30 bytes. A 28-byte client
+  // limit accepts the transfer-coded payload but must reject its decoded form.
+  let compressed = inflate_bytes_of([
+    31, 139, 8, 0, 57, 223, 215, 106, 2, 255, 75, 76, 74, 78, 196, 141, 0, 129,
+    252, 177, 72, 30, 0, 0, 0,
+  ])
+  assert_eq(compressed.length(), 25)
+  let head = "HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: " +
+    compressed.length().to_string() + "\r\n\r\n"
+  let raw = @buffer.new(size_hint=head.length() + compressed.length())
+  raw.write_bytes(@utf8.encode(head))
+  raw.write_bytes(compressed)
+  let stream : &Stream = InflateMockStream::{ input: raw.to_bytes(), offset: 0 }
+  let codec = H1Codec::new_with_limit(stream, 28)
+  let response = codec.decode_response().unwrap()
+  assert_true(response.text() is Err(_))
+}
