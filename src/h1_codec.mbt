@@ -308,9 +308,37 @@ fn valid_host(value : String) -> Bool {
   }
 }
 
+fn split_header_list(value : String) -> Array[String] {
+  let parts : Array[String] = []
+  let mut start = 0
+  let mut index = 0
+  let mut quoted = false
+  let mut escaped = false
+  while index < value.length() {
+    let ch = value.get_char(index).unwrap()
+    if escaped {
+      escaped = false
+    } else if quoted {
+      if ch == '\\' {
+        escaped = true
+      } else if ch == '"' {
+        quoted = false
+      }
+    } else if ch == '"' {
+      quoted = true
+    } else if ch == ',' {
+      parts.push(value[start:index].to_owned())
+      start = index + 1
+    }
+    index = index + 1
+  }
+  parts.push(value[start:].to_owned())
+  parts
+}
+
 fn header_has_token(value : String, token : String) -> Bool {
   let token = token.to_lower()
-  for part in value.split(",") {
+  for part in split_header_list(value) {
     if part.trim().to_owned().to_lower() == token {
       return true
     }
@@ -944,8 +972,8 @@ fn response_transfer_coding_name(value : String) -> String {
 fn response_is_chunked(headers : Headers) -> Result[Bool, NetError] {
   let mut chunked_seen = false
   for value in headers.get_all("Transfer-Encoding") {
-    for part in value.split(",") {
-      let token = response_transfer_coding_name(part.to_owned())
+    for part in split_header_list(value) {
+      let token = response_transfer_coding_name(part)
       if token.length() == 0 {
         continue
       }
