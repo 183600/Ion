@@ -205,25 +205,19 @@ fn cookie_trimmed_tokens(value : String) -> Array[String] {
 
 ///|
 fn cookie_month(value : String) -> Int32? {
-  let lower = value.to_lower()
-  let prefix = if lower.length() > 3 {
-    lower[0:3].to_owned()
-  } else {
-    lower
-  }
-  match prefix {
-    "jan" => Some(1)
-    "feb" => Some(2)
-    "mar" => Some(3)
-    "apr" => Some(4)
+  match value.to_lower() {
+    "jan" | "january" => Some(1)
+    "feb" | "february" => Some(2)
+    "mar" | "march" => Some(3)
+    "apr" | "april" => Some(4)
     "may" => Some(5)
-    "jun" => Some(6)
-    "jul" => Some(7)
-    "aug" => Some(8)
-    "sep" => Some(9)
-    "oct" => Some(10)
-    "nov" => Some(11)
-    "dec" => Some(12)
+    "jun" | "june" => Some(6)
+    "jul" | "july" => Some(7)
+    "aug" | "august" => Some(8)
+    "sep" | "september" => Some(9)
+    "oct" | "october" => Some(10)
+    "nov" | "november" => Some(11)
+    "dec" | "december" => Some(12)
     _ => None
   }
 }

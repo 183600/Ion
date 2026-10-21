@@ -472,3 +472,16 @@ test "cookie domain suffixes never match IP address hosts" {
     None,
   )
 }
+
+///|
+test "cookie expiry rejects month names with unknown suffixes" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  let after_2030 : UInt64 = 2000000000000L.to_uint64()
+  jar.store_at(
+    url,
+    "junk=1; Expires=Wed, 21 Octopus 2030 07:28:00 GMT; Path=/",
+    0,
+  )
+  assert_eq(jar.cookie_header_at(url, after_2030), Some("junk=1"))
+}
