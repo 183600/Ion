@@ -12,3 +12,12 @@ test "default dialer fails explicitly without a socket transport" {
   assert_true(dialer.dial_tcp("example.com", 80) is Err(ConnectionFailed(_)))
   assert_true(dialer.resolve("example.com") is Err(ConnectionFailed(_)))
 }
+
+///|
+#cfg(not(target="native"))
+test "default TLS provider refuses to run without native TLS" {
+  let provider = default_tls_provider()
+  assert_true(
+    provider.new_client(TlsConfig::new("example.com")) is Err(InvalidConfig(_)),
+  )
+}

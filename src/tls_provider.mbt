@@ -124,8 +124,33 @@ pub fn default_tls_provider() -> OpenSslTlsProvider {
   OpenSslTlsProvider::new()
 }
 
+#cfg(not(target="native"))
+const TLS_TRANSPORT_UNAVAILABLE : String =
+  "TLS transport unavailable on this target; build with --target native"
+
+/// TLS provider for targets without a native TLS implementation. It refuses to
+/// create a client context instead of silently passing plaintext through the
+/// mock provider, which would make "https" connections unencrypted.
+#cfg(not(target="native"))
+pub struct UnavailableTlsProvider {} derive(Eq, Debug)
+
+#cfg(not(target="native"))
+pub fn UnavailableTlsProvider::new() -> UnavailableTlsProvider {
+  UnavailableTlsProvider::{}
+}
+
+#cfg(not(target="native"))
+pub impl TlsProvider for UnavailableTlsProvider with fn new_client(
+  self : UnavailableTlsProvider,
+  config : TlsConfig,
+) -> Result[&TlsClientCtx, TlsError] {
+  let _ = self
+  let _ = config
+  Err(InvalidConfig(TLS_TRANSPORT_UNAVAILABLE))
+}
+
 /// Global TLS provider instance.
 #cfg(not(target="native"))
-pub fn default_tls_provider() -> MockTlsProvider {
-  MockTlsProvider::new("default")
+pub fn default_tls_provider() -> UnavailableTlsProvider {
+  UnavailableTlsProvider::new()
 }

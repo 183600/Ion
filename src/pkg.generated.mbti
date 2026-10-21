@@ -15,7 +15,7 @@ pub fn default_client() -> UnifiedClient
 
 pub fn default_dialer() -> UnavailableTcpDialer
 
-pub fn default_tls_provider() -> MockTlsProvider
+pub fn default_tls_provider() -> UnavailableTlsProvider
 
 pub fn get(String) -> Result[Response, HttpError]
 
@@ -301,6 +301,11 @@ pub enum TlsVersion {
 pub struct UnavailableTcpDialer {
   timeout_ms : Int32
 } derive(Eq, @debug.Debug)
+
+pub struct UnavailableTlsProvider {
+} derive(Eq, @debug.Debug)
+pub fn UnavailableTlsProvider::new() -> Self
+pub impl TlsProvider for UnavailableTlsProvider
 
 pub struct UnifiedClient {
   connector : Connector
