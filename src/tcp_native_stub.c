@@ -122,6 +122,14 @@ int32_t feather_tcp_connect(moonbit_bytes_t host, int32_t port, int32_t timeout_
       continue;
     }
 
+    int fd_flags = fcntl(fd, F_GETFD, 0);
+    if (fd_flags < 0 || fcntl(fd, F_SETFD, fd_flags | FD_CLOEXEC) < 0) {
+      last_error = errno;
+      close(fd);
+      fd = -1;
+      continue;
+    }
+
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
       last_error = errno;
@@ -174,6 +182,16 @@ int32_t feather_tcp_connect(moonbit_bytes_t host, int32_t port, int32_t timeout_
       fd = -1;
       continue;
     }
+
+#ifdef SO_NOSIGPIPE
+    int no_sigpipe = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &no_sigpipe, sizeof(no_sigpipe)) < 0) {
+      last_error = errno;
+      close(fd);
+      fd = -1;
+      continue;
+    }
+#endif
 
     int one = 1;
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
