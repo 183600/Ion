@@ -1091,6 +1091,21 @@ test "relative redirect resolution" {
 }
 
 ///|
+test "absolute redirect resolution normalizes dot segments" {
+  let base = Url::parse("http://example.com/base").unwrap()
+  assert_eq(
+    resolve_redirect_url(base, "http://other.example/a/./b/../c?q=1#frag")
+    .unwrap()
+    .to_string(),
+    "http://other.example/a/c?q=1#frag",
+  )
+  assert_eq(
+    resolve_redirect_url(base, "//other.example/a/../b").unwrap().to_string(),
+    "http://other.example/b",
+  )
+}
+
+///|
 test "redirect method and body rules" {
   assert_eq(redirect_method(303, POST), (GET, false))
   assert_eq(redirect_method(303, HEAD), (HEAD, false))

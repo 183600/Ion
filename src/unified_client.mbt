@@ -343,7 +343,11 @@ fn resolve_redirect_url(base : Url, location : String) -> Result[Url, HttpError]
     }
     base.origin() + normalize_path_and_suffix(directory + location)
   }
-  Url::parse(full)
+  let parsed = match Url::parse(full) {
+    Ok(url) => url
+    Err(err) => return Err(err)
+  }
+  Ok(parsed.with_path(normalize_path_and_suffix(parsed.path)))
 }
 
 fn redirect_method(status : Int, method : HttpMethod) -> (HttpMethod, Bool) {
