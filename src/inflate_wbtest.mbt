@@ -721,6 +721,22 @@ test "raw deflate resembling a zlib header falls back to raw" {
   assert_eq(inflate(data, 1_000_000).unwrap(), b"A")
 }
 
+test "zlib enforces the declared window size" {
+  let data = inflate_bytes_of([
+    8, 29, 115, 28, 233, 0, 24, 0, 0, 169, 253, 66, 5,
+  ])
+  let rejected = match inflate_zlib(data, 1_000_000) {
+    Err(ProtocolError(message)) => message.contains("window")
+    _ => false
+  }
+  assert_true(rejected)
+  let public_rejected = match inflate(data, 1_000_000) {
+    Err(ProtocolError(message)) => message.contains("window")
+    _ => false
+  }
+  assert_true(public_rejected)
+}
+
 test "zlib streams requiring a preset dictionary are rejected" {
   // A valid zlib header with FDICT set. The bytes after the four-byte
   // dictionary id also form a valid raw DEFLATE stream, so the raw fallback

@@ -331,6 +331,17 @@ fn inflate_codes(
   dist : Huffman,
   max_bytes : Int,
 ) -> Result[Unit, HttpError] {
+  inflate_codes_with_window(br, out, lit, dist, max_bytes, 32768)
+}
+
+fn inflate_codes_with_window(
+  br : BitReader,
+  out : Array[Byte],
+  lit : Huffman,
+  dist : Huffman,
+  max_bytes : Int,
+  max_distance : Int,
+) -> Result[Unit, HttpError] {
   while true {
     let symbol = match lit.decode(br) {
       Ok(sym) => sym
@@ -367,6 +378,9 @@ fn inflate_codes(
         })
       if distance <= 0 || distance > out.length() {
         return Err(inflate_error("distance too far back"))
+      }
+      if distance > max_distance {
+        return Err(inflate_error("distance exceeds zlib window"))
       }
       if out.length() + length > max_bytes {
         return Err(inflate_error("output too large"))
@@ -419,6 +433,14 @@ fn inflate_stored(
 /// input bytes were consumed. Decoding stops at the end of the final block, so
 /// trailing bytes (e.g. the next gzip member) are left untouched.
 fn inflate_raw_consume(data : Bytes, max_bytes : Int) -> Result[(Bytes, Int), HttpError] {
+  inflate_raw_consume_with_window(data, max_bytes, 32768)
+}
+
+fn inflate_raw_consume_with_window(
+  data : Bytes,
+  max_bytes : Int,
+  max_distance : Int,
+) -> Result[(Bytes, Int), HttpError] {
   let br = BitReader::new(data)
   let out = Array::make(0, b'\x00')
   let mut is_last = false
@@ -446,7 +468,7 @@ fn inflate_raw_consume(data : Bytes, max_bytes : Int) -> Result[(Bytes, Int), Ht
         Ok(table) => table
         Err(err) => return Err(err)
       }
-      match inflate_codes(br, out, lit, dist, max_bytes) {
+      match inflate_codes_with_window(br, out, lit, dist, max_bytes, max_distance) {
         Ok(_) => ()
         Err(err) => return Err(err)
       }
@@ -455,7 +477,7 @@ fn inflate_raw_consume(data : Bytes, max_bytes : Int) -> Result[(Bytes, Int), Ht
         Ok(tables) => tables
         Err(err) => return Err(err)
       }
-      match inflate_codes(br, out, lit, dist, max_bytes) {
+      match inflate_codes_with_window(br, out, lit, dist, max_bytes, max_distance) {
         Ok(_) => ()
         Err(err) => return Err(err)
       }
@@ -549,7 +571,12 @@ fn inflate_zlib(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
   // number of consumed bytes to locate the 4-byte Adler-32 trailer. Reading it
   // from the end of the input would be wrong whenever trailing bytes follow the
   // zlib stream.
-  let (inflated, consumed) = match inflate_raw_consume(body, max_bytes) {
+  let window_size = 1 << ((cmf >> 4) + 8)
+  let (inflated, consumed) = match inflate_raw_consume_with_window(
+    body,
+    max_bytes,
+    window_size,
+  ) {
     Ok(result) => result
     Err(err) => return Err(err)
   }
