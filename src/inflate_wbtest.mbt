@@ -721,6 +721,25 @@ test "raw deflate resembling a zlib header falls back to raw" {
   assert_eq(inflate(data, 1_000_000).unwrap(), b"A")
 }
 
+test "zlib streams requiring a preset dictionary are rejected" {
+  // A valid zlib header with FDICT set. The bytes after the four-byte
+  // dictionary id also form a valid raw DEFLATE stream, so the raw fallback
+  // must not reinterpret a dictionary-dependent zlib stream as raw data.
+  let data = inflate_bytes_of([
+    0x78, 0x20, 0x00, 0xDF, 0xFF,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x01, 0x00, 0x00, 0xFF, 0xFF,
+  ])
+  let rejected = match inflate(data, 1_000_000) {
+    Err(ProtocolError(message)) => message.contains("preset dictionary")
+    _ => false
+  }
+  assert_true(rejected)
+}
+
 test "inflate rejects incomplete dynamic Huffman trees" {
   // A literal/length tree with two two-bit codes is incomplete: the remaining
   // two-bit patterns cannot be decoded.

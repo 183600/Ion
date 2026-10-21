@@ -687,11 +687,17 @@ pub fn inflate(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
       let zlib_result = inflate_zlib(data, limit)
       match zlib_result {
         Ok(decoded) => return Ok(decoded)
-        Err(zlib_error) =>
+        Err(zlib_error) => {
+          // A preset dictionary is a declared zlib feature that this decoder
+          // does not support; do not reinterpret the same bytes as raw DEFLATE.
+          if (flg & 0x20) != 0 {
+            return Err(zlib_error)
+          }
           match inflate_raw(data, limit) {
             Ok(decoded) => return Ok(decoded)
             Err(_) => return Err(zlib_error)
           }
+        }
       }
     }
   }
