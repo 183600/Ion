@@ -2270,10 +2270,13 @@ test "Proxy::new rejects paths, queries, and fragments" {
     "http://proxy.example/path",
     "http://proxy.example/?query=1",
     "http://proxy.example/#fragment",
+    "http://proxy.example?",
+    "http://proxy.example#",
   ] {
     assert_true(Proxy::new(url) is Err(InvalidUrl(_)))
   }
   assert_true(Proxy::new("http://proxy.example/") is Ok(_))
+  assert_true(Proxy::new("http://proxy.example/%3F") is Err(InvalidUrl(_)))
 }
 
 ///|

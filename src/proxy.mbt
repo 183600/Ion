@@ -80,8 +80,12 @@ pub fn Proxy::new(url : String) -> Result[Proxy, HttpError] {
   if parsed.scheme.to_lower() != "http" {
     return Err(InvalidUrl("Only http proxies are supported"))
   }
-  if parsed.path != "/" || parsed.query.length() > 0 ||
-    parsed.fragment.length() > 0 {
+  // `Url` cannot distinguish an absent query/fragment from an empty one, so
+  // also reject the raw delimiters. This catches URLs such as
+  // `http://proxy.example?` and `http://proxy.example#` that parse to an
+  // empty query/fragment but still contain those components.
+  if url.contains("?") || url.contains("#") || parsed.path != "/" ||
+    parsed.query.length() > 0 || parsed.fragment.length() > 0 {
     return Err(InvalidUrl("Proxy URL must not include a path, query, or fragment"))
   }
   let authorization = match proxy_userinfo(url) {
