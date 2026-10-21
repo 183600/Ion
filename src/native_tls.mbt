@@ -292,6 +292,12 @@ pub impl Stream for NativeTlsStream with fn write(
       continue
     }
     if count == -1 {
+      match native_tls_flush(self.tls, self.underlying) {
+        TlsIoData => ()
+        TlsIoTimeout => return Err(NetError::Timeout)
+        TlsIoClosed => return Err(NetError::Closed)
+        _ => return Err(NetError::WriteError("TLS flush failed"))
+      }
       match native_tls_feed(self.tls, self.underlying) {
         TlsIoData => continue
         TlsIoClosed => return Err(NetError::Closed)

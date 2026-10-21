@@ -250,3 +250,110 @@ test "native TLS I/O reports a closed transport as Closed" {
   let flushing = closed_tls_stream()
   assert_true(flushing.flush() is Ok(_))
 }
+
+///|
+#cfg(target="native")
+struct RecordingUnderlying {
+  mut output : Bytes
+  mut read_calls : Int
+}
+
+///|
+#cfg(target="native")
+pub impl Stream for RecordingUnderlying with fn read(
+  self : RecordingUnderlying,
+  buf : Buffer,
+) -> Result[Int, NetError] {
+  let _ = buf
+  self.read_calls = self.read_calls + 1
+  Err(NetError::Timeout)
+}
+
+///|
+#cfg(target="native")
+pub impl Stream for RecordingUnderlying with fn write(
+  self : RecordingUnderlying,
+  buf : Buffer,
+) -> Result[Int, NetError] {
+  let data = buf.to_bytes()
+  let combined = Buffer(size_hint=self.output.length() + data.length())
+  combined.write_bytes(self.output)
+  combined.write_bytes(data)
+  self.output = combined.to_bytes()
+  Ok(data.length())
+}
+
+///|
+#cfg(target="native")
+pub impl Stream for RecordingUnderlying with fn flush(
+  self : RecordingUnderlying,
+) -> Result[Unit, NetError] {
+  let _ = self
+  Ok(())
+}
+
+///|
+#cfg(target="native")
+pub impl Stream for RecordingUnderlying with fn close(
+  self : RecordingUnderlying,
+) -> Result[Unit, NetError] {
+  let _ = self
+  Ok(())
+}
+
+///|
+#cfg(target="native")
+pub impl Stream for RecordingUnderlying with fn set_timeout(
+  self : RecordingUnderlying,
+  timeout_ms : Int,
+) -> Result[Unit, NetError] {
+  let _ = self
+  let _ = timeout_ms
+  Ok(())
+}
+
+///|
+#cfg(target="native")
+pub impl Stream for RecordingUnderlying with fn peer_addr(
+  self : RecordingUnderlying,
+) -> Result[String, NetError] {
+  let _ = self
+  Ok("mock:0")
+}
+
+///|
+#cfg(target="native")
+pub impl Stream for RecordingUnderlying with fn local_addr(
+  self : RecordingUnderlying,
+) -> Result[String, NetError] {
+  let _ = self
+  Ok("mock:0")
+}
+
+///|
+#cfg(target="native")
+test "native TLS writes flush handshake records before reading on WANT_READ" {
+  let tls = feather_tls_new(
+    @utf8.encode("example.com"),
+    b"",
+    0,
+    1,
+    0,
+    b"",
+    0,
+    b"",
+    0,
+    b"",
+    0,
+  )
+  assert_eq(feather_tls_ready(tls), 1)
+  let underlying = RecordingUnderlying::{ output: b"", read_calls: 0 }
+  let stream = NativeTlsStream::{ tls, underlying, key_log: None, is_open: true }
+  let data = Buffer(size_hint=5)
+  data.write_bytes(b"hello")
+  assert_true(stream.write(data) is Err(NetError::Timeout))
+  assert_eq(underlying.read_calls, 1)
+  assert_true(underlying.output.length() > 5)
+  assert_eq(underlying.output[0], 0x16)
+  assert_eq(underlying.output[1], 0x03)
+}
