@@ -158,6 +158,36 @@ pub fn UnifiedClient::with_max_idle_per_host(
   }
 }
 
+/// Enable the built-in cookie jar. Cookies set by responses are stored and
+/// replayed on later requests that match their domain, path and security
+/// attributes.
+pub fn UnifiedClient::with_cookies(self : UnifiedClient) -> UnifiedClient {
+  let _ = self.connector.with_cookies(true)
+  UnifiedClient::{
+    connector: self.connector,
+    options: self.options,
+    redirect_count: 0,
+  }
+}
+
+/// Replace the cookie jar and enable cookie handling.
+pub fn UnifiedClient::with_cookie_jar(
+  self : UnifiedClient,
+  jar : CookieJar,
+) -> UnifiedClient {
+  let _ = self.connector.with_cookie_jar(jar)
+  UnifiedClient::{
+    connector: self.connector,
+    options: self.options,
+    redirect_count: 0,
+  }
+}
+
+/// The client's cookie jar.
+pub fn UnifiedClient::cookie_jar(self : UnifiedClient) -> CookieJar {
+  self.connector.cookie_jar()
+}
+
 /// Replace the TLS configuration used for HTTPS connections.
 pub fn UnifiedClient::with_tls_config(
   self : UnifiedClient,
@@ -407,6 +437,12 @@ fn UnifiedClient::do_request_once(
 
   // Add User-Agent header if not present
   let mut request = req
+  if request.get_header("Cookie") is None {
+    match self.connector.cookie_header(request.url) {
+      Some(value) => request = request.with_header("Cookie", value)
+      None => ()
+    }
+  }
   if request.get_header("User-Agent") is None {
     request = request.with_header("User-Agent", self.options.user_agent)
   }
@@ -455,6 +491,9 @@ fn UnifiedClient::do_request_once(
     }
   }
 
+  // Persist cookies before following a redirect so the next hop sees them.
+  self.connector.store_cookies(request.url, response.headers)
+
   // Handle redirects if enabled
   if self.options.follow_redirects && is_redirect(response.status) {
     let location = response.get_header("Location")
@@ -489,6 +528,11 @@ fn UnifiedClient::do_request_once(
 
     let (next_method, keep_body) = redirect_method(response.status, request.method)
     let mut next_headers = request.headers.remove("Host")
+    // With the jar enabled, let the next hop rebuild `Cookie` for its own
+    // origin instead of replaying a header that may have been for this one.
+    if self.connector.cookies_enabled() {
+      next_headers = next_headers.remove("Cookie")
+    }
     if !keep_body {
       next_headers = next_headers
         .remove("Content-Length")

@@ -186,6 +186,8 @@ pub struct Connector {
   proxy : Proxy?
   timeout_ms : Int
   mut max_connections_per_host : Int
+  mut cookies_enabled : Bool
+  cookie_jar : @ref.Ref[CookieJar]
   pool : @ref.Ref[ConnectionPoolState]
 }
 
@@ -277,6 +279,8 @@ pub fn Connector::new(dialer : &Dialer, tls_provider : &TlsProvider) -> Connecto
     proxy: None,
     timeout_ms: 30000,
     max_connections_per_host: 0,
+    cookies_enabled: false,
+    cookie_jar: @ref.Ref(CookieJar::new()),
     pool: @ref.Ref(ConnectionPoolState::new()),
   }
 }
@@ -300,6 +304,8 @@ pub fn Connector::with_tls_config(self : Connector, config : TlsConfig) -> Conne
     proxy: self.proxy,
     timeout_ms: self.timeout_ms,
     max_connections_per_host: self.max_connections_per_host,
+    cookies_enabled: self.cookies_enabled,
+    cookie_jar: self.cookie_jar,
     pool,
   }
 }
@@ -316,6 +322,8 @@ pub fn Connector::with_proxy(self : Connector, proxy : Proxy) -> Connector {
     proxy: Some(proxy),
     timeout_ms: self.timeout_ms,
     max_connections_per_host: self.max_connections_per_host,
+    cookies_enabled: self.cookies_enabled,
+    cookie_jar: self.cookie_jar,
     pool,
   }
 }
@@ -376,6 +384,49 @@ pub fn Connector::with_idle_timeout(self : Connector, idle_timeout_ms : Int) -> 
 /// The current idle timeout; `0` means idle connections are never evicted.
 pub fn Connector::idle_timeout(self : Connector) -> Int {
   self.pool.val.idle_timeout_ms
+}
+
+/// Enable or disable the cookie jar for requests made through this connector.
+/// Cookie handling is disabled by default.
+pub fn Connector::with_cookies(self : Connector, enabled : Bool) -> Connector {
+  self.cookies_enabled = enabled
+  self
+}
+
+/// Whether cookie storage and replay is enabled.
+pub fn Connector::cookies_enabled(self : Connector) -> Bool {
+  self.cookies_enabled
+}
+
+/// Replace the cookie jar and enable cookie handling.
+pub fn Connector::with_cookie_jar(self : Connector, jar : CookieJar) -> Connector {
+  self.cookie_jar.val = jar
+  self.cookies_enabled = true
+  self
+}
+
+/// The connector's cookie jar.
+pub fn Connector::cookie_jar(self : Connector) -> CookieJar {
+  self.cookie_jar.val
+}
+
+/// The `Cookie` header value for `url`, if cookie handling is enabled.
+pub fn Connector::cookie_header(self : Connector, url : Url) -> String? {
+  if !self.cookies_enabled {
+    return None
+  }
+  self.cookie_jar.val.cookie_header(url)
+}
+
+/// Store every `Set-Cookie` header from a response to `url`.
+pub fn Connector::store_cookies(
+  self : Connector,
+  url : Url,
+  headers : Headers,
+) -> Unit {
+  if self.cookies_enabled {
+    self.cookie_jar.val.store_from_headers(url, headers)
+  }
 }
 
 fn Connector::connection_key(self : Connector, url : Url) -> String {
