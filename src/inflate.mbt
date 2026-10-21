@@ -77,6 +77,8 @@ fn BitReader::align_byte(self : BitReader) -> Unit {
 struct Huffman {
   counts : Array[Int]
   symbols : Array[Int]
+  left : Int
+  max_len : Int
 }
 
 /// Build a canonical Huffman decoding table from a list of code lengths.
@@ -94,12 +96,18 @@ fn Huffman::build(lengths : Array[Int], max_symbols : Int) -> Result[Huffman, Ht
   if counts[0] == lengths.length() {
     // No codes at all: only valid for the distance tree of a literal-only block.
     let symbols = Array::make(max_symbols, 0)
-    return Ok(Huffman::{ counts, symbols })
+    return Ok(Huffman::{ counts, symbols, left: 0, max_len: 0 })
   }
-  // Check for an over-subscribed or incomplete set of lengths.
+  // Check for an over-subscribed or incomplete set of lengths. `left` is
+  // reported to the caller so it can apply the DEFLATE rules for incomplete
+  // literal/length, distance, and code-length trees.
   let mut left = 1
   let mut len = 1
+  let mut max_len = 0
   while len <= INFLATE_MAX_BITS {
+    if counts[len] > 0 {
+      max_len = len
+    }
     left = left << 1
     left = left - counts[len]
     if left < 0 {
@@ -126,7 +134,7 @@ fn Huffman::build(lengths : Array[Int], max_symbols : Int) -> Result[Huffman, Ht
     }
     i = i + 1
   }
-  Ok(Huffman::{ counts, symbols })
+  Ok(Huffman::{ counts, symbols, left, max_len })
 }
 
 /// Decode one symbol using the canonical code table (puff-style walk).
@@ -212,6 +220,11 @@ fn read_dynamic_tables(
     Ok(table) => table
     Err(err) => return Err(err)
   }
+  // The code-length alphabet must be complete; an incomplete tree leaves some
+  // bit patterns undecodable and is rejected by conforming inflaters.
+  if cl_table.max_len == 0 || cl_table.left > 0 {
+    return Err(inflate_error("incomplete code length Huffman code"))
+  }
   let lengths = Array::make(hlit + hdist, 0)
   let mut index = 0
   while index < lengths.length() {
@@ -286,9 +299,24 @@ fn read_dynamic_tables(
     Ok(table) => table
     Err(err) => return Err(err)
   }
+  // A literal/length tree must contain at least the end-of-block symbol. An
+  // incomplete tree is only legal when it consists of a single one-bit code
+  // (RFC 1951 §3.2.7); otherwise some bit patterns have no valid symbol.
+  if lit_table.max_len == 0 {
+    return Err(inflate_error("missing literal/length Huffman codes"))
+  }
+  if lit_table.left > 0 && lit_table.max_len != 1 {
+    return Err(inflate_error("incomplete literal/length Huffman code"))
+  }
   let dist_table = match Huffman::build(dist_lengths, INFLATE_MAX_DIST_CODES) {
     Ok(table) => table
     Err(err) => return Err(err)
+  }
+  // No distance codes at all is fine for a literal-only block. A single
+  // one-bit distance code is also allowed; any other incomplete distance tree
+  // is invalid.
+  if dist_table.left > 0 && dist_table.max_len != 1 {
+    return Err(inflate_error("incomplete distance Huffman code"))
   }
   Ok((lit_table, dist_table))
 }

@@ -699,6 +699,27 @@ test "inflate rejects truncated deflate" {
   let data = inflate_bytes_of([0xFF, 0xFF])
   assert_true(inflate(data, 1_000_000) is Err(_))
 }
+test "inflate rejects incomplete dynamic Huffman trees" {
+  // A literal/length tree with two two-bit codes is incomplete: the remaining
+  // two-bit patterns cannot be decoded.
+  let incomplete_literal = inflate_bytes_of([
+    5, 192, 1, 9, 0, 0, 0, 128, 0, 251, 167, 22, 1,
+  ])
+  assert_true(inflate(incomplete_literal, 1_000_000) is Err(_))
+  // A distance tree with a single two-bit code is incomplete; only a single
+  // one-bit distance code is allowed by RFC 1951.
+  let incomplete_distance = inflate_bytes_of([
+    5, 192, 1, 9, 0, 0, 0, 128, 32, 255, 175, 182,
+  ])
+  assert_true(inflate(incomplete_distance, 1_000_000) is Err(_))
+  // A literal/length tree containing only the end-of-block symbol is an
+  // allowed incomplete tree consisting of one one-bit code.
+  let empty_block = inflate_bytes_of([
+    5, 192, 129, 8, 0, 0, 0, 0, 32, 127, 235, 3,
+  ])
+  assert_eq(inflate(empty_block, 1_000_000).unwrap(), b"")
+}
+
 
 test "inflate enforces the size limit" {
   let compressed = inflate_bytes_of([203, 72, 205, 201, 201, 7, 0])
