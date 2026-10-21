@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  moon:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OpenSSL development headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
+
+      - name: Set up MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Resolve MoonBit dependencies
+        run: moon update
+
+      # `moon check` without `--target` only builds the default backend and
+      # skips `#cfg(target="native")` files such as native_tcp.mbt /
+      # native_tls.mbt, so check every backend explicitly (AGENTS.md gates).
+      - name: Check all targets
+        run: moon check --target all
+
+      - name: Test default target
+        run: moon test
+
+      - name: Test native target
+        run: moon test --target native
+
+      - name: Check repository hygiene
+        run: bash scripts/check-hygiene.sh
