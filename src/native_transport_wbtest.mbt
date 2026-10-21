@@ -33,6 +33,14 @@ test "native DNS failures are classified as invalid addresses" {
 }
 ///|
 #cfg(target="native")
+test "native TCP I/O errors report reset connections as closed" {
+  assert_true(native_tcp_error(104, "TCP read") is Closed)
+  assert_true(native_tcp_error(54, "TCP write") is Closed)
+  assert_true(native_tcp_error(32, "TCP write") is Closed)
+  assert_true(native_tcp_address_error(104) is ConnectionFailed(_))
+}
+///|
+#cfg(target="native")
 test "native dial hosts strip IPv6 brackets" {
   assert_eq(tcp_dial_host("[::1]"), "::1")
   assert_eq(tcp_dial_host("[fe80::1%eth0]"), "fe80::1%eth0")

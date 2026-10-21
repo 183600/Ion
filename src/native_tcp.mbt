@@ -35,6 +35,7 @@ fn native_tcp_error(code : Int, operation : String) -> NetError {
   // non-socket errno there and is never produced by the socket paths in
   // tcp_native_stub.c.
   match code {
+    32 | 54 | 104 => Closed // EPIPE; macOS/Linux ECONNRESET
     11 | 110 | 115 => Timeout // Linux: EAGAIN/ETIMEDOUT/EINPROGRESS
     35 | 36 | 60 => Timeout // macOS/BSD: EAGAIN/EINPROGRESS/ETIMEDOUT
     101 | 111 | 113 => ConnectionFailed(operation + " failed (errno " + code.to_string() + ")") // Linux
@@ -48,7 +49,10 @@ fn native_tcp_address_error(code : Int) -> NetError {
   if code >= 10000 {
     return InvalidAddress("DNS resolution failed (code " + (code - 10000).to_string() + ")")
   }
-  native_tcp_error(code, "TCP connection")
+  match code {
+    32 | 54 | 104 => ConnectionFailed("TCP connection failed (errno " + code.to_string() + ")")
+    _ => native_tcp_error(code, "TCP connection")
+  }
 }
 
 /// A TCP stream backed by a native operating-system socket.
