@@ -23,8 +23,8 @@ pub fn MockTlsProvider::new(name : String) -> MockTlsProvider {
 }
 
 pub impl TlsProvider for MockTlsProvider with fn new_client(self : MockTlsProvider, config : TlsConfig) -> Result[&TlsClientCtx, TlsError] {
-  // In a real implementation, this would create an actual TLS client
-  // For now, validate the configuration and return a mock context.
+  // Mock provider: validate the configuration and return a passthrough
+  // context. Real handshakes come from OpenSslTlsProvider on native targets.
   let _ = self
   match config.validate() {
     Ok(_) => ()
@@ -45,8 +45,7 @@ pub impl TlsClientCtx for MockTlsClientCtx with fn server_name(self : MockTlsCli
 }
 
 pub impl TlsClientCtx for MockTlsClientCtx with fn connect(self : MockTlsClientCtx, underlying : &Stream) -> Result[&Stream, TlsError] {
-  // In a real implementation, this would perform TLS handshake
-  // For now, just wrap the underlying stream
+  // Mock provider: no handshake, the stream is wrapped untouched.
   if self.is_connected {
     return Err(ProtocolError("TLS context is already connected"))
   }
@@ -70,7 +69,7 @@ pub impl Stream for TlsStream with fn read(self : TlsStream, buf : Buffer) -> Re
   if !self.is_open {
     return Err(NetError::Closed)
   }
-  // In real implementation, this would decrypt data first
+  // Mock provider: no decryption, bytes pass straight through.
   self.underlying.read(buf)
 }
 
@@ -78,7 +77,7 @@ pub impl Stream for TlsStream with fn write(self : TlsStream, buf : Buffer) -> R
   if !self.is_open {
     return Err(NetError::Closed)
   }
-  // In real implementation, this would encrypt data first
+  // Mock provider: no encryption, bytes pass straight through.
   self.underlying.write(buf)
 }
 

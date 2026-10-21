@@ -71,7 +71,7 @@ pub fn TcpDialer::with_timeout(timeout_ms : Int) -> TcpDialer {
 }
 
 pub impl Dialer for TcpDialer with fn dial_tcp(self : TcpDialer, host : String, port : Int) -> Result[&Stream, NetError] {
-  // In real implementation, this would perform actual TCP connection
+  // Placeholder dialer: validation only, no socket is opened.
   let _ = self
   if !valid_tcp_host(host) {
     return Err(NetError::InvalidAddress("Invalid host"))
@@ -87,8 +87,7 @@ pub impl Dialer for TcpDialer with fn dial_tcp(self : TcpDialer, host : String, 
 }
 
 pub impl Dialer for TcpDialer with fn resolve(self : TcpDialer, host : String) -> Result[List[String], NetError] {
-  // In real implementation, this would perform DNS resolution
-  // For now, return the host as-is (assuming it's already an IP or hostname)
+  // Placeholder dialer: no DNS lookup is performed, the host is echoed back.
   let _ = self
   if !valid_tcp_host(host) {
     return Err(NetError::InvalidAddress("Invalid host"))

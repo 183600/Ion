@@ -38,7 +38,7 @@ pub trait Stream {
 /// all: reads report EOF and writes report success without sending bytes.
 /// Real sockets come from `NativeTcpStream` (via `default_dialer()`).
 pub struct TcpStream {
-  // In a real implementation, this would hold the actual socket handle
+  // Target description only; no socket handle is ever opened.
   host : String
   port : Int
   mut is_open : Bool
@@ -58,7 +58,7 @@ pub fn TcpStream::open(self : TcpStream) -> Result[TcpStream, NetError] {
   if !valid_tcp_port(self.port) {
     return Err(NetError::InvalidAddress("Invalid port"))
   }
-  // In real implementation, this would open a TCP connection
+  // Validation only: no socket is opened for a placeholder stream.
   self.is_open = true
   Ok(self)
 }
@@ -67,7 +67,7 @@ pub impl Stream for TcpStream with fn read(self : TcpStream, buf : Buffer) -> Re
   if !self.is_open {
     return Err(NetError::Closed)
   }
-  // Placeholder implementation
+  // Placeholder stream: reads always report EOF.
   let _ = buf
   Ok(0)
 }
@@ -76,7 +76,7 @@ pub impl Stream for TcpStream with fn write(self : TcpStream, buf : Buffer) -> R
   if !self.is_open {
     return Err(NetError::Closed)
   }
-  // Placeholder implementation
+  // Placeholder stream: writes report success without sending anything.
   Ok(buf.length())
 }
 
