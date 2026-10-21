@@ -865,6 +865,29 @@ test "zlib trailer is located after the deflate stream, not the input end" {
   assert_eq(inflate(with_trailing, 10_000_000).unwrap(), expected)
 }
 
+test "gzip decodes concatenated members within the output limit" {
+  let encoded = inflate_bytes_of([
+    31, 139, 8, 0, 142, 223, 215, 106, 2, 255, 203, 72, 205, 201, 201, 7, 0, 134,
+    166, 16, 54, 5, 0, 0, 0,
+  ])
+  let joined = @buffer.new(size_hint=encoded.length() * 2)
+  joined.write_bytes(encoded)
+  joined.write_bytes(encoded)
+  assert_eq(gunzip(joined.to_bytes(), 10_000_000).unwrap(), b"hellohello")
+  assert_true(gunzip(joined.to_bytes(), 9) is Err(_))
+}
+
+test "gzip ignores trailing zero padding after the last member" {
+  let encoded = inflate_bytes_of([
+    31, 139, 8, 0, 142, 223, 215, 106, 2, 255, 203, 72, 205, 201, 201, 7, 0, 134,
+    166, 16, 54, 5, 0, 0, 0,
+  ])
+  let padded = @buffer.new(size_hint=encoded.length() + 4)
+  padded.write_bytes(encoded)
+  padded.write_bytes(inflate_bytes_of([0, 0, 0, 0]))
+  assert_eq(gunzip(padded.to_bytes(), 1_000_000).unwrap(), b"hello")
+}
+
 test "zlib checksum mismatch is still reported with trailing bytes" {
   // Same payload but the Adler-32 trailer is corrupted before trailing junk.
   let corrupt = inflate_bytes_of([

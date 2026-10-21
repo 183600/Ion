@@ -542,6 +542,18 @@ fn inflate_gzip(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
   let mut offset = 0
   let mut members = 0
   while offset < data.length() {
+    if members > 0 && data[offset].to_int() == 0 {
+      // Some producers pad the end of a gzip payload with zero bytes. Accept
+      // all-zero padding, but never arbitrary non-zero trailing data.
+      let mut padding = offset
+      while padding < data.length() && data[padding].to_int() == 0 {
+        padding = padding + 1
+      }
+      if padding == data.length() {
+        offset = padding
+        break
+      }
+    }
     if data.length() - offset < 18 {
       return Err(inflate_error("truncated gzip header"))
     }
