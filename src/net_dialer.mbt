@@ -104,3 +104,49 @@ pub fn default_dialer() -> NativeTcpDialer {
 pub fn default_dialer() -> TcpDialer {
   TcpDialer::new()
 }
+
+#cfg(not(target="native"))
+const TCP_TRANSPORT_UNAVAILABLE : String =
+  "TCP transport unavailable on this target; build with --target native"
+
+/// Dialer for targets without a socket transport (js, wasm, wasm-gc). It fails
+/// immediately with an explicit transport error instead of dialing the
+/// placeholder stream, whose empty reads surface as misleading HTTP protocol
+/// errors.
+#cfg(not(target="native"))
+struct UnavailableTcpDialer {
+  timeout_ms : Int
+} derive(Eq, Debug)
+
+#cfg(not(target="native"))
+fn UnavailableTcpDialer::with_timeout(timeout_ms : Int) -> UnavailableTcpDialer {
+  UnavailableTcpDialer::{ timeout_ms: if timeout_ms < 0 { 0 } else { timeout_ms } }
+}
+
+#cfg(not(target="native"))
+impl Dialer for UnavailableTcpDialer with fn dial_tcp(
+  self : UnavailableTcpDialer,
+  host : String,
+  port : Int,
+) -> Result[&Stream, NetError] {
+  let _ = self
+  if !valid_tcp_host(host) {
+    return Err(NetError::InvalidAddress("Invalid host"))
+  }
+  if !valid_tcp_port(port) {
+    return Err(NetError::InvalidAddress("Invalid port"))
+  }
+  Err(NetError::ConnectionFailed(TCP_TRANSPORT_UNAVAILABLE))
+}
+
+#cfg(not(target="native"))
+impl Dialer for UnavailableTcpDialer with fn resolve(
+  self : UnavailableTcpDialer,
+  host : String,
+) -> Result[List[String], NetError] {
+  let _ = self
+  if !valid_tcp_host(host) {
+    return Err(NetError::InvalidAddress("Invalid host"))
+  }
+  Err(NetError::ConnectionFailed(TCP_TRANSPORT_UNAVAILABLE))
+}

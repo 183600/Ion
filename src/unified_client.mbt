@@ -58,8 +58,8 @@ fn default_client_dialer(timeout_ms : Int) -> NativeTcpDialer {
 }
 
 #cfg(not(target="native"))
-fn default_client_dialer(timeout_ms : Int) -> TcpDialer {
-  TcpDialer::with_timeout(timeout_ms)
+fn default_client_dialer(timeout_ms : Int) -> UnavailableTcpDialer {
+  UnavailableTcpDialer::with_timeout(timeout_ms)
 }
 
 #cfg(target="native")

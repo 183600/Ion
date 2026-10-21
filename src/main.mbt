@@ -1,9 +1,35 @@
 #cfg(target="native")
 extern "C" fn os_exit(code : Int) -> Unit = "exit"
 
-#cfg(not(target="native"))
-fn os_exit(code : Int) -> Unit {
-  let _ = code
+#cfg(target="js")
+extern "js" fn os_exit(code : Int) -> Unit =
+  #| function(code) { process.exit(code) }
+
+#cfg(target="wasm")
+fn os_exit(code : Int) -> Unit = "wasi_snapshot_preview1" "proc_exit"
+
+#cfg(target="wasm-gc")
+fn os_exit(code : Int) -> Unit = "__moonbit_sys_unstable" "exit"
+
+/// The runtime argument list reduced to one executable prefix entry. Native
+/// and WASI hosts report a single executable entry, while Node reports both
+/// the Node binary and the script path; dropping the Node binary keeps the
+/// parser's fixed one-entry skip pointed at the first user argument.
+#cfg(target="js")
+fn cli_command_args() -> Array[String] {
+  let args = @env.args()
+  let result : Array[String] = []
+  let mut index = 1
+  while index < args.length() {
+    result.push(args[index])
+    index = index + 1
+  }
+  result
+}
+
+#cfg(not(target="js"))
+fn cli_command_args() -> Array[String] {
+  @env.args()
 }
 
 /// Command-line entry point for the Feather HTTP/HTTPS client.
@@ -192,11 +218,12 @@ fn wants_help(args : Array[String]) -> Bool {
 }
 
 fn main {
-  if wants_help(@env.args()) {
+  let command_args = cli_command_args()
+  if wants_help(command_args) {
     print_usage()
     return
   }
-  let (method, parsed_url, body) = parse_cli_request(@env.args())
+  let (method, parsed_url, body) = parse_cli_request(command_args)
   let mut url = parsed_url
   if url.length() == 0 {
     match @env.get_env_var("FEATHER_URL") {
