@@ -307,13 +307,27 @@ fn cookie_parse_clock(value : String) -> (Int32, Int32, Int32)? {
 }
 
 ///|
+fn cookie_days_in_month(year : Int32, month : Int32) -> Int32 {
+  match month {
+    2 =>
+      if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 {
+        29
+      } else {
+        28
+      }
+    4 | 6 | 9 | 11 => 30
+    _ => 31
+  }
+}
+
+///|
 fn cookie_make_time(
   year : Int32,
   month : Int32,
   day : Int32,
   clock : (Int32, Int32, Int32),
 ) -> UInt64? {
-  if day < 1 || day > 31 {
+  if day < 1 || day > cookie_days_in_month(year, month) {
     return None
   }
   let (hour, minute, second) = clock

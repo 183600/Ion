@@ -314,3 +314,14 @@ test "an IPv4 Domain attribute cannot match a suffix" {
   jar.store_at(origin, "same=1; Domain=127.0.0.1; Path=/", 1000)
   assert_eq(jar.cookie_header_at(origin, 1000), Some("same=1"))
 }
+
+test "impossible expiry dates are ignored" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  let after_2030 : UInt64 = 2000000000000L.to_uint64()
+  jar.store_at(url, "bad=1; Expires=Wed, 31 Feb 2030 00:00:00 GMT; Path=/", 0)
+  jar.store_at(url, "also=1; Expires=Thu, 29 Feb 2023 00:00:00 GMT; Path=/", 0)
+  assert_eq(jar.cookie_header_at(url, after_2030), Some("bad=1; also=1"))
+  jar.store_at(url, "leap=1; Expires=Thu, 29 Feb 2024 00:00:00 GMT; Path=/", 0)
+  assert_eq(jar.cookie_header_at(url, after_2030), Some("bad=1; also=1"))
+}
