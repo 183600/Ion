@@ -20,7 +20,7 @@ fn proxy_hex_value(byte : Byte) -> Int {
   -1
 }
 
-fn proxy_percent_decode(value : String) -> String {
+fn proxy_percent_decode_bytes(value : String) -> Bytes {
   let data = @utf8.encode(value)
   let output = Buffer(size_hint=data.length())
   let mut index = 0
@@ -38,7 +38,7 @@ fn proxy_percent_decode(value : String) -> String {
     output.write_byte(byte)
     index = index + 1
   }
-  @utf8.decode_lossy(output.to_bytes()[:])
+  output.to_bytes()
 }
 
 fn proxy_userinfo(url : String) -> String? {
@@ -66,9 +66,11 @@ fn proxy_basic_authorization(userinfo : String) -> String {
     )
     None => (userinfo, "")
   }
-  @base64.encode(
-    @utf8.encode(proxy_percent_decode(user) + ":" + proxy_percent_decode(password)),
-  )
+  let credentials = Buffer(size_hint=user.length() + password.length() + 1)
+  credentials.write_bytes(proxy_percent_decode_bytes(user))
+  credentials.write_byte(b':')
+  credentials.write_bytes(proxy_percent_decode_bytes(password))
+  @base64.encode(credentials.to_bytes())
 }
 
 /// Create a proxy from an `http://[user:password@]host[:port]` URL.

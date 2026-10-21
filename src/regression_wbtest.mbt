@@ -2287,6 +2287,11 @@ test "Proxy::new_with_basic_auth encodes credentials" {
 }
 
 ///|
+test "proxy basic auth preserves percent-decoded credential bytes" {
+  let proxy = Proxy::new("http://user%FF:pass@proxy.example").unwrap()
+  assert_eq(proxy.authorization(), Some("Basic dXNlcv86cGFzcw=="))
+}
+
 test "plain HTTP through a proxy uses absolute-form and proxy auth" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
   let stream = regression_mock_stream(raw, 4096, 4096)
