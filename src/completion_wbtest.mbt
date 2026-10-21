@@ -123,3 +123,18 @@ test "non-idempotent requests are not retried on a stale pooled connection" {
   assert_true(client.request(Request::new(POST, url)) is Err(_))
   assert_eq(dialer.index, 1)
 }
+
+///|
+test "closing an incomplete response closes the stream with a completion callback" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"
+  let stream = regression_mock_stream(raw, 0, 0)
+  let completions : Array[Bool] = []
+  let codec = H1Codec::new_with_completion(
+    stream,
+    fn(reusable) { completions.push(reusable) },
+  )
+  let response = codec.decode_response().unwrap()
+  let _ = response.body.close()
+  assert_eq(completions, [false])
+  assert_false(stream.is_open)
+}

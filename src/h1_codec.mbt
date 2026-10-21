@@ -1083,7 +1083,7 @@ pub impl Stream for ResponseStream with fn close(self : ResponseStream) -> Resul
     Some(callback) => {
       self.completed = true
       callback(false)
-      Ok(())
+      self.reader.stream.close()
     }
     None => self.reader.stream.close()
   }
