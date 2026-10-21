@@ -348,7 +348,7 @@ fn drain_response(response : Response) -> Result[Unit, HttpError] {
           return Err(NetworkError(ReadError("stream returned no data")))
         }
       }
-      Err(err) => return Err(NetworkError(err))
+      Err(err) => return Err(http_error_from_net(err))
     }
   }
   Ok(())
@@ -378,7 +378,7 @@ fn UnifiedClient::do_request_once(
   // Connect to the server
   let (stream, lease) = match self.connector.checkout(req.url) {
     Ok(stream) => stream
-    Err(err) => return Err(err)
+    Err(err) => return Err(normalize_http_error(err))
   }
 
   // Set timeout, falling back to the client default when the request uses it.
@@ -394,7 +394,7 @@ fn UnifiedClient::do_request_once(
       if allow_retry && lease.reused && request_can_be_retried(req.method) {
         return self.do_request_once(req, false)
       }
-      return Err(NetworkError(err))
+      return Err(http_error_from_net(err))
     }
   }
 
@@ -439,7 +439,7 @@ fn UnifiedClient::do_request_once(
         err is NetworkError(_) {
         return self.do_request_once(req, false)
       }
-      return Err(err)
+      return Err(normalize_http_error(err))
     }
   }
 
@@ -451,7 +451,7 @@ fn UnifiedClient::do_request_once(
       if allow_retry && lease.reused && request_can_be_retried(request.method) {
         return self.do_request_once(req, false)
       }
-      return Err(err)
+      return Err(normalize_http_error(err))
     }
   }
 

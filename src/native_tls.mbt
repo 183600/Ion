@@ -201,6 +201,7 @@ fn native_tls_feed(
 fn native_tls_flush_error(result : NativeTlsIo) -> TlsError {
   match result {
     TlsIoTimeout => IoError("TLS write timed out")
+    TlsIoClosed => ConnectionClosed
     TlsIoFailure(message) => IoError(message)
     _ => IoError("TLS write failed")
   }
@@ -209,7 +210,7 @@ fn native_tls_flush_error(result : NativeTlsIo) -> TlsError {
 fn native_tls_feed_error(result : NativeTlsIo) -> TlsError {
   match result {
     TlsIoTimeout => IoError("TLS read timed out")
-    TlsIoClosed => HandshakeFailed("TLS connection closed during handshake")
+    TlsIoClosed => ConnectionClosed
     TlsIoFailure(message) => IoError(message)
     TlsIoData => IoError("TLS read failed")
   }

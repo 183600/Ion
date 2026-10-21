@@ -11,6 +11,26 @@ pub enum HttpError {
   RedirectLimitExceeded
 } derive(Eq, Debug)
 
+/// Promote low-level network failures onto the dedicated HTTP error variants.
+/// Callers can then match `Timeout` / `ConnectionClosed` without having to
+/// unwrap the nested `NetError`.
+fn http_error_from_net(err : NetError) -> HttpError {
+  match err {
+    Timeout => Timeout
+    Closed => ConnectionClosed
+    _ => NetworkError(err)
+  }
+}
+
+/// Normalize an existing `HttpError` that may wrap a timeout or a closed
+/// connection, leaving every other variant untouched.
+fn normalize_http_error(err : HttpError) -> HttpError {
+  match err {
+    NetworkError(net) => http_error_from_net(net)
+    _ => err
+  }
+}
+
 /// HTTP method
 pub enum HttpMethod {
   GET
@@ -670,7 +690,7 @@ pub fn Response::read_body_with_limit(
       }
       Err(err) => {
         let _ = self.body.close()
-        return Err(NetworkError(err))
+        return Err(http_error_from_net(err))
       }
     }
   }
