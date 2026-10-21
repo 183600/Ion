@@ -80,6 +80,10 @@ pub fn Proxy::new(url : String) -> Result[Proxy, HttpError] {
   if parsed.scheme.to_lower() != "http" {
     return Err(InvalidUrl("Only http proxies are supported"))
   }
+  if parsed.path != "/" || parsed.query.length() > 0 ||
+    parsed.fragment.length() > 0 {
+    return Err(InvalidUrl("Proxy URL must not include a path, query, or fragment"))
+  }
   let authorization = match proxy_userinfo(url) {
     Some(userinfo) => Some("Basic " + proxy_basic_authorization(userinfo))
     None => None

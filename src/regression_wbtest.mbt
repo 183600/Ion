@@ -2265,6 +2265,18 @@ test "Proxy::new rejects non-http schemes and bad ports" {
 }
 
 ///|
+test "Proxy::new rejects paths, queries, and fragments" {
+  for url in [
+    "http://proxy.example/path",
+    "http://proxy.example/?query=1",
+    "http://proxy.example/#fragment",
+  ] {
+    assert_true(Proxy::new(url) is Err(InvalidUrl(_)))
+  }
+  assert_true(Proxy::new("http://proxy.example/") is Ok(_))
+}
+
+///|
 test "Proxy::new_with_basic_auth encodes credentials" {
   let proxy = Proxy::new_with_basic_auth("127.0.0.1", 8080, "u", "p").unwrap()
   assert_eq(proxy.authority(), "127.0.0.1:8080")
