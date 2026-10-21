@@ -850,3 +850,24 @@ test "client response body limit bounds decoded output" {
   let response = codec.decode_response().unwrap()
   assert_true(response.text() is Err(_))
 }
+
+test "zlib trailer is located after the deflate stream, not the input end" {
+  // "hello" wrapped in zlib: header (2) + deflate stream (7) + Adler-32 (4).
+  let compressed = inflate_bytes_of([
+    120, 218, 203, 72, 205, 201, 201, 7, 0, 6, 44, 2, 21])
+  let expected = inflate_bytes_of([104, 101, 108, 108, 111])
+  assert_eq(inflate(compressed, 10_000_000).unwrap(), expected)
+
+  // Trailing bytes after the zlib stream must not move the trailer, so the
+  // stored checksum is still read from the position the decoder consumed.
+  let with_trailing = inflate_bytes_of([
+    120, 218, 203, 72, 205, 201, 201, 7, 0, 6, 44, 2, 21, 222, 173, 190, 239])
+  assert_eq(inflate(with_trailing, 10_000_000).unwrap(), expected)
+}
+
+test "zlib checksum mismatch is still reported with trailing bytes" {
+  // Same payload but the Adler-32 trailer is corrupted before trailing junk.
+  let corrupt = inflate_bytes_of([
+    120, 218, 203, 72, 205, 201, 201, 7, 0, 0, 0, 0, 0, 222, 173])
+  assert_true(inflate(corrupt, 10_000_000) is Err(_))
+}

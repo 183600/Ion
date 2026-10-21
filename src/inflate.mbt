@@ -514,17 +514,20 @@ fn inflate_zlib(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
     return Err(inflate_error("preset dictionary is not supported"))
   }
   let body = data[2:].to_bytes()
-  let inflated = match inflate_raw(body, max_bytes) {
-    Ok(bytes) => bytes
+  // The DEFLATE stream does not declare its length, so decode it and use the
+  // number of consumed bytes to locate the 4-byte Adler-32 trailer. Reading it
+  // from the end of the input would be wrong whenever trailing bytes follow the
+  // zlib stream.
+  let (inflated, consumed) = match inflate_raw_consume(body, max_bytes) {
+    Ok(result) => result
     Err(err) => return Err(err)
   }
   let expected = adler32(inflated)
-  let trailer_offset = body.length() - 4
-  if trailer_offset < 0 {
+  if consumed + 4 > body.length() {
     return Err(inflate_error("missing zlib checksum"))
   }
   // The zlib Adler-32 trailer is stored big-endian (RFC 1950 §2.2).
-  let stored = read_be32(body, trailer_offset)
+  let stored = read_be32(body, consumed)
   if stored != expected {
     return Err(inflate_error("zlib checksum mismatch"))
   }
