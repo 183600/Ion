@@ -348,3 +348,14 @@ test "cookie snapshots keep creation order and are stable" {
   jar.store_at(origin, "a=4; Path=/", 1000)
   assert_eq(cookie_snapshot_names(jar), ["a", "b", "c"])
 }
+
+///|
+test "cookie expiry accepts full month names" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  jar.store_at(url, "long=1; Expires=Wed, 21 October 2030 07:28:00 GMT; Path=/", 0)
+  jar.store_at(url, "rfc850=1; Expires=Wednesday, 21-October-30 07:28:00 GMT; Path=/", 0)
+  assert_eq(jar.cookie_header_at(url, 0), Some("long=1; rfc850=1"))
+  let year_2100 : UInt64 = 4102444800000L.to_uint64()
+  assert_eq(jar.cookie_header_at(url, year_2100), None)
+}

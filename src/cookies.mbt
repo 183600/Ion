@@ -187,7 +187,13 @@ fn cookie_trimmed_tokens(value : String) -> Array[String] {
 
 ///|
 fn cookie_month(value : String) -> Int32? {
-  match value.to_lower() {
+  let lower = value.to_lower()
+  let prefix = if lower.length() > 3 {
+    lower[0:3].to_owned()
+  } else {
+    lower
+  }
+  match prefix {
     "jan" => Some(1)
     "feb" => Some(2)
     "mar" => Some(3)
