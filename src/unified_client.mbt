@@ -791,7 +791,9 @@ fn buffer_one_shot_response(
       response.status,
       response.headers,
       stream,
-    ).with_max_body_bytes(response.max_body_bytes),
+    )
+      .with_trailers(response.trailers)
+      .with_max_body_bytes(response.max_body_bytes),
   )
 }
 

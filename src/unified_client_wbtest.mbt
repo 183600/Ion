@@ -136,3 +136,18 @@ test "one-shot helpers buffer the body before closing the client" {
   assert_eq(buffered.text().unwrap(), "hello")
   assert_false(stream.is_open)
 }
+
+///|
+test "one-shot helpers preserve chunked trailers" {
+  let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" +
+    "5\r\nhello\r\n0\r\nX-Checksum: abc\r\n\r\n"
+  let stream = regression_mock_stream(raw, 0, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let options = ClientOptions::new().with_follow_redirects(false)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let response = client.get("http://example.com/").unwrap()
+  let buffered = buffer_one_shot_response(client, Ok(response)).unwrap()
+  assert_eq(buffered.text().unwrap(), "hello")
+  assert_eq(buffered.trailers().get("x-checksum"), Some("abc"))
+}
