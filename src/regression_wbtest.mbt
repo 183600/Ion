@@ -2109,6 +2109,31 @@ test "connector clamps the idle cap to at least one" {
 }
 
 ///|
+test "lowering the idle cap closes excess pooled connections" {
+  let first = regression_mock_stream("", 1, 0)
+  let second = regression_mock_stream("", 1, 0)
+  let third = regression_mock_stream("", 1, 0)
+  let streams : Array[&Stream] = [first, second, third]
+  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let url = Url::parse("http://example.com/").unwrap()
+  let (_s0, lease0) = connector.checkout(url).unwrap()
+  let (_s1, lease1) = connector.checkout(url).unwrap()
+  let (_s2, lease2) = connector.checkout(url).unwrap()
+  lease0.release(true)
+  lease1.release(true)
+  lease2.release(true)
+  let tightened = connector.with_max_idle_per_host(1)
+  assert_eq(tightened.max_idle_per_host(), 1)
+  assert_false(first.is_open)
+  assert_false(second.is_open)
+  assert_true(third.is_open)
+  let (_s3, lease3) = tightened.checkout(url).unwrap()
+  assert_eq(dialer.index, 3)
+  lease3.release(false)
+}
+
+///|
 test "connector enforces a per-host connection cap" {
   let first = regression_mock_stream("", 1, 0)
   let second = regression_mock_stream("", 1, 0)

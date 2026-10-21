@@ -148,6 +148,36 @@ fn ConnectionPoolState::cache_idle(
   self.idle.set(key, updated)
 }
 
+/// Drop the oldest idle connections until every host is within `max_idle`.
+fn ConnectionPoolState::trim_idle(self : ConnectionPoolState) -> Unit {
+  let keys : Array[String] = []
+  for key in self.idle.keys() {
+    keys.push(key)
+  }
+  for key in keys {
+    match self.idle.get(key) {
+      Some(entries) => {
+        let mut updated = entries
+        while updated.length() > self.max_idle {
+          match updated.last() {
+            Some(evicted) => {
+              let _ = evicted.stream.close()
+              updated = updated.take(updated.length() - 1)
+            }
+            None => break
+          }
+        }
+        if updated.length() == 0 {
+          let _ = self.idle.remove(key)
+        } else {
+          self.idle.set(key, updated)
+        }
+      }
+      None => ()
+    }
+  }
+}
+
 /// Connector handles the connection establishment logic
 pub struct Connector {
   dialer : &Dialer
@@ -311,6 +341,7 @@ pub fn Connector::with_max_idle_per_host(
   max_idle : Int,
 ) -> Connector {
   self.pool.val.max_idle = if max_idle < 1 { 1 } else { max_idle }
+  self.pool.val.trim_idle()
   self
 }
 
