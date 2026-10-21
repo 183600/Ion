@@ -1,3 +1,8 @@
+/// Maximum serialized size of a single `Set-Cookie` value. RFC 6265 §6.1
+/// requires implementations to support at least 4096 bytes per cookie; larger
+/// cookies are ignored rather than partially stored.
+const MAX_COOKIE_BYTES : Int = 4096
+
 /// Minimal RFC 6265 cookie jar.
 ///
 /// It supports the parts of the standard that matter for an HTTP client:
@@ -506,6 +511,9 @@ fn cookie_from_set_cookie(
   value : String,
   now_ms : UInt64,
 ) -> Cookie? {
+  if @utf8.encode(value).length() > MAX_COOKIE_BYTES {
+    return None
+  }
   let parts = value.split(";").collect()
   if parts.length() == 0 || !parts[0].contains("=") {
     return None

@@ -246,6 +246,26 @@ test "cookie jar ignores malformed cookies" {
 }
 
 ///|
+test "cookie jar ignores oversized cookies" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  let largest = "b=" + "b".repeat(4094)
+  assert_eq(@utf8.encode(largest).length(), 4096)
+  jar.store_at(url, largest, 1000)
+  assert_eq(jar.length(), 1)
+
+  jar.store_at(url, "token=old; Path=/", 1000)
+  let oversized = "token=" + "a".repeat(4096)
+  assert_true(@utf8.encode(oversized).length() > 4096)
+  jar.store_at(url, oversized, 1000)
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://example.com/x"), 1000),
+    Some("b=" + "b".repeat(4094) + "; token=old"),
+  )
+  assert_eq(jar.length(), 2)
+}
+
+///|
 test "UnifiedClient replays stored cookies on later requests" {
   let raw = "HTTP/1.1 200 OK\r\nSet-Cookie: sid=xyz; Path=/\r\nContent-Length: 2\r\n\r\nok" +
     "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
