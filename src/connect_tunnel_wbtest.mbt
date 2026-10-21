@@ -1,5 +1,10 @@
 /// Regression tests for proxy CONNECT tunnel handling.
 
+test "CONNECT authority brackets IPvFuture hosts" {
+  let url = Url::parse("https://[v1.foo]:8443/").unwrap()
+  assert_eq(connect_authority(url), "[v1.foo]:8443")
+}
+
 test "connect response keeps bytes read past the head" {
   let head = "HTTP/1.1 200 Connection Established\r\n\r\n"
   let tunnel = "\x16\x03\x01\x00\x05hello"

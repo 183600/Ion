@@ -150,6 +150,17 @@ test "URL supports bracketed IPv6 literals" {
 }
 
 ///|
+test "URL preserves bracketed IPvFuture authorities" {
+  let url = Url::parse("http://[v1.foo]:8080/x").unwrap()
+  assert_eq(url.host, "v1.foo")
+  assert_eq(url.authority(), "[v1.foo]:8080")
+  assert_eq(url.to_string(), "http://[v1.foo]:8080/x")
+  let default_port = Url::parse("https://[v1.foo]/x").unwrap()
+  assert_eq(default_port.authority(), "[v1.foo]")
+  assert_eq(default_port.to_string(), "https://[v1.foo]/x")
+}
+
+///|
 test "URL rejects control characters" {
   assert_true(Url::parse("http://example.com/\r\nInjected: yes") is Err(_))
   assert_true(Url::parse("http://example.com/\u{0}") is Err(_))

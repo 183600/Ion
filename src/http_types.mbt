@@ -445,14 +445,21 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
   Ok(Url::{ scheme, host, port, path, query, fragment })
 }
 
-/// Host and optional non-default port, bracketing IPv6 literals.
+fn url_authority_host(host : String) -> String {
+  if host.has_prefix("[") && host.has_suffix("]") {
+    host
+  } else if host.contains(":") ||
+    (is_ip_literal(host) && !is_ipv6_literal_with_zone(host)) {
+    "[" + host + "]"
+  } else {
+    host
+  }
+}
+
+/// Host and optional non-default port, bracketing IP literals.
 pub fn Url::authority(self : Url) -> String {
   let scheme = self.scheme.to_lower()
-  let host_text = if self.host.contains(":") && !(self.host.has_prefix("[") && self.host.has_suffix("]")) {
-    "[" + self.host + "]"
-  } else {
-    self.host
-  }
+  let host_text = url_authority_host(self.host)
   let default_port = if scheme == "https" {
     443
   } else if scheme == "http" {

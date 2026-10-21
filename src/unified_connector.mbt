@@ -546,13 +546,7 @@ fn read_connect_response(stream : &Stream) -> Result[Bytes, HttpError] {
 }
 
 fn connect_authority(url : Url) -> String {
-  let host_text = if url.host.contains(":") &&
-    !(url.host.has_prefix("[") && url.host.has_suffix("]")) {
-    "[" + url.host + "]"
-  } else {
-    url.host
-  }
-  host_text + ":" + url.port.to_string()
+  url_authority_host(url.host) + ":" + url.port.to_string()
 }
 
 fn establish_tunnel(
