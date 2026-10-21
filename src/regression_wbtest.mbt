@@ -475,6 +475,18 @@ test "Transfer-Encoding only recognizes the chunked token" {
 }
 
 ///|
+test "chunked responses ignore Content-Length" {
+  for raw in [
+    "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: invalid\r\n\r\n5\r\nhello\r\n0\r\n\r\n",
+    "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 1\r\nContent-Length: 2\r\n\r\n5\r\nhello\r\n0\r\n\r\n",
+  ] {
+    let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+    let response = codec.decode_response().unwrap()
+    assert_eq(response.text().unwrap(), "hello")
+  }
+}
+
+///|
 test "response stream is closed after closing" {
   let raw = "HTTP/1.1 204 No Content\r\n\r\n"
   let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))

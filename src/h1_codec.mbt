@@ -886,13 +886,13 @@ fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
     Ok(value) => value
     Err(err) => return Err(self.fail(err))
   }
-  let content_length = match response_content_length(self.headers) {
-    Ok(value) => value
-    Err(err) => return Err(self.fail(err))
-  }
   if chunked {
     self.body_mode = BodyChunked
     return Ok(())
+  }
+  let content_length = match response_content_length(self.headers) {
+    Ok(value) => value
+    Err(err) => return Err(self.fail(err))
   }
   match content_length {
     Some(length) => {
