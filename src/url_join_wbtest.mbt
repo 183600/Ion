@@ -1,0 +1,72 @@
+test "Url::join resolves RFC 3986 relative references" {
+  let base = Url::parse("http://a/b/c/d;p?q").unwrap()
+  let cases : Array[(String, String)] = [
+    ("g", "http://a/b/c/g"),
+    ("./g", "http://a/b/c/g"),
+    ("g/", "http://a/b/c/g/"),
+    ("/g", "http://a/g"),
+    ("//g", "http://g/"),
+    ("?y", "http://a/b/c/d;p?y"),
+    ("g?y", "http://a/b/c/g?y"),
+    ("#s", "http://a/b/c/d;p?q#s"),
+    ("g#s", "http://a/b/c/g#s"),
+    ("g?y#s", "http://a/b/c/g?y#s"),
+    (";x", "http://a/b/c/;x"),
+    ("g;x", "http://a/b/c/g;x"),
+    ("g;x?y#s", "http://a/b/c/g;x?y#s"),
+    ("", "http://a/b/c/d;p?q"),
+    (".", "http://a/b/c/"),
+    ("./", "http://a/b/c/"),
+    ("..", "http://a/b/"),
+    ("../", "http://a/b/"),
+    ("../g", "http://a/b/g"),
+    ("../..", "http://a/"),
+    ("../../", "http://a/"),
+    ("../../g", "http://a/g"),
+    ("../../../g", "http://a/g"),
+    ("../../../../g", "http://a/g"),
+    ("./../g", "http://a/b/g"),
+    ("./g/.", "http://a/b/c/g/"),
+    ("g/./h", "http://a/b/c/g/h"),
+    ("g/../h", "http://a/b/c/h"),
+    ("g;x=1/./y", "http://a/b/c/g;x=1/y"),
+    ("g;x=1/../y", "http://a/b/c/y"),
+    ("g?y/./x", "http://a/b/c/g?y/./x"),
+    ("g?y/../x", "http://a/b/c/g?y/../x"),
+    ("g#s/./x", "http://a/b/c/g#s/./x"),
+    ("g#s/../x", "http://a/b/c/g#s/../x"),
+  ]
+  for entry in cases {
+    let (reference, expected) = entry
+    assert_eq(base.join(reference).unwrap().to_string(), expected)
+  }
+}
+
+test "Url::join keeps absolute and scheme-relative references" {
+  let base = Url::parse("https://example.com/dir/page?q=1").unwrap()
+  assert_eq(
+    base.join("HTTP://Other.Example/x").unwrap().to_string(),
+    "http://Other.Example/x",
+  )
+  assert_eq(
+    base.join("//cdn.example/lib.js").unwrap().to_string(),
+    "https://cdn.example/lib.js",
+  )
+  assert_eq(
+    base.join("/root/../next").unwrap().to_string(),
+    "https://example.com/next",
+  )
+}
+
+test "Url::join rejects unsupported schemes and malformed references" {
+  let base = Url::parse("http://example.com/a").unwrap()
+  for reference in [
+    "ftp://example.com/x",
+    "mailto:user@example.com",
+    "http://exa mple.com/",
+    "//exa mple.com/",
+    "/a\\b",
+  ] {
+    assert_true(base.join(reference) is Err(_))
+  }
+}

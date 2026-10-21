@@ -501,6 +501,130 @@ pub fn Url::request_target(self : Url) -> String {
   }
 }
 
+/// Remove dot segments from a path and preserve its query/fragment suffix.
+fn normalize_url_path(target : String) -> String {
+  let mut path_end = target.length()
+  match target.find("?") {
+    Some(index) => if index < path_end {
+      path_end = index
+    }
+    None => ()
+  }
+  match target.find("#") {
+    Some(index) => if index < path_end {
+      path_end = index
+    }
+    None => ()
+  }
+  let path = target[0:path_end].to_owned()
+  let suffix = target[path_end:].to_owned()
+  let trailing = path.has_suffix("/") || path.has_suffix("/.") ||
+    path.has_suffix("/..") || path == "." || path == ".."
+  let segments = path.split("/").collect()
+  let total = segments.length()
+  let normalized : Array[String] = []
+  let mut index = 0
+  for segment in segments {
+    let is_first = index == 0
+    let is_last = index == total - 1
+    index = index + 1
+    match segment {
+      "." => ()
+      ".." => if normalized.length() > 0 {
+        normalized.unsafe_pop_back()
+      }
+      "" => if !is_first && !is_last {
+        normalized.push("")
+      }
+      _ => normalized.push(segment.to_owned())
+    }
+  }
+  let joined = normalized.join("/")
+  let result = if normalized.length() == 0 {
+    "/"
+  } else if trailing {
+    "/" + joined + "/"
+  } else {
+    "/" + joined
+  }
+  result + suffix
+}
+
+// RFC 3986 §3.1: scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ) ":".
+fn url_has_scheme(value : String) -> Bool {
+  match value.get_char(0) {
+    Some(ch) =>
+      if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) {
+        return false
+      }
+    None => return false
+  }
+  let mut index = 1
+  while true {
+    match value.get_char(index) {
+      Some(ch) => {
+        if ch == ':' {
+          return true
+        }
+        let valid = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+          (ch >= '0' && ch <= '9') || ch == '+' || ch == '-' || ch == '.'
+        if !valid {
+          return false
+        }
+      }
+      None => return false
+    }
+    index = index + 1
+  }
+  false
+}
+
+/// Resolve a URI reference against this URL, following RFC 3986 §5. For
+/// example, joining `"../next?q=1"` with `http://example.com/a/b` yields
+/// `http://example.com/next?q=1`. Only `http` and `https` results are
+/// accepted, matching the rest of the client.
+pub fn Url::join(self : Url, reference : String) -> Result[Url, HttpError] {
+  let reference = reference.trim().to_owned()
+  let lower = reference.to_lower()
+  let full = if lower.has_prefix("http://") || lower.has_prefix("https://") {
+    reference
+  } else if reference.has_prefix("//") {
+    self.scheme + ":" + reference
+  } else if reference.has_prefix("#") {
+    self.origin() + self.request_target() + reference
+  } else if reference.has_prefix("/") {
+    self.origin() + normalize_url_path(reference)
+  } else if reference.has_prefix("?") {
+    let path = if self.path.length() == 0 {
+      "/"
+    } else if self.path.has_prefix("/") {
+      self.path
+    } else {
+      "/" + self.path
+    }
+    self.origin() + path + reference
+  } else if reference.length() == 0 {
+    self.to_string()
+  } else if url_has_scheme(reference) {
+    // A reference that carries a scheme is an absolute URI and replaces the
+    // base entirely (RFC 3986 §5.2.2). Url::parse rejects non-http(s)
+    // schemes, so a redirect to e.g. "ftp://host/x" fails cleanly instead of
+    // being misresolved as a path on the original origin.
+    reference
+  } else {
+    let directory = match self.path.rev_find("/") {
+      Some(index) => self.path[0:index + 1].to_owned()
+      None => "/"
+    }
+    self.origin() + normalize_url_path(directory + reference)
+  }
+  let parsed = match Url::parse(full) {
+    Ok(url) => url
+    Err(err) => return Err(err)
+  }
+  Ok(parsed.with_path(normalize_url_path(parsed.path)))
+}
+
 pub fn Url::with_path(self : Url, path : String) -> Url {
   Url::{ ..self, path }
 }

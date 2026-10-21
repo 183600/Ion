@@ -232,122 +232,15 @@ pub impl HttpClient for UnifiedClient with fn request(self : UnifiedClient, req 
 extend UnifiedClient with HttpClient::{request}
 
 fn normalize_path_and_suffix(target : String) -> String {
-  let mut path_end = target.length()
-  match target.find("?") {
-    Some(index) => if index < path_end {
-      path_end = index
-    }
-    None => ()
-  }
-  match target.find("#") {
-    Some(index) => if index < path_end {
-      path_end = index
-    }
-    None => ()
-  }
-  let path = target[0:path_end].to_owned()
-  let suffix = target[path_end:].to_owned()
-  let trailing = path.has_suffix("/") || path.has_suffix("/.") ||
-    path.has_suffix("/..") || path == "." || path == ".."
-  let segments = path.split("/").collect()
-  let total = segments.length()
-  let normalized : Array[String] = []
-  let mut index = 0
-  for segment in segments {
-    let is_first = index == 0
-    let is_last = index == total - 1
-    index = index + 1
-    match segment {
-      "." => ()
-      ".." => if normalized.length() > 0 {
-        normalized.unsafe_pop_back()
-      }
-      "" => if !is_first && !is_last {
-        normalized.push("")
-      }
-      _ => normalized.push(segment.to_owned())
-    }
-  }
-  let joined = normalized.join("/")
-  let result = if normalized.length() == 0 {
-    "/"
-  } else if trailing {
-    "/" + joined + "/"
-  } else {
-    "/" + joined
-  }
-  result + suffix
-}
-
-// RFC 3986 §3.1: scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ) ":".
-fn has_uri_scheme(location : String) -> Bool {
-  match location.get_char(0) {
-    Some(ch) =>
-      if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')) {
-        return false
-      }
-    None => return false
-  }
-  let mut index = 1
-  while true {
-    match location.get_char(index) {
-      Some(ch) => {
-        if ch == ':' {
-          return true
-        }
-        let valid = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-          (ch >= '0' && ch <= '9') || ch == '+' || ch == '-' || ch == '.'
-        if !valid {
-          return false
-        }
-      }
-      None => return false
-    }
-    index = index + 1
-  }
-  false
+  normalize_url_path(target)
 }
 
 fn resolve_redirect_url(base : Url, location : String) -> Result[Url, HttpError] {
-  let location = location.trim().to_owned()
-  let lower = location.to_lower()
-  let full = if lower.has_prefix("http://") || lower.has_prefix("https://") {
-    location
-  } else if location.has_prefix("//") {
-    base.scheme + ":" + location
-  } else if location.has_prefix("#") {
-    base.origin() + base.request_target() + location
-  } else if location.has_prefix("/") {
-    base.origin() + normalize_path_and_suffix(location)
-  } else if location.has_prefix("?") {
-    let path = if base.path.length() == 0 {
-      "/"
-    } else if base.path.has_prefix("/") {
-      base.path
-    } else {
-      "/" + base.path
-    }
-    base.origin() + path + location
-  } else if location.length() == 0 {
-    base.to_string()
-  } else if has_uri_scheme(location) {
-    // A reference that carries a scheme is an absolute URI and replaces the
-    // base entirely (RFC 3986 §5.2.2). Url::parse rejects non-http(s)
-    // schemes, so a redirect to e.g. "ftp://host/x" fails cleanly instead of
-    // being misresolved as a path on the original origin.
-    location
-  } else {
-    let directory = match base.path.rev_find("/") {
-      Some(index) => base.path[0:index + 1].to_owned()
-      None => "/"
-    }
-    base.origin() + normalize_path_and_suffix(directory + location)
-  }
-  let parsed = match Url::parse(full) {
+  let joined = match base.join(location) {
     Ok(url) => url
     Err(err) => return Err(err)
   }
-  Ok(parsed.with_path(normalize_path_and_suffix(parsed.path)))
+  Ok(joined.with_path(normalize_path_and_suffix(joined.path)))
 }
 
 fn redirect_method(status : Int, method : HttpMethod) -> (HttpMethod, Bool) {
