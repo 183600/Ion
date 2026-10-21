@@ -663,7 +663,18 @@ test "cookie jar enforces __Host- prefix" {
   // Missing Secure is not allowed even over HTTPS.
   jar.store_at(secure, "__Host-id=4; Path=/", 1000)
   assert_eq(jar.length(), 1)
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("https://example.com/x"), 1000),
+    Some("__Host-id=1"),
+  )
   // Prefix matching is case-sensitive.
   jar.store_at(secure, "__host-id=5; Path=/", 1000)
   assert_eq(jar.length(), 2)
+  // A Domain attribute is forbidden even when the host is an IP literal and
+  // the attribute would otherwise leave the cookie host-only.
+  let ip = cookie_test_url("https://127.0.0.1/")
+  jar.store_at(ip, "__Host-ip=1; Secure; Path=/", 1000)
+  assert_eq(jar.cookie_header_at(ip, 1000), Some("__Host-ip=1"))
+  jar.store_at(ip, "__Host-ip=2; Secure; Domain=127.0.0.1; Path=/", 1000)
+  assert_eq(jar.cookie_header_at(ip, 1000), Some("__Host-ip=1"))
 }

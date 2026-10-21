@@ -523,6 +523,7 @@ fn cookie_from_set_cookie(
   let mut secure = false
   let mut expires_at_ms : UInt64? = None
   let mut max_age_seen = false
+  let mut domain_attribute_seen = false
   let mut index = 1
   while index < parts.length() {
     let (raw_attribute, raw_attribute_value) = cookie_split_first(
@@ -532,6 +533,7 @@ fn cookie_from_set_cookie(
     let attribute = raw_attribute.trim().to_lower()
     let attribute_value = raw_attribute_value.trim().to_owned()
     if attribute == "domain" {
+      domain_attribute_seen = true
       let mut candidate = attribute_value.to_lower()
       if candidate.has_prefix(".") {
         candidate = candidate[1:].to_owned()
@@ -603,7 +605,8 @@ fn cookie_from_set_cookie(
   if name.has_prefix("__Secure-") && !secure {
     return None
   }
-  if name.has_prefix("__Host-") && (!host_only || path != "/") {
+  if name.has_prefix("__Host-") &&
+    (!secure || !host_only || path != "/" || domain_attribute_seen) {
     return None
   }
   Some(Cookie::{
