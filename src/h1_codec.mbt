@@ -350,6 +350,17 @@ fn request_is_chunked(headers : Headers) -> Result[Bool, HttpError] {
   Ok(true)
 }
 
+/// Methods for which an absent body still has a defined meaning, so an explicit
+/// `Content-Length: 0` should be sent when the caller did not frame the body.
+fn method_defines_body(method : HttpMethod) -> Bool {
+  match method {
+    POST => true
+    PUT => true
+    PATCH => true
+    _ => false
+  }
+}
+
 fn write_chunked_body(stream : &Stream, body : Bytes) -> Result[Unit, NetError] {
   if body.length() > 0 {
     let size_line = body.length().to_string(radix=16) + "\r\n"
@@ -441,8 +452,11 @@ pub fn H1Codec::encode_request(
     headers_str += "Host: " + req.url.authority() + "\r\n"
   }
 
-  // Add Content-Length when the caller did not choose a framing mode.
-  if req.body is Some(_) && content_length is None && !chunked {
+  // Add Content-Length when the caller did not choose a framing mode. Methods
+  // that define a body send an explicit zero length when none was supplied so
+  // servers and intermediaries never have to guess (RFC 9112 §6.3).
+  if (req.body is Some(_) || method_defines_body(req.method)) &&
+    content_length is None && !chunked {
     headers_str += "Content-Length: " + body_length.to_string() + "\r\n"
   }
 
