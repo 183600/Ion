@@ -194,6 +194,14 @@ pub struct MockTlsProvider {
 pub fn MockTlsProvider::new(String) -> Self
 pub impl TlsProvider for MockTlsProvider
 
+pub struct MultipartFile {
+  field_name : String
+  file_name : String
+  content_type : String
+  data : Bytes
+} derive(Eq, @debug.Debug)
+pub fn MultipartFile::new(String, String, String, Bytes) -> Self
+
 pub enum NetError {
   ConnectionFailed(String)
   ReadError(String)
@@ -236,6 +244,7 @@ pub fn Request::with_body(Self, Bytes) -> Self
 pub fn Request::with_form(Self, Array[(String, String)]) -> Self
 pub fn Request::with_header(Self, String, String) -> Self
 pub fn Request::with_method(Self, HttpMethod) -> Self
+pub fn Request::with_multipart(Self, Array[(String, String)], Array[MultipartFile]) -> Self
 pub fn Request::with_timeout(Self, Int32) -> Self
 pub fn Request::without_header(Self, String) -> Self
 
@@ -356,6 +365,7 @@ pub fn UnifiedClient::options(Self, String) -> Result[Response, HttpError]
 pub fn UnifiedClient::patch(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::post(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::post_form(Self, String, Array[(String, String)]) -> Result[Response, HttpError]
+pub fn UnifiedClient::post_multipart(Self, String, Array[(String, String)], Array[MultipartFile]) -> Result[Response, HttpError]
 pub fn UnifiedClient::put(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::with_cookie_jar(Self, CookieJar) -> Self
 pub fn UnifiedClient::with_cookies(Self) -> Self
@@ -412,6 +422,7 @@ pub fn &HttpClient::options(Self, String) -> Result[Response, HttpError]
 pub fn &HttpClient::patch(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn &HttpClient::post(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn &HttpClient::post_form(Self, String, Array[(String, String)]) -> Result[Response, HttpError]
+pub fn &HttpClient::post_multipart(Self, String, Array[(String, String)], Array[MultipartFile]) -> Result[Response, HttpError]
 pub fn &HttpClient::put(Self, String, Bytes) -> Result[Response, HttpError]
 
 pub trait KeyLogSink {

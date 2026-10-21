@@ -588,6 +588,20 @@ pub fn UnifiedClient::post_form(
   self.request(Request::new(POST, parsed_url).with_form(fields))
 }
 
+/// Send a multipart/form-data POST request.
+pub fn UnifiedClient::post_multipart(
+  self : UnifiedClient,
+  url : String,
+  fields : Array[(String, String)],
+  files : Array[MultipartFile],
+) -> Result[Response, HttpError] {
+  let parsed_url = match Url::parse(url) {
+    Ok(url) => url
+    Err(err) => return Err(err)
+  }
+  self.request(Request::new(POST, parsed_url).with_multipart(fields, files))
+}
+
 /// Convenience method for GET requests
 pub fn UnifiedClient::get(self : UnifiedClient, url : String) -> Result[Response, HttpError] {
   let parsed_url = match Url::parse(url) {

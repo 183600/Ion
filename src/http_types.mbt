@@ -582,6 +582,146 @@ pub fn Request::with_form(self : Request, fields : Array[(String, String)]) -> R
     .with_body(body.to_bytes())
 }
 
+/// A file part in a multipart/form-data request body.
+pub struct MultipartFile {
+  field_name : String
+  file_name : String
+  content_type : String
+  data : Bytes
+} derive(Eq, Debug)
+
+pub fn MultipartFile::new(
+  field_name : String,
+  file_name : String,
+  content_type : String,
+  data : Bytes,
+) -> MultipartFile {
+  MultipartFile::{ field_name, file_name, content_type, data }
+}
+
+fn multipart_param(value : String) -> String {
+  let output = Buffer(size_hint=value.length())
+  for byte in @utf8.encode(value) {
+    if byte == b'"' || byte == b'\\' {
+      output.write_byte(b'\\')
+      output.write_byte(byte)
+    } else if byte == b'\r' || byte == b'\n' {
+      output.write_byte(b' ')
+    } else {
+      output.write_byte(byte)
+    }
+  }
+  @utf8.decode_lossy(output.to_bytes()[:])
+}
+
+fn multipart_contains_bytes(haystack : Bytes, needle : Bytes) -> Bool {
+  if needle.length() == 0 {
+    return true
+  }
+  if needle.length() > haystack.length() {
+    return false
+  }
+  let mut index = 0
+  while index + needle.length() <= haystack.length() {
+    let mut offset = 0
+    while offset < needle.length() && haystack[index + offset] == needle[offset] {
+      offset = offset + 1
+    }
+    if offset == needle.length() {
+      return true
+    }
+    index = index + 1
+  }
+  false
+}
+
+fn multipart_contains_text(value : String, needle : Bytes) -> Bool {
+  multipart_contains_bytes(@utf8.encode(value), needle)
+}
+
+fn multipart_boundary_collides(
+  fields : Array[(String, String)],
+  files : Array[MultipartFile],
+  boundary : String,
+) -> Bool {
+  let needle = @utf8.encode(boundary)
+  for field in fields {
+    let (name, value) = field
+    if multipart_contains_text(name, needle) || multipart_contains_text(value, needle) {
+      return true
+    }
+  }
+  for file in files {
+    if multipart_contains_text(file.field_name, needle) ||
+      multipart_contains_text(file.file_name, needle) ||
+      multipart_contains_text(file.content_type, needle) ||
+      multipart_contains_bytes(file.data, needle) {
+      return true
+    }
+  }
+  false
+}
+
+fn multipart_generate_boundary(
+  fields : Array[(String, String)],
+  files : Array[MultipartFile],
+) -> String {
+  let base = "----FeatherFormBoundary"
+  let mut boundary = base
+  let mut suffix = 0
+  while multipart_boundary_collides(fields, files, boundary) {
+    suffix = suffix + 1
+    boundary = base + suffix.to_string()
+  }
+  boundary
+}
+
+fn multipart_body(
+  fields : Array[(String, String)],
+  files : Array[MultipartFile],
+  boundary : String,
+) -> Bytes {
+  let body = Buffer(size_hint=512)
+  for field in fields {
+    let (name, value) = field
+    body.write_bytes(
+      @utf8.encode(
+        "--" + boundary + "\r\nContent-Disposition: form-data; name=\"" +
+        multipart_param(name) + "\"\r\n\r\n",
+      ),
+    )
+    body.write_bytes(@utf8.encode(value))
+    body.write_bytes(@utf8.encode("\r\n"))
+  }
+  for file in files {
+    body.write_bytes(
+      @utf8.encode(
+        "--" + boundary + "\r\nContent-Disposition: form-data; name=\"" +
+        multipart_param(file.field_name) + "\"; filename=\"" +
+        multipart_param(file.file_name) + "\"\r\nContent-Type: " +
+        multipart_param(file.content_type) + "\r\n\r\n",
+      ),
+    )
+    body.write_bytes(file.data)
+    body.write_bytes(@utf8.encode("\r\n"))
+  }
+  body.write_bytes(@utf8.encode("--" + boundary + "--\r\n"))
+  body.to_bytes()
+}
+
+/// Encode text fields and files as a multipart/form-data request body. The
+/// boundary is generated automatically and cannot collide with any part.
+pub fn Request::with_multipart(
+  self : Request,
+  fields : Array[(String, String)],
+  files : Array[MultipartFile],
+) -> Request {
+  let boundary = multipart_generate_boundary(fields, files)
+  self
+    .set_header("Content-Type", "multipart/form-data; boundary=" + boundary)
+    .with_body(multipart_body(fields, files, boundary))
+}
+
 pub fn Request::with_basic_auth(self : Request, username : String, password : String) -> Request {
   let encoded = @base64.encode(@utf8.encode(username + ":" + password))
   Request::{ ..self, headers: self.headers.set("Authorization", "Basic " + encoded) }
@@ -837,6 +977,19 @@ pub fn &HttpClient::post_form(
     Err(err) => return Err(err)
   }
   self.request(Request::new(POST, parsed_url).with_form(fields))
+}
+
+pub fn &HttpClient::post_multipart(
+  self : &HttpClient,
+  url : String,
+  fields : Array[(String, String)],
+  files : Array[MultipartFile],
+) -> Result[Response, HttpError] {
+  let parsed_url = match Url::parse(url) {
+    Ok(url) => url
+    Err(err) => return Err(err)
+  }
+  self.request(Request::new(POST, parsed_url).with_multipart(fields, files))
 }
 
 pub fn &HttpClient::put(self : &HttpClient, url : String, body : Bytes) -> Result[Response, HttpError] {
