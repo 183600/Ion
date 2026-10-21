@@ -23,6 +23,7 @@ typedef struct {
   int capture_keylog;
   char keylog[8192];
   int keylog_length;
+  char error_message[256];
 } FeatherTls;
 
 static void feather_tls_keylog_callback(const SSL *ssl, const char *line) {
@@ -58,6 +59,15 @@ static void feather_tls_finalize(void *pointer) {
 static void feather_tls_record_error(FeatherTls *tls) {
   tls->library_error = ERR_get_error();
   tls->verify_error = tls->ssl != NULL ? (int)SSL_get_verify_result(tls->ssl) : 0;
+}
+
+static void feather_tls_set_error_message(FeatherTls *tls, const char *message) {
+  size_t length = strlen(message);
+  if (length >= sizeof(tls->error_message)) {
+    length = sizeof(tls->error_message) - 1;
+  }
+  memcpy(tls->error_message, message, length);
+  tls->error_message[length] = '\0';
 }
 
 MOONBIT_FFI_EXPORT
@@ -116,16 +126,34 @@ FeatherTls *feather_tls_new(
       return tls;
     }
     X509_STORE *store = SSL_CTX_get_cert_store(tls->ctx);
+    int loaded_roots = 0;
+    ERR_clear_error();
     for (;;) {
       X509 *root = PEM_read_bio_X509(root_bio, NULL, NULL, NULL);
       if (root == NULL) {
         ERR_clear_error();
         break;
       }
-      X509_STORE_add_cert(store, root);
+      if (X509_STORE_add_cert(store, root) != 1) {
+        unsigned long error = ERR_peek_last_error();
+        if (ERR_GET_REASON(error) != X509_R_CERT_ALREADY_IN_HASH_TABLE) {
+          X509_free(root);
+          feather_tls_record_error(tls);
+          feather_tls_set_error_message(tls, "Failed to add a certificate from the CA bundle");
+          BIO_free(root_bio);
+          return tls;
+        }
+        ERR_clear_error();
+      }
       X509_free(root);
+      loaded_roots++;
     }
     BIO_free(root_bio);
+    if (loaded_roots == 0) {
+      tls->last_error = -EINVAL;
+      feather_tls_set_error_message(tls, "CA bundle does not contain a valid certificate");
+      return tls;
+    }
   }
 
   if (certificate_length > 0 && private_key_length > 0) {
@@ -139,11 +167,11 @@ FeatherTls *feather_tls_new(
     }
     X509 *client_certificate = PEM_read_bio_X509(cert_bio, NULL, NULL, NULL);
     EVP_PKEY *client_key = PEM_read_bio_PrivateKey(key_bio, NULL, NULL, NULL);
-    BIO_free(cert_bio);
     BIO_free(key_bio);
     if (client_certificate == NULL || client_key == NULL) {
       if (client_certificate != NULL) X509_free(client_certificate);
       if (client_key != NULL) EVP_PKEY_free(client_key);
+      BIO_free(cert_bio);
       feather_tls_record_error(tls);
       return tls;
     }
@@ -152,9 +180,25 @@ FeatherTls *feather_tls_new(
     X509_free(client_certificate);
     EVP_PKEY_free(client_key);
     if (cert_ok != 1 || key_ok != 1 || SSL_CTX_check_private_key(tls->ctx) != 1) {
+      BIO_free(cert_bio);
       feather_tls_record_error(tls);
       return tls;
     }
+    for (;;) {
+      X509 *chain_certificate = PEM_read_bio_X509(cert_bio, NULL, NULL, NULL);
+      if (chain_certificate == NULL) {
+        ERR_clear_error();
+        break;
+      }
+      if (SSL_CTX_add_extra_chain_cert(tls->ctx, chain_certificate) != 1) {
+        X509_free(chain_certificate);
+        BIO_free(cert_bio);
+        feather_tls_record_error(tls);
+        feather_tls_set_error_message(tls, "Failed to load the client certificate chain");
+        return tls;
+      }
+    }
+    BIO_free(cert_bio);
   }
 
   tls->ssl = SSL_new(tls->ctx);
@@ -166,7 +210,23 @@ FeatherTls *feather_tls_new(
   SSL_set_app_data(tls->ssl, tls);
   SSL_CTX_set_keylog_callback(tls->ctx, feather_tls_keylog_callback);
 
-  if (SSL_set_tlsext_host_name(tls->ssl, name) != 1) {
+  char verify_name[1024];
+  memcpy(verify_name, name, (size_t)name_length + 1);
+  char *host_for_verify = verify_name;
+  if (name_length >= 2 && name[0] == '[' && name[name_length - 1] == ']') {
+    host_for_verify = verify_name + 1;
+    host_for_verify[name_length - 2] = '\0';
+  }
+  char *zone = strchr(host_for_verify, '%');
+  if (zone != NULL) {
+    *zone = '\0';
+  }
+  struct in_addr ipv4;
+  struct in6_addr ipv6;
+  int is_ip = inet_pton(AF_INET, host_for_verify, &ipv4) == 1 ||
+      inet_pton(AF_INET6, host_for_verify, &ipv6) == 1;
+
+  if (!is_ip && SSL_set_tlsext_host_name(tls->ssl, name) != 1) {
     feather_tls_record_error(tls);
     return tls;
   }
@@ -174,11 +234,8 @@ FeatherTls *feather_tls_new(
   if (verify != 0) {
     X509_VERIFY_PARAM *param = SSL_get0_param(tls->ssl);
     X509_VERIFY_PARAM_set_hostflags(param, X509_CHECK_FLAG_NO_PARTIAL_WILDCARDS);
-    struct in_addr ipv4;
-    struct in6_addr ipv6;
-    if (inet_pton(AF_INET, name, &ipv4) == 1 ||
-        inet_pton(AF_INET6, name, &ipv6) == 1) {
-      if (X509_VERIFY_PARAM_set1_ip_asc(param, name) != 1) {
+    if (is_ip) {
+      if (X509_VERIFY_PARAM_set1_ip_asc(param, host_for_verify) != 1) {
         feather_tls_record_error(tls);
         return tls;
       }
@@ -381,6 +438,23 @@ int32_t feather_tls_alpn(FeatherTls *tls, moonbit_bytes_t buffer, int32_t capaci
 }
 
 MOONBIT_FFI_EXPORT
+int32_t feather_tls_sni_name(FeatherTls *tls, moonbit_bytes_t buffer, int32_t capacity) {
+  if (tls == NULL || tls->ssl == NULL || capacity <= 0) {
+    return 0;
+  }
+  const char *name = SSL_get_servername(tls->ssl, TLSEXT_NAMETYPE_host_name);
+  if (name == NULL) {
+    return 0;
+  }
+  int32_t length = (int32_t)strlen(name);
+  if (length > capacity) {
+    length = capacity;
+  }
+  memcpy(buffer, name, (size_t)length);
+  return length;
+}
+
+MOONBIT_FFI_EXPORT
 int32_t feather_tls_last_error_message(
   FeatherTls *tls,
   moonbit_bytes_t buffer,
@@ -391,7 +465,9 @@ int32_t feather_tls_last_error_message(
   }
   const char *message = NULL;
   char verify_buffer[256];
-  if (tls->verify_error != 0) {
+  if (tls->error_message[0] != '\0') {
+    message = tls->error_message;
+  } else if (tls->verify_error != 0) {
     message = X509_verify_cert_error_string(tls->verify_error);
   }
   if (message == NULL && tls->library_error != 0) {
