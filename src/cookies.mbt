@@ -53,13 +53,14 @@ pub fn CookieJar::clear(self : CookieJar) -> Unit {
 /// Snapshot of the stored cookies. Expired cookies are omitted.
 pub fn CookieJar::cookies(self : CookieJar) -> List[Cookie] {
   let now_ms = @env.now()
-  let mut result = @list.List([])
+  let result : Array[Cookie] = []
   for cookie in self.cookies {
     if !cookie_expired(cookie, now_ms) {
-      result = result.prepend(cookie)
+      result.push(cookie)
     }
   }
-  result
+  result.sort_by(fn(a, b) { a.creation - b.creation })
+  @list.List(result[:])
 }
 
 ///|

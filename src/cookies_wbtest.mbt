@@ -325,3 +325,26 @@ test "impossible expiry dates are ignored" {
   jar.store_at(url, "leap=1; Expires=Thu, 29 Feb 2024 00:00:00 GMT; Path=/", 0)
   assert_eq(jar.cookie_header_at(url, after_2030), Some("bad=1; also=1"))
 }
+
+///|
+fn cookie_snapshot_names(jar : CookieJar) -> Array[String] {
+  let names : Array[String] = []
+  for cookie in jar.cookies() {
+    names.push(cookie.name)
+  }
+  names
+}
+
+///|
+test "cookie snapshots keep creation order and are stable" {
+  let jar = CookieJar::new()
+  let origin = cookie_test_url("http://example.com/")
+  jar.store_at(origin, "a=1; Path=/", 1000)
+  jar.store_at(origin, "b=2; Path=/", 1000)
+  jar.store_at(origin, "c=3; Path=/", 1000)
+  assert_eq(cookie_snapshot_names(jar), ["a", "b", "c"])
+  let _ = jar.cookie_header_at(origin, 1000)
+  assert_eq(cookie_snapshot_names(jar), ["a", "b", "c"])
+  jar.store_at(origin, "a=4; Path=/", 1000)
+  assert_eq(cookie_snapshot_names(jar), ["a", "b", "c"])
+}
