@@ -26,6 +26,9 @@ int32_t feather_read_file(moonbit_bytes_t path, moonbit_bytes_t output, int32_t 
   if (path_len <= 0 || path_len >= 4096) {
     return -EINVAL;
   }
+  if (memchr(path, '\0', (size_t)path_len) != NULL) {
+    return -EINVAL;
+  }
   char name[4096];
   memcpy(name, path, (size_t)path_len);
   name[path_len] = '\0';
@@ -84,12 +87,12 @@ int32_t feather_tcp_connect(moonbit_bytes_t host, int32_t port, int32_t timeout_
   if (host_len <= 0 || host_len >= 1024 || port < 1 || port > 65535) {
     return -EINVAL;
   }
+  if (memchr(host, '\0', (size_t)host_len) != NULL) {
+    return -EINVAL;
+  }
   char name[1024];
   memcpy(name, host, (size_t)host_len);
   name[host_len] = '\0';
-  if (strchr(name, '\0') != name + host_len) {
-    return -EINVAL;
-  }
 
   char service[16];
   snprintf(service, sizeof(service), "%d", (int)port);
@@ -344,6 +347,9 @@ MOONBIT_FFI_EXPORT
 int32_t feather_tcp_resolve(moonbit_bytes_t host, moonbit_bytes_t output, int32_t capacity) {
   int32_t host_len = Moonbit_array_length(host);
   if (host_len <= 0 || host_len >= 1024) {
+    return -EINVAL;
+  }
+  if (memchr(host, '\0', (size_t)host_len) != NULL) {
     return -EINVAL;
   }
   char name[1024];

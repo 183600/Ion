@@ -44,6 +44,44 @@ test "native dial hosts strip IPv6 brackets" {
 
 ///|
 #cfg(target="native")
+#borrow(host)
+extern "C" fn feather_tcp_connect_nul_probe(
+  host : Bytes,
+  port : Int,
+  timeout_ms : Int,
+) -> Int = "feather_tcp_connect"
+
+///|
+#cfg(target="native")
+#borrow(host, output)
+extern "C" fn feather_tcp_resolve_nul_probe(
+  host : Bytes,
+  output : Bytes,
+  capacity : Int,
+) -> Int = "feather_tcp_resolve"
+
+///|
+#cfg(target="native")
+#borrow(path, output)
+extern "C" fn feather_read_file_nul_probe(
+  path : Bytes,
+  output : Bytes,
+  capacity : Int,
+) -> Int = "feather_read_file"
+
+///|
+#cfg(target="native")
+test "native TCP FFI rejects embedded NUL bytes" {
+  let host = @utf8.encode("localhost\u{0}evil")
+  assert_eq(feather_tcp_connect_nul_probe(host, 1, 10), -22)
+  let output = Bytes::new(256)
+  assert_eq(feather_tcp_resolve_nul_probe(host, output, 256), -22)
+  let path = @utf8.encode("/nonexistent-feather-nul\u{0}ignored")
+  assert_eq(feather_read_file_nul_probe(path, output, 256), -22)
+}
+
+///|
+#cfg(target="native")
 #borrow(tls, buffer)
 extern "C" fn feather_tls_sni_name(
   tls : NativeTlsHandle,
