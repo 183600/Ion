@@ -133,10 +133,16 @@ pub fn TlsConfig::validate(self : TlsConfig) -> Result[Unit, TlsError] {
   if !valid_server_name(self.server_name) {
     return Err(InvalidConfig("Invalid TLS server name"))
   }
+  let mut alpn_wire_bytes = 0
   for protocol in self.alpn {
-    if !valid_alpn_protocol(protocol) || @utf8.encode(protocol).length() > 255 {
+    let length = @utf8.encode(protocol).length()
+    if !valid_alpn_protocol(protocol) || length > 255 {
       return Err(InvalidConfig("Invalid ALPN protocol"))
     }
+    alpn_wire_bytes = alpn_wire_bytes + 1 + length
+  }
+  if alpn_wire_bytes > 65535 {
+    return Err(InvalidConfig("Invalid ALPN protocol list"))
   }
   match self.client_auth {
     Some(client) => {
