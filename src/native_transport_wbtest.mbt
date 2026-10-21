@@ -107,7 +107,7 @@ test "native TLS sends SNI only for host names" {
   let length = feather_tls_sni_name(dotted, buffer, 128)
   assert_eq(@utf8.decode_lossy(buffer.exact_view(start=0, end=length)), "example.com")
 
-  for address in ["127.0.0.1", "[::1]", "fe80::1%eth0"] {
+  for address in ["127.0.0.1", "127.0.0.1.", "[::1]", "fe80::1%eth0"] {
     let tls = feather_tls_new(
       @utf8.encode(address),
       b"",

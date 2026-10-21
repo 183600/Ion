@@ -221,6 +221,13 @@ FeatherTls *feather_tls_new(
   if (zone != NULL) {
     *zone = '\0';
   }
+  // A trailing dot denotes the DNS root. Strip it before IP detection as well
+  // so an address such as `127.0.0.1.` is recognized as an IP literal and is
+  // never placed in SNI.
+  size_t verify_length = strlen(host_for_verify);
+  if (verify_length > 1 && host_for_verify[verify_length - 1] == '.') {
+    host_for_verify[verify_length - 1] = '\0';
+  }
   struct in_addr ipv4;
   struct in6_addr ipv6;
   int is_ip = inet_pton(AF_INET, host_for_verify, &ipv4) == 1 ||
