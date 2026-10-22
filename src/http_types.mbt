@@ -83,7 +83,7 @@ pub fn HttpMethod::custom(value : String) -> Result[HttpMethod, HttpError] {
     }
   }
   match HttpMethod::parse(value) {
-    Ok(method) => Ok(method)
+    Ok(verb) => Ok(verb)
     Err(_) => Ok(Custom(value))
   }
 }

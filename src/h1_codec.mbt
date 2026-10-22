@@ -450,8 +450,8 @@ fn request_is_chunked(headers : Headers) -> Result[Bool, HttpError] {
 
 /// Methods for which an absent body still has a defined meaning, so an explicit
 /// `Content-Length: 0` should be sent when the caller did not frame the body.
-fn method_defines_body(method : HttpMethod) -> Bool {
-  match method {
+fn method_defines_body(verb : HttpMethod) -> Bool {
+  match verb {
     POST => true
     PUT => true
     PATCH => true

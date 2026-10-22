@@ -226,6 +226,7 @@ fn h2_header_block_payload_impl(
   Ok(frame.payload.exact_view(start=start, end=end).to_owned())
 }
 
+#warnings("-unused_value")
 fn h2_header_block_payload(frame : H2Frame) -> Result[Bytes, HttpError] {
   h2_header_block_payload_impl(frame, true)
 }

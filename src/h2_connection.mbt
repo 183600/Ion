@@ -824,6 +824,7 @@ fn h2_upgrade_protocol(request : Request) -> String? {
   None
 }
 
+#warnings("-unused_value")
 fn h2_request_headers(request : Request) -> Result[Array[(String, String)], HttpError] {
   h2_request_headers_with_protocol(request, None)
 }

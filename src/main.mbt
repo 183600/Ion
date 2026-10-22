@@ -195,7 +195,7 @@ fn split_proxy_bypass(value : String) -> Array[String] {
   patterns
 }
 
-fn run_request(method : HttpMethod, url : String, body : String) -> Bool {
+fn run_request(verb : HttpMethod, url : String, body : String) -> Bool {
   let mut client = UnifiedClient::new()
   match env_tls_config() {
     Ok(Some(config)) => client = client.with_tls_config(config)
@@ -261,7 +261,7 @@ fn run_request(method : HttpMethod, url : String, body : String) -> Bool {
         Err(_) => ()
       }
   }
-  let succeeded = if method == GET && body.length() == 0 {
+  let succeeded = if verb == GET && body.length() == 0 {
     match client.get(url) {
       Ok(response) => print_response(response)
       Err(err) => {
@@ -270,7 +270,7 @@ fn run_request(method : HttpMethod, url : String, body : String) -> Bool {
       }
     }
   } else {
-    match Request::from_url(method, url) {
+    match Request::from_url(verb, url) {
       Ok(request) => {
         let request = if body.length() > 0 {
           request.with_body(@utf8.encode(body))
@@ -298,7 +298,7 @@ fn run_request(method : HttpMethod, url : String, body : String) -> Bool {
 fn parse_cli_request(args : Array[String]) -> (String, String, String) {
   // The runtime argument list includes the executable name as its first entry.
   let index = if args.length() > 0 { 1 } else { 0 }
-  let mut method = ""
+  let mut method_text = ""
   let mut url = ""
   let mut body = ""
   if index < args.length() {
@@ -309,7 +309,7 @@ fn parse_cli_request(args : Array[String]) -> (String, String, String) {
     if lower.has_prefix("http://") || lower.has_prefix("https://") {
       url = first
     } else {
-      method = lower
+      method_text = lower
       if index + 1 < args.length() {
         url = args[index + 1].trim().to_owned()
         if index + 2 < args.length() {
@@ -318,7 +318,7 @@ fn parse_cli_request(args : Array[String]) -> (String, String, String) {
       }
     }
   }
-  (method, url, body)
+  (method_text, url, body)
 }
 
 fn wants_help(args : Array[String]) -> Bool {
@@ -336,7 +336,7 @@ fn main {
     print_usage()
     return
   }
-  let (method, parsed_url, body) = parse_cli_request(command_args)
+  let (method_text, parsed_url, body) = parse_cli_request(command_args)
   let mut url = parsed_url
   if url.length() == 0 {
     match @env.get_env_var("FEATHER_URL") {
@@ -349,13 +349,13 @@ fn main {
     os_exit(1)
     return
   }
-  let verb = if method.length() == 0 {
+  let verb = if method_text.length() == 0 {
     GET
   } else {
-    match HttpMethod::parse(method) {
+    match HttpMethod::parse(method_text) {
       Ok(verb) => verb
       Err(_) => {
-        println("error: unsupported method '" + method + "'")
+        println("error: unsupported method '" + method_text + "'")
         os_exit(1)
         return
       }

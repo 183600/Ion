@@ -15,9 +15,9 @@ test "custom methods validate RFC 9110 tokens" {
 ///|
 test "custom methods are encoded as HTTP/1.1 request methods" {
   let stream = regression_mock_stream("", 0, 0)
-  let method = HttpMethod::custom("PROPFIND").unwrap()
+  let verb = HttpMethod::custom("PROPFIND").unwrap()
   let url = Url::parse("http://example.com/dav/resource").unwrap()
-  let request = Request::new(method, url)
+  let request = Request::new(verb, url)
   let codec = H1Codec::new(stream)
   assert_true(codec.encode_request(request) is Ok(_))
   let wire = @utf8.decode_lossy(stream.output.to_bytes()[:])
@@ -27,9 +27,9 @@ test "custom methods are encoded as HTTP/1.1 request methods" {
 
 ///|
 test "custom methods are encoded as HTTP/2 :method fields" {
-  let method = HttpMethod::custom("PROPFIND").unwrap()
+  let verb = HttpMethod::custom("PROPFIND").unwrap()
   let url = Url::parse("http://example.com/dav/resource").unwrap()
-  let fields = h2_request_headers(Request::new(method, url)).unwrap()
+  let fields = h2_request_headers(Request::new(verb, url)).unwrap()
   assert_true(fields.contains((":method", "PROPFIND")))
   assert_true(fields.contains((":path", "/dav/resource")))
 }

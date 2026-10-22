@@ -511,23 +511,23 @@ fn same_request_target(first : Url, second : Url) -> Bool {
   first.query == second.query
 }
 
-fn redirect_method(status : Int, method : HttpMethod) -> (HttpMethod, Bool) {
+fn redirect_method(status : Int, verb : HttpMethod) -> (HttpMethod, Bool) {
   // Returns the method for the next request and whether the body is kept.
   match status {
     303 =>
-      if method == HEAD {
+      if verb == HEAD {
         (HEAD, false)
       } else {
         (GET, false)
       }
     301 | 302 =>
-      if method == POST {
+      if verb == POST {
         (GET, false)
       } else {
-        (method, true)
+        (verb, true)
       }
-    300 | 307 | 308 => (method, true)
-    _ => (method, true)
+    300 | 307 | 308 => (verb, true)
+    _ => (verb, true)
   }
 }
 
@@ -610,8 +610,8 @@ fn request_error_is_unprocessed_goaway(err : HttpError) -> Bool {
   }
 }
 
-fn request_can_be_retried(method : HttpMethod) -> Bool {
-  match method {
+fn request_can_be_retried(verb : HttpMethod) -> Bool {
+  match verb {
     GET => true
     HEAD => true
     PUT => true
