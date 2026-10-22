@@ -323,3 +323,17 @@ test "HTTP/1 upgrade protocols must be HTTP tokens" {
     assert_eq(stream.output.to_bytes().length(), 0)
   }
 }
+
+test "HTTP/2 rejects an Upgrade protocol it cannot express" {
+  let request = Request::new(
+    GET,
+    Url::parse("https://example.com/socket").unwrap(),
+  )
+    .with_header("Connection", "upgrade")
+    .with_header("Upgrade", "bad protocol")
+  let stream = h2_frame_mock_stream(h2_test_settings(), 0)
+  match h2_request(stream, request) {
+    Ok(_) => fail("unexpressible HTTP/2 Upgrade was silently dropped")
+    Err(err) => assert_eq(err, InvalidHeader("Upgrade"))
+  }
+}

@@ -1859,6 +1859,14 @@ fn H2ClientConnection::request_with_limit_and_callback(
     Err(err) => return Err(err)
   }
   let upgrade_protocol = h2_upgrade_protocol(request)
+  if upgrade_protocol is None &&
+    headers_have_token(request.headers, "Connection", "upgrade") &&
+    request.headers.contains("Upgrade") {
+    // HTTP/2 cannot forward the HTTP/1 Upgrade field and silently dropping an
+    // unexpressible protocol would change the request semantics. Match the
+    // HTTP/1 wire-boundary validation instead.
+    return Err(InvalidHeader("Upgrade"))
+  }
   let extended_protocol = match upgrade_protocol {
     Some(protocol) => {
       if !self.flow.peer_enable_connect_protocol {
