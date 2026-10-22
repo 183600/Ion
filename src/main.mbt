@@ -38,6 +38,7 @@ fn print_usage() -> Unit {
   println("       feather <method> <url> [body]          send a request with the given method")
   println("       FEATHER_URL=<url> feather              send a GET request to FEATHER_URL")
   println("       FEATHER_PROXY=<url> feather            route requests through an HTTP proxy")
+  println("       FEATHER_NO_PROXY=<list> feather        comma-separated hosts to reach directly")
   println("       FEATHER_CA=<pem file> feather          trust an extra CA certificate bundle")
   println("       FEATHER_CLIENT_CERT=<pem file>         client certificate for mTLS")
   println("       FEATHER_CLIENT_KEY=<pem file>          client private key for mTLS")
@@ -164,6 +165,18 @@ fn print_response(response : Response) -> Bool {
   }
 }
 
+/// Split a `NO_PROXY`-style comma-separated list into individual patterns.
+fn split_proxy_bypass(value : String) -> Array[String] {
+  let patterns : Array[String] = []
+  for part in value.split(",") {
+    let pattern = part.trim()
+    if pattern.length() > 0 {
+      patterns.push(pattern.to_owned())
+    }
+  }
+  patterns
+}
+
 fn run_request(method : HttpMethod, url : String, body : String) -> Bool {
   let mut client = UnifiedClient::new()
   match env_tls_config() {
@@ -183,6 +196,12 @@ fn run_request(method : HttpMethod, url : String, body : String) -> Bool {
           let _ = client.close_all()
           return false
         }
+      }
+      match @env.get_env_var("FEATHER_NO_PROXY") {
+        Some(bypass) => if bypass.length() > 0 {
+          client = client.with_proxy_bypass(split_proxy_bypass(bypass))
+        }
+        None => ()
       }
     }
     None => ()
