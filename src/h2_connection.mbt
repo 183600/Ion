@@ -85,9 +85,9 @@ fn H2ResponseState::new(
   }
 }
 
-/// Extract the last processed stream id from a GOAWAY payload. The high bit of
-/// the first four octets is reserved and must be ignored.
-fn h2_parse_goaway_last_stream_id(payload : Bytes) -> Result[Int, HttpError] {
+/// Extract the last processed stream id and error code from a GOAWAY payload.
+/// The high bit of the first four octets is reserved and must be ignored.
+fn h2_parse_goaway(payload : Bytes) -> Result[(Int, Int), HttpError] {
   if payload.length() < 8 {
     return Err(ProtocolError("Invalid HTTP/2 GOAWAY length"))
   }
@@ -95,7 +95,11 @@ fn h2_parse_goaway_last_stream_id(payload : Bytes) -> Result[Int, HttpError] {
     (payload[1].to_int() << 16) |
     (payload[2].to_int() << 8) |
     payload[3].to_int()
-  Ok(stream_id)
+  let error_code = (payload[4].to_int() << 24) |
+    (payload[5].to_int() << 16) |
+    (payload[6].to_int() << 8) |
+    payload[7].to_int()
+  Ok((stream_id, error_code))
 }
 
 fn h2_parse_status(value : String) -> Result[Int, HttpError] {
@@ -453,7 +457,7 @@ fn H2ResponseState::handle_frame(
       }
     }
     H2_FRAME_GOAWAY => {
-      let last_stream_id = match h2_parse_goaway_last_stream_id(frame.payload) {
+      let (last_stream_id, error_code) = match h2_parse_goaway(frame.payload) {
         Ok(value) => value
         Err(err) => return Err(err)
       }
@@ -464,6 +468,11 @@ fn H2ResponseState::handle_frame(
         None => ()
       }
       self.goaway_last_stream_id = Some(last_stream_id)
+      if error_code != 0 {
+        return Err(
+          ProtocolError("HTTP/2 GOAWAY error " + error_code.to_string()),
+        )
+      }
       // A graceful GOAWAY may be sent before the server has finished the
       // streams it already accepted. Those responses are still valid; only
       // streams newer than the advertised id must fail.

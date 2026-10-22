@@ -712,3 +712,18 @@ test "http2 closes a connection after a failed exchange" {
     Err(err) => assert_eq(err, ConnectionClosed)
   }
 }
+
+test "http2 surfaces a nonzero GOAWAY error code" {
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_GOAWAY, 0, 0, b"\x00\x00\x00\x01\x00\x00\x00\x01"),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match connection.request(request) {
+    Ok(_) => fail("nonzero HTTP/2 GOAWAY error code was ignored")
+    Err(err) => assert_eq(err, ProtocolError("HTTP/2 GOAWAY error 1"))
+  }
+  assert_false(connection.is_open())
+}
