@@ -37,6 +37,13 @@ struct H2Frame {
   payload : Bytes
 }
 
+fn h2_priority_dependency(payload : Bytes, offset : Int) -> Int {
+  ((payload[offset].to_int() & 0x7f) << 24) |
+  (payload[offset + 1].to_int() << 16) |
+  (payload[offset + 2].to_int() << 8) |
+  payload[offset + 3].to_int()
+}
+
 fn h2_parse_window_update(payload : Bytes) -> Result[Int, HttpError] {
   if payload.length() != 4 {
     return Err(ProtocolError("Invalid HTTP/2 WINDOW_UPDATE length"))
@@ -123,8 +130,13 @@ fn h2_read_frame(reader : StreamReader) -> Result[H2Frame, HttpError] {
   if frame_type == H2_FRAME_WINDOW_UPDATE && length != 4 {
     return Err(ProtocolError("Invalid HTTP/2 WINDOW_UPDATE length"))
   }
-  if frame_type == H2_FRAME_PRIORITY && length != 5 {
-    return Err(ProtocolError("Invalid HTTP/2 PRIORITY length"))
+  if frame_type == H2_FRAME_PRIORITY {
+    if length != 5 {
+      return Err(ProtocolError("Invalid HTTP/2 PRIORITY length"))
+    }
+    if h2_priority_dependency(payload, 0) == stream_id {
+      return Err(ProtocolError("HTTP/2 stream cannot depend on itself"))
+    }
   }
   if frame_type == H2_FRAME_GOAWAY && length < 8 {
     return Err(ProtocolError("Invalid HTTP/2 GOAWAY length"))
@@ -200,6 +212,9 @@ fn h2_header_block_payload(frame : H2Frame) -> Result[Bytes, HttpError] {
   if (frame.flags & H2_FLAG_PRIORITY) != 0 {
     if start + 5 > end {
       return Err(ProtocolError("Truncated HTTP/2 priority fields"))
+    }
+    if h2_priority_dependency(frame.payload, start) == frame.stream_id {
+      return Err(ProtocolError("HTTP/2 stream cannot depend on itself"))
     }
     start = start + 5
   }

@@ -362,3 +362,29 @@ test "http2 window update validates its payload length" {
   )
   assert_eq(h2_parse_window_update(b"\x00\x00\x00\x02").unwrap(), 2)
 }
+
+///|
+test "http2 rejects a stream that depends on itself" {
+  let priority = h2_frame_bytes(
+    H2_FRAME_PRIORITY,
+    0,
+    1,
+    b"\x00\x00\x00\x01\x10",
+  )
+  assert_eq(
+    h2_frame_error(
+      h2_read_frame(StreamReader::new(h2_frame_mock_stream(priority, 0))),
+    ),
+    Some(ProtocolError("HTTP/2 stream cannot depend on itself")),
+  )
+  let headers = H2Frame::{
+    frame_type: H2_FRAME_HEADERS,
+    flags: H2_FLAG_END_HEADERS | H2_FLAG_PRIORITY,
+    stream_id: 1,
+    payload: b"\x00\x00\x00\x01\x10",
+  }
+  assert_eq(
+    h2_header_block_payload(headers),
+    Err(ProtocolError("HTTP/2 stream cannot depend on itself")),
+  )
+}
