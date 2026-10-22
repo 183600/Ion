@@ -109,6 +109,7 @@ pub fn ConnectionLease::release(Self, Bool) -> Unit
 
 type ConnectionPoolState
 
+#alias(UnifiedConnector)
 pub struct Connector {
   dialer : &Dialer
   tls_provider : &TlsProvider

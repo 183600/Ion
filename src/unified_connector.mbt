@@ -1903,3 +1903,7 @@ pub fn Connector::close_all(self : Connector) -> Result[Unit, HttpError] {
   self.pool.val.active = @list.List([])
   Ok(())
 }
+
+/// Backwards-compatible name for the pooling connector described in the
+/// project documentation.
+pub type UnifiedConnector = Connector
