@@ -1249,8 +1249,19 @@ pub fn Response::read_body_decoded_with_limit(
       has_encoding = true
     }
   }
+  // An intermediate decoding stage can legitimately be larger than the final
+  // plaintext (for example the inner gzip member in `gzip(gzip(data))`). Only
+  // the last stage determines the decoded output size, so allow intermediate
+  // stages to reach the response body cap while bounding the final stage by
+  // the caller's limit. The encoded input may itself be larger than the
+  // response's configured cap when the caller explicitly raises the limit.
+  let intermediate_limit = if self.max_body_bytes > limit {
+    self.max_body_bytes
+  } else {
+    limit
+  }
   let raw = if has_encoding {
-    match self.read_body() {
+    match self.read_body_with_limit(intermediate_limit) {
       Ok(body) => body
       Err(err) => return Err(err)
     }
@@ -1262,16 +1273,6 @@ pub fn Response::read_body_decoded_with_limit(
   }
   if raw.length() == 0 || !has_encoding {
     return Ok(raw)
-  }
-  // An intermediate decoding stage can legitimately be larger than the final
-  // plaintext (for example the inner gzip member in `gzip(gzip(data))`). Only
-  // the last stage determines the decoded output size, so allow intermediate
-  // stages to reach the response body cap while bounding the final stage by
-  // the caller's limit.
-  let intermediate_limit = if self.max_body_bytes > limit {
-    self.max_body_bytes
-  } else {
-    limit
   }
   let decoded = match decode_encodings(
     combined,
