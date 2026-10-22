@@ -97,10 +97,19 @@ struct StreamReader {
   stream : &Stream
   mut pending : Bytes
   mut pending_offset : Int
+  // Wire bytes consumed by the most recent read_line, including the line
+  // terminator. This keeps size limits byte-based even when invalid UTF-8 is
+  // decoded lossily for parsing.
+  mut last_line_bytes : Int
 }
 
 fn StreamReader::new(stream : &Stream) -> StreamReader {
-  StreamReader::{ stream, pending: b"", pending_offset: 0 }
+  StreamReader::{
+    stream,
+    pending: b"",
+    pending_offset: 0,
+    last_line_bytes: 0,
+  }
 }
 
 fn StreamReader::next_byte(self : StreamReader) -> Result[Byte?, NetError] {
@@ -836,6 +845,7 @@ fn read_line(
   }
   let bytes = line.to_bytes()
   let length = bytes.length()
+  reader.last_line_bytes = length
   let end = if length >= 2 && bytes[length - 2] == b'\r' && bytes[length - 1] == b'\n' {
     length - 2
   } else if length >= 1 && bytes[length - 1] == b'\n' {
@@ -864,7 +874,7 @@ fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] 
     Ok(None) => return Err(ProtocolError("Invalid response line"))
     Err(err) => return Err(NetworkError(err))
   }
-  let mut head_bytes = @utf8.encode(response_line).length() + 2
+  let mut head_bytes = reader.last_line_bytes
   if head_bytes > MAX_RESPONSE_HEAD_BYTES {
     return Err(ProtocolError("Response header section too large"))
   }
@@ -918,7 +928,7 @@ fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] 
     if line.length() == 0 {
       break
     }
-    head_bytes = head_bytes + @utf8.encode(line).length() + 2
+    head_bytes = head_bytes + reader.last_line_bytes
     if head_bytes > MAX_RESPONSE_HEAD_BYTES {
       return Err(ProtocolError("Response header section too large"))
     }
@@ -1519,7 +1529,7 @@ fn consume_chunk_trailers(
       trailers.val = collected
       return Ok(())
     }
-    trailer_bytes = trailer_bytes + @utf8.encode(trailer).length() + 2
+    trailer_bytes = trailer_bytes + reader.last_line_bytes
     if trailer_bytes > MAX_RESPONSE_HEAD_BYTES {
       return Err(NetError::ReadError("chunked trailer section too large"))
     }
