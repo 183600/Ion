@@ -301,3 +301,37 @@ test "local HTTP/2 request errors preserve the pooled session" {
   assert_eq(dialer.count, 1)
   let _ = client.close_all()
 }
+
+test "UnifiedClient retries a request refused on a fresh HTTP/2 connection" {
+  let refused_input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_RST_STREAM, 0, 1, b"\x00\x00\x00\x07"),
+  ])
+  let response_headers = hpack_encode([(":status", "200"), ("x-retry", "refused")])
+  let fresh_input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+  ])
+  let refused = h2_frame_mock_stream(refused_input, 0)
+  let fresh = h2_frame_mock_stream(fresh_input, 0)
+  let refused_stream : &Stream = refused
+  let fresh_stream : &Stream = fresh
+  let dialer = H2SequenceDialer::{
+    streams: [refused_stream, fresh_stream],
+    index: 0,
+    count: 0,
+  }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let connector = Connector::new(dialer, provider).with_http2(true)
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new().with_follow_redirects(false),
+    redirect_count: 0,
+  }
+  let response = client.get("https://example.com/refused").unwrap()
+  assert_eq(dialer.count, 2)
+  assert_eq(response.status, 200)
+  assert_eq(response.headers.get("x-retry"), Some("refused"))
+  assert_false(refused.is_open)
+  let _ = client.close_all()
+}

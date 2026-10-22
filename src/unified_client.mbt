@@ -334,6 +334,15 @@ fn request_error_is_local(err : HttpError) -> Bool {
   }
 }
 
+/// A REFUSED_STREAM reset guarantees that the server did not process the
+/// request, so it is safe to retry even on a freshly opened connection.
+fn request_error_is_refused(err : HttpError) -> Bool {
+  match err {
+    ProtocolError(message) => message == "HTTP/2 stream refused"
+    _ => false
+  }
+}
+
 fn request_can_be_retried(method : HttpMethod) -> Bool {
   match method {
     GET => true
@@ -455,8 +464,10 @@ fn UnifiedClient::do_request_once(
         lease.release(true)
         return Err(normalize_http_error(err))
       }
+      let refused = request_error_is_refused(err)
       lease.release(false)
-      if allow_retry && lease.reused && request_can_be_retried(request.method) {
+      if allow_retry && request_can_be_retried(request.method) &&
+        (lease.reused || refused) {
         return self.do_request_once(req, false)
       }
       return Err(normalize_http_error(err))

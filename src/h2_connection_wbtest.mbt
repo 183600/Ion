@@ -815,3 +815,18 @@ test "http2 rejects 101 Switching Protocols" {
     Err(err) => assert_eq(err, ProtocolError("HTTP/2 does not allow 101 Switching Protocols"))
   }
 }
+
+test "http2 reports REFUSED_STREAM distinctly" {
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_RST_STREAM, 0, 1, b"\x00\x00\x00\x07"),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match connection.request(request) {
+    Ok(_) => fail("refused HTTP/2 stream was accepted")
+    Err(err) => assert_eq(err, ProtocolError("HTTP/2 stream refused"))
+  }
+  assert_false(connection.is_open())
+}

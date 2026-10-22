@@ -102,6 +102,16 @@ fn h2_parse_goaway(payload : Bytes) -> Result[(Int, Int), HttpError] {
   Ok((stream_id, error_code))
 }
 
+fn h2_parse_rst_stream_error(payload : Bytes) -> Result[Int, HttpError] {
+  if payload.length() != 4 {
+    return Err(ProtocolError("Invalid HTTP/2 RST_STREAM length"))
+  }
+  Ok((payload[0].to_int() << 24) |
+    (payload[1].to_int() << 16) |
+    (payload[2].to_int() << 8) |
+    payload[3].to_int())
+}
+
 fn h2_parse_status(value : String) -> Result[Int, HttpError] {
   if value.length() != 3 {
     return Err(ProtocolError("Invalid HTTP/2 :status"))
@@ -457,7 +467,15 @@ fn H2ResponseState::handle_frame(
     }
     H2_FRAME_RST_STREAM => {
       if frame.stream_id == self.stream_id {
-        Err(ProtocolError("HTTP/2 stream reset by server"))
+        let error_code = match h2_parse_rst_stream_error(frame.payload) {
+          Ok(value) => value
+          Err(err) => return Err(err)
+        }
+        if error_code == 7 {
+          Err(ProtocolError("HTTP/2 stream refused"))
+        } else {
+          Err(ProtocolError("HTTP/2 stream reset by server"))
+        }
       } else {
         Ok(())
       }
