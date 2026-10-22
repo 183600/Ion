@@ -46,6 +46,7 @@ test "SOCKS5 URL parsing applies the default port and decodes credentials" {
   let explicit = Proxy::new_socks5("socks5h://[2001:db8::1]:1081").unwrap()
   assert_eq(explicit.authority(), "[2001:db8::1]:1081")
   assert_true(Proxy::new_socks5("http://proxy.example") is Err(_))
+  assert_eq(Proxy::new_socks5("socks5://proxy.example:").unwrap().authority(), "proxy.example:1080")
   assert_true(Proxy::new_socks5("socks5://proxy.example/path") is Err(_))
   assert_true(Proxy::new_socks5("socks5://proxy.example?x") is Err(_))
   assert_true(Proxy::new("socks5://proxy.example:1080") is Err(_))

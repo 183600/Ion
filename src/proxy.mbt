@@ -153,16 +153,29 @@ pub fn Proxy::new_socks5(url : String) -> Result[Proxy, HttpError] {
     Some(index) => authority[index + 1:].to_owned()
     None => authority
   }
-  let has_port = if host_port.has_prefix("[") {
+  let port_text : String? = if host_port.has_prefix("[") {
     match host_port.find("]") {
-      Some(index) => index + 1 < host_port.length() &&
-        host_port.get_char(index + 1) == Some(':')
-      None => false
+      Some(index) =>
+        if index + 1 < host_port.length() &&
+          host_port.get_char(index + 1) == Some(':') {
+          Some(host_port[index + 2:].to_owned())
+        } else {
+          None
+        }
+      None => None
     }
   } else {
-    host_port.find(":").is_some()
+    match host_port.find(":") {
+      Some(index) => Some(host_port[index + 1:].to_owned())
+      None => None
+    }
   }
-  let port = if has_port { parsed.port } else { 1080 }
+  // An explicit empty port means the scheme default, as in RFC 3986, so only
+  // a non-empty port overrides SOCKS5's 1080.
+  let port = match port_text {
+    Some(text) => if text.length() > 0 { parsed.port } else { 1080 }
+    None => 1080
+  }
   let (socks_username, socks_password) = match proxy_userinfo(url) {
     Some(userinfo) =>
       if userinfo.length() == 0 {
