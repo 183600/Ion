@@ -189,10 +189,25 @@ fn H2ResponseState::apply_header_block(
     Ok(fields) => fields
     Err(err) => return Err(err)
   }
-  if fields.length() == 0 {
-    return Err(ProtocolError("Empty HTTP/2 header block"))
-  }
   let trailers_mode = self.status_seen
+  if fields.length() == 0 {
+    if !trailers_mode {
+      return Err(ProtocolError("Empty HTTP/2 header block"))
+    }
+    // An empty trailing HEADERS block is a valid (if unusual) way to end a
+    // stream: there are simply no trailer fields. It still has to satisfy the
+    // same END_STREAM and Content-Length rules as a non-empty trailer block.
+    if !end_stream {
+      return Err(ProtocolError("HTTP/2 trailers did not end the stream"))
+    }
+    if !self.body_forbidden && self.content_length is Some(length) &&
+      self.body.length() != length {
+      return Err(ProtocolError("HTTP/2 response body does not match Content-Length"))
+    }
+    self.trailers = Headers::new()
+    self.ended = true
+    return Ok(())
+  }
   let mut status_text : String? = None
   let mut regular = Headers::new()
   let mut pseudo_allowed = true

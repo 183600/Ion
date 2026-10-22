@@ -910,3 +910,37 @@ test "http2 accepts ordinary fields in trailers" {
   assert_eq(response.trailers().get("content-type"), Some("text/plain"))
   assert_eq(response.trailers().get("cache-control"), Some("no-store"))
 }
+
+test "http2 accepts an empty trailer block that ends the stream" {
+  let response_headers = hpack_encode([(":status", "200"), ("content-length", "5")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, response_headers),
+    h2_test_frame(H2_FRAME_DATA, 0, 1, @utf8.encode("hello")),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      b"",
+    ),
+  ])
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  let response = h2_request(h2_frame_mock_stream(input, 0), request).unwrap()
+  assert_eq(response.read_body().unwrap(), @utf8.encode("hello"))
+  assert_eq(response.trailers().length(), 0)
+}
+
+test "http2 rejects an empty trailer block that does not end the stream" {
+  let response_headers = hpack_encode([(":status", "200")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, response_headers),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, b""),
+  ])
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match h2_request(h2_frame_mock_stream(input, 0), request) {
+    Ok(_) => fail("HTTP/2 empty trailers without END_STREAM were accepted")
+    Err(err) =>
+      assert_eq(err, ProtocolError("HTTP/2 trailers did not end the stream"))
+  }
+}
