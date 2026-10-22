@@ -71,6 +71,12 @@ fn h2_frame_is_buffered(reader : StreamReader) -> Bool {
   let length = (reader.pending[offset].to_int() << 16) |
     (reader.pending[offset + 1].to_int() << 8) |
     reader.pending[offset + 2].to_int()
+  // An oversized frame must be handed to h2_read_frame so it can report the
+  // protocol error. Waiting for its (illegal) payload would leave the frame
+  // buffered and let a completed response return the session to the pool.
+  if length > H2_MAX_FRAME_SIZE {
+    return true
+  }
   available >= 9 + length
 }
 
