@@ -730,6 +730,30 @@ test "DNS hosts that look like IPvFuture use domain matching" {
 }
 
 ///|
+test "bracketed IPvFuture hosts cannot use domain cookies" {
+  let jar = CookieJar::new()
+  let literal = cookie_test_url("http://[v1.foo]/")
+  jar.store_at(literal, "a=1; Domain=v1.foo; Path=/", 1000)
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://sub.v1.foo/"), 1000),
+    None,
+  )
+  assert_eq(jar.cookie_header_at(literal, 1000), Some("a=1"))
+
+  // A DNS cookie for the same-looking text must not leak to the literal host.
+  jar.store_at(
+    cookie_test_url("http://v1.foo/"),
+    "b=1; Domain=v1.foo; Path=/",
+    1000,
+  )
+  assert_eq(jar.cookie_header_at(literal, 1000), Some("a=1"))
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://sub.v1.foo/"), 1000),
+    Some("b=1"),
+  )
+}
+
+///|
 test "cookie domain suffixes never match IP address hosts" {  let jar = CookieJar::new()
   jar.store_at(
     cookie_test_url("http://0.0.1/"),

@@ -190,18 +190,24 @@ fn cookie_canonical_host(host : String) -> String {
 }
 
 ///|
-fn cookie_domain_matches(cookie : Cookie, host : String) -> Bool {
+fn cookie_domain_matches(
+  cookie : Cookie,
+  host : String,
+  literal_host : Bool,
+) -> Bool {
   let host = cookie_canonical_host(host)
   if cookie.host_only {
     return host == cookie.domain
   }
+  // RFC 6265 §5.1.3 only allows domain cookies to match host names, never
+  // IP literals. The caller distinguishes bracketed IPvFuture literals (whose
+  // text looks like a DNS name) from real DNS names.
+  if literal_host {
+    return false
+  }
   if host == cookie.domain {
     return true
   }
-  // RFC 6265 §5.1.3 only allows a suffix match when the request host is a
-  // host name; an IP address must never match a domain cookie's suffix.
-  // IPvFuture literals are not IP addresses here: unbracketed text such as
-  // `v1.example` is a DNS name as far as cookies are concerned.
   !is_ipv4_literal(host) && !is_ipv6_literal_with_zone(host) &&
   host.has_suffix("." + cookie.domain)
 }
@@ -635,15 +641,18 @@ fn cookie_from_set_cookie(
           // must still become a host-only cookie.
           return None
         }
-        let numeric_host = is_ipv4_literal(host) || is_ipv6_literal_with_zone(host)
+        // Bracketed IPvFuture literals have DNS-looking text but are still IP
+        // literals; they must never be treated as a domain suffix.
+        let literal_host = url.bracketed || is_ipv4_literal(host) ||
+          is_ipv6_literal_with_zone(host)
         if valid_url_host_chars(candidate) &&
           (host == candidate ||
-            (!numeric_host && host.has_suffix("." + candidate))) {
+            (!literal_host && host.has_suffix("." + candidate))) {
           domain = candidate
           // RFC 6265bis: a Domain attribute for an IP address host, or for a
           // public-suffix label identical to the request host, is ignored,
           // leaving the cookie host-only instead of domain-scoped.
-          host_only = numeric_host || single_label
+          host_only = literal_host || single_label
         } else {
           // A Domain attribute that does not cover the request host must not
           // be stored, otherwise a response could set cookies for other sites.
@@ -852,6 +861,8 @@ pub fn CookieJar::cookie_header_at(
     "/" + url.path
   }
   let secure = url.is_secure()
+  let literal_host = url.bracketed || is_ipv4_literal(url.host) ||
+    is_ipv6_literal_with_zone(url.host)
   let candidates : Array[Cookie] = []
   let mut alive = @list.List([])
   for cookie in self.cookies {
@@ -859,7 +870,7 @@ pub fn CookieJar::cookie_header_at(
       continue
     }
     alive = alive.prepend(cookie)
-    if cookie_domain_matches(cookie, url.host) &&
+    if cookie_domain_matches(cookie, url.host, literal_host) &&
       cookie_path_matches(cookie.path, request_path) &&
       (!cookie.secure || secure) {
       candidates.push(cookie)
