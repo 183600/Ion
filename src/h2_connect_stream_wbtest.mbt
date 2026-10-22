@@ -82,3 +82,49 @@ test "UnifiedClient keeps an HTTP/2 CONNECT lease until the tunnel closes" {
   assert_false(stream.is_open)
   assert_eq(client.connector.pool.val.active.length(), 0)
 }
+
+test "http1 CONNECT tunnel body forwards writes" {
+  let stream = regression_mock_stream(
+    "HTTP/1.1 200 Connection Established\r\n\r\n",
+    0,
+    0,
+  )
+  let codec = H1Codec::new(stream)
+  codec.encode_request(
+    Request::new(CONNECT, Url::parse("http://example.com:80/").unwrap()),
+  ).unwrap()
+  let response = codec.decode_response().unwrap()
+  let payload = Buffer(size_hint=4)
+  payload.write_bytes(b"ping")
+  assert_eq(response.body.write(payload).unwrap(), 4)
+  assert_true(
+    @utf8.decode_lossy(stream.output.to_bytes()[:]).has_suffix("ping"),
+  )
+  response.body.close().unwrap()
+}
+
+test "http2 CONNECT tunnel body forwards writes as DATA" {
+  let headers = hpack_encode([(":status", "200")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, headers),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let response = h2_request(
+    stream,
+    Request::new(CONNECT, Url::parse("http://example.com:80/").unwrap()),
+  ).unwrap()
+  let payload = Buffer(size_hint=4)
+  payload.write_bytes(b"ping")
+  assert_eq(response.body.write(payload).unwrap(), 4)
+  let mut seen = false
+  for frame in h2_test_client_frames(stream) {
+    if frame.frame_type == H2_FRAME_DATA && frame.stream_id == 1 {
+      assert_eq(frame.payload, b"ping")
+      seen = true
+    }
+  }
+  assert_true(seen)
+  response.body.close().unwrap()
+  assert_false(stream.is_open)
+}

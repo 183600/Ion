@@ -894,6 +894,7 @@ pub fn H1Codec::decode_response(
       headers: response_head.headers,
       status: response_head.status,
       head: is_head,
+      tunnel: connect_tunnel,
       max_body_bytes: self.max_body_bytes,
       body_mode: BodyUnknown,
       remaining: 0,
@@ -970,6 +971,9 @@ struct ResponseStream {
   headers : Headers
   status : Int
   head : Bool
+  // A successful CONNECT response switches the same byte stream to an opaque
+  // tunnel, so the body shim must also forward writes.
+  tunnel : Bool
   mut max_body_bytes : Int
   mut body_mode : ResponseBodyMode
   mut remaining : Int
@@ -1744,11 +1748,15 @@ pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buf
 }
 
 pub impl Stream for ResponseStream with fn write(self : ResponseStream, buf : Buffer) -> Result[Int, NetError] {
-  let _ = buf
   if !self.is_open {
     return Err(NetError::Closed)
   }
-  Err(NetError::WriteError("Response stream is read-only"))
+  if self.tunnel {
+    self.reader.val.stream.write(buf)
+  } else {
+    let _ = buf
+    Err(NetError::WriteError("Response stream is read-only"))
+  }
 }
 
 pub impl Stream for ResponseStream with fn flush(self : ResponseStream) -> Result[Unit, NetError] {

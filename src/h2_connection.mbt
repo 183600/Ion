@@ -1075,6 +1075,27 @@ fn H2TunnelBody::sync_trailers(self : H2TunnelBody) -> Unit {
   self.trailers.val = self.state.trailers
 }
 
+fn H2TunnelBody::advance(self : H2TunnelBody) -> Result[Unit, NetError] {
+  let frame = match h2_read_frame(self.connection.reader) {
+    Ok(frame) => frame
+    Err(err) => {
+      self.finish()
+      self.is_open = false
+      return Err(h2_tunnel_read_error(err))
+    }
+  }
+  match self.state.handle_frame(frame, self.flow, self.connection.stream) {
+    Ok(_) => ()
+    Err(err) => {
+      self.finish()
+      self.is_open = false
+      return Err(h2_tunnel_read_error(err))
+    }
+  }
+  self.sync_trailers()
+  Ok(())
+}
+
 fn H2TunnelBody::drain_buffered(self : H2TunnelBody, buf : Buffer) -> Int {
   let data = self.state.body.to_bytes()
   if data.length() == 0 {
@@ -1107,23 +1128,10 @@ pub impl Stream for H2TunnelBody with fn read(
     return Ok(0)
   }
   while true {
-    let frame = match h2_read_frame(self.connection.reader) {
-      Ok(frame) => frame
-      Err(err) => {
-        self.finish()
-        self.is_open = false
-        return Err(h2_tunnel_read_error(err))
-      }
-    }
-    match self.state.handle_frame(frame, self.flow, self.connection.stream) {
+    match self.advance() {
       Ok(_) => ()
-      Err(err) => {
-        self.finish()
-        self.is_open = false
-        return Err(h2_tunnel_read_error(err))
-      }
+      Err(err) => return Err(err)
     }
-    self.sync_trailers()
     if self.state.body.length() > 0 {
       return Ok(self.drain_buffered(buf))
     }
@@ -1139,11 +1147,67 @@ pub impl Stream for H2TunnelBody with fn write(
   self : H2TunnelBody,
   buf : Buffer,
 ) -> Result[Int, NetError] {
-  let _ = buf
   if !self.is_open {
     return Err(NetError::Closed)
   }
-  Err(NetError::WriteError("HTTP/2 tunnel body is read-only"))
+  if self.state.ended {
+    self.finish()
+    return Err(NetError::Closed)
+  }
+  let data = buf.to_bytes()
+  if data.length() == 0 {
+    return Ok(0)
+  }
+  let mut sent = 0
+  while sent < data.length() {
+    if self.state.ended {
+      self.finish()
+      return if sent > 0 { Ok(sent) } else { Err(NetError::Closed) }
+    }
+    let available = if self.flow.connection_send_window < self.flow.stream_send_window {
+      self.flow.connection_send_window
+    } else {
+      self.flow.stream_send_window
+    }
+    if available <= 0 {
+      match self.advance() {
+        Ok(_) => ()
+        Err(err) => return if sent > 0 { Ok(sent) } else { Err(err) }
+      }
+      continue
+    }
+    let remaining = data.length() - sent
+    let frame_limit = h2_outbound_frame_limit(self.flow.peer_max_frame_size)
+    let wanted = if remaining < available { remaining } else { available }
+    let take = if wanted < frame_limit { wanted } else { frame_limit }
+    match h2_write_frame(
+      self.connection.stream,
+      H2_FRAME_DATA,
+      0,
+      self.state.stream_id,
+      data.exact_view(start=sent, end=sent + take).to_owned(),
+    ) {
+      Ok(_) => ()
+      Err(err) => {
+        self.finish()
+        self.is_open = false
+        return if sent > 0 { Ok(sent) } else { Err(h2_tunnel_read_error(err)) }
+      }
+    }
+    match self.connection.stream.flush() {
+      Ok(_) => ()
+      Err(err) => {
+        self.finish()
+        self.is_open = false
+        let mapped = h2_tunnel_read_error(http_error_from_net(err))
+        return if sent > 0 { Ok(sent) } else { Err(mapped) }
+      }
+    }
+    sent = sent + take
+    self.flow.connection_send_window = self.flow.connection_send_window - take
+    self.flow.stream_send_window = self.flow.stream_send_window - take
+  }
+  Ok(sent)
 }
 
 pub impl Stream for H2TunnelBody with fn flush(
