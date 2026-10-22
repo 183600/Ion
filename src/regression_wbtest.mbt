@@ -788,6 +788,38 @@ pub impl Dialer for RegressionProxyDialer with fn resolve(self : RegressionProxy
   Ok(@list.List([host]))
 }
 
+struct TimeoutRecordingDialer {
+  stream : &Stream
+  mut timeout_ms : Int
+  mut dials : Int
+}
+
+pub impl Dialer for TimeoutRecordingDialer with fn dial_tcp(
+  self : TimeoutRecordingDialer,
+  host : String,
+  port : Int,
+) -> Result[&Stream, NetError] {
+  let _ = host
+  let _ = port
+  self.dials = self.dials + 1
+  Ok(self.stream)
+}
+
+pub impl Dialer for TimeoutRecordingDialer with fn resolve(
+  self : TimeoutRecordingDialer,
+  host : String,
+) -> Result[List[String], NetError] {
+  let _ = self
+  Ok(@list.List([host]))
+}
+
+pub impl Dialer for TimeoutRecordingDialer with fn set_timeout(
+  self : TimeoutRecordingDialer,
+  timeout_ms : Int,
+) {
+  self.timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
+}
+
 ///|
 test "HEAD response body is not consumed" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhelloNEXT"
@@ -1902,6 +1934,17 @@ test "connector applies its timeout to HTTP connections" {
   let url = Url::parse("http://example.com/").unwrap()
   let _ = connector.connect(url).unwrap()
   assert_eq(stream.last_timeout, 1234)
+}
+///|
+test "connector applies its timeout before opening the socket" {
+  let stream = regression_mock_stream("", 1, 0)
+  let dialer = TimeoutRecordingDialer::{ stream, timeout_ms: 30000, dials: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+    .with_timeout(4321)
+  let url = Url::parse("http://example.com/").unwrap()
+  let _ = connector.connect(url).unwrap()
+  assert_eq(dialer.timeout_ms, 4321)
+  assert_eq(dialer.dials, 1)
 }
 ///|
 test "redirect origin comparison ignores host case" {

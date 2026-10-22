@@ -1062,6 +1062,10 @@ fn Connector::connect_impl(
     Some(proxy) => (proxy.url.host, proxy.url.port)
     None => (host, port)
   }
+  // The dialer may have been constructed with a different timeout (for
+  // example before `UnifiedClient::with_timeout` was called), so apply the
+  // connector's current policy before it opens the socket.
+  self.dialer.set_timeout(self.timeout_ms)
   let raw_stream = match self.dialer.dial_tcp(dial_host, dial_port) {
     Ok(stream) => stream
     Err(err) => return Err(NetworkError(err))

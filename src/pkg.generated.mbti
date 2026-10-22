@@ -348,7 +348,7 @@ pub fn RootStore::new() -> Self
 type StreamReader
 
 pub struct TcpDialer {
-  timeout_ms : Int32
+  mut timeout_ms : Int32
 } derive(Eq, @debug.Debug)
 pub fn TcpDialer::new() -> Self
 pub fn TcpDialer::with_timeout(Int32) -> Self
@@ -405,7 +405,7 @@ pub enum TlsVersion {
 } derive(Eq, @debug.Debug)
 
 pub struct UnavailableTcpDialer {
-  timeout_ms : Int32
+  mut timeout_ms : Int32
 } derive(Eq, @debug.Debug)
 
 pub struct UnavailableTlsProvider {
@@ -484,6 +484,7 @@ pub using @list {type List}
 pub trait Dialer {
   fn dial_tcp(Self, String, Int32) -> Result[&Stream, NetError]
   fn resolve(Self, String) -> Result[@list.List[String], NetError]
+  fn set_timeout(Self, Int32) -> Unit
 }
 
 pub trait HttpClient {

@@ -216,7 +216,7 @@ pub impl Stream for NativeTcpStream with fn local_addr(
 
 /// TCP dialer that performs real native DNS resolution and socket connections.
 pub struct NativeTcpDialer {
-  timeout_ms : Int
+  mut timeout_ms : Int
 } derive(Eq, Debug)
 
 pub fn NativeTcpDialer::new() -> NativeTcpDialer {
@@ -225,6 +225,13 @@ pub fn NativeTcpDialer::new() -> NativeTcpDialer {
 
 pub fn NativeTcpDialer::with_timeout(timeout_ms : Int) -> NativeTcpDialer {
   NativeTcpDialer::{ timeout_ms: if timeout_ms < 0 { 0 } else { timeout_ms } }
+}
+
+pub impl Dialer for NativeTcpDialer with fn set_timeout(
+  self : NativeTcpDialer,
+  timeout_ms : Int,
+) {
+  self.timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
 }
 
 pub impl Dialer for NativeTcpDialer with fn dial_tcp(

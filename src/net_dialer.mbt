@@ -5,6 +5,14 @@ pub trait Dialer {
 
   // Optional: Resolve hostname to IP addresses
   fn resolve(Self, String) -> Result[List[String], NetError]
+
+  // Optional: Apply the connector's current dial timeout. Dialers that do not
+  // support it keep their construction-time timeout.
+  fn set_timeout(Self, Int) -> Unit = _
+}
+
+impl Dialer with fn set_timeout(_self, _timeout_ms) {
+  ()
 }
 
 fn valid_tcp_host(host : String) -> Bool {
@@ -67,7 +75,7 @@ fn tcp_dial_host(host : String) -> String {
 /// connections come from `NativeTcpDialer` (`default_dialer()` on native
 /// targets).
 pub struct TcpDialer {
-  timeout_ms : Int
+  mut timeout_ms : Int
 } derive(Eq, Debug)
 
 pub fn TcpDialer::new() -> TcpDialer {
@@ -76,6 +84,10 @@ pub fn TcpDialer::new() -> TcpDialer {
 
 pub fn TcpDialer::with_timeout(timeout_ms : Int) -> TcpDialer {
   TcpDialer::{ timeout_ms: if timeout_ms < 0 { 0 } else { timeout_ms } }
+}
+
+pub impl Dialer for TcpDialer with fn set_timeout(self : TcpDialer, timeout_ms : Int) {
+  self.timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
 }
 
 pub impl Dialer for TcpDialer with fn dial_tcp(self : TcpDialer, host : String, port : Int) -> Result[&Stream, NetError] {
@@ -127,12 +139,20 @@ const TCP_TRANSPORT_UNAVAILABLE : String =
 /// errors.
 #cfg(not(target="native"))
 pub struct UnavailableTcpDialer {
-  timeout_ms : Int
+  mut timeout_ms : Int
 } derive(Eq, Debug)
 
 #cfg(not(target="native"))
 fn UnavailableTcpDialer::with_timeout(timeout_ms : Int) -> UnavailableTcpDialer {
   UnavailableTcpDialer::{ timeout_ms: if timeout_ms < 0 { 0 } else { timeout_ms } }
+}
+
+#cfg(not(target="native"))
+impl Dialer for UnavailableTcpDialer with fn set_timeout(
+  self : UnavailableTcpDialer,
+  timeout_ms : Int,
+) {
+  self.timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
 }
 
 #cfg(not(target="native"))
