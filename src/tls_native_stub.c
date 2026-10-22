@@ -274,6 +274,16 @@ FeatherTls *feather_tls_new(
         feather_tls_record_error(tls);
         return tls;
       }
+    } else if (is_bracketed) {
+      // A bracketed non-IP literal is an IPvFuture address. TLS certificate
+      // identities only define DNS names and IPv4/IPv6 addresses, so there is
+      // no valid name to verify against. Treating its text as a DNS name
+      // would let a certificate for the same-looking DNS name authenticate an
+      // IPvFuture authority, which the rest of the client keeps distinct.
+      tls->last_error = -EINVAL;
+      feather_tls_set_error_message(
+        tls, "IPvFuture literals cannot be verified as TLS server names");
+      return tls;
     } else if (SSL_set1_host(tls->ssl, canonical_name) != 1) {
       feather_tls_record_error(tls);
       return tls;

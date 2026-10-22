@@ -234,6 +234,25 @@ test "native TLS sends SNI only for host names" {
 
 ///|
 #cfg(target="native")
+test "native TLS rejects IPvFuture literals when verification is enabled" {
+  let tls = feather_tls_new(
+    @utf8.encode("[v1.foo]"),
+    b"",
+    0,
+    1,
+    0,
+    b"",
+    0,
+    b"",
+    0,
+    b"",
+    0,
+  )
+  assert_eq(feather_tls_ready(tls), 0)
+}
+
+///|
+#cfg(target="native")
 test "native TLS rejects server names with embedded NUL bytes" {
   let tls = feather_tls_new(
     @utf8.encode("example.com\u{0}evil"),
