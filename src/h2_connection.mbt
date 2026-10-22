@@ -269,8 +269,9 @@ fn H2ResponseState::apply_header_block(
       if !h2_valid_field_name(name) || !h2_valid_field_value(value) {
         return Err(ProtocolError("Invalid HTTP/2 response header"))
       }
-      if h2_forbidden_header(name) ||
-        (name == "te" && value.trim().to_lower() != "trailers") {
+      // TE is a request-only field in HTTP/2 (RFC 9113 §8.2.2); a response
+      // containing it is malformed even when its value is "trailers".
+      if h2_forbidden_header(name) || name == "te" {
         return Err(ProtocolError("Connection-specific HTTP/2 response header"))
       }
       if trailers_mode && h2_forbidden_trailer_field(name) {

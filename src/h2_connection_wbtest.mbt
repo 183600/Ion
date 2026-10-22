@@ -1292,3 +1292,22 @@ test "http2 strips connection-nominated Content-Length without validating it" {
   assert_eq(h2_test_header_value(headers, "content-length"), None)
   assert_eq(h2_test_header_value(headers, ":method"), Some("POST"))
 }
+
+test "http2 rejects TE in responses" {
+  let response_headers = hpack_encode([(":status", "200"), ("te", "trailers")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
+  ])
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match h2_request(h2_frame_mock_stream(input, 0), request) {
+    Ok(_) => fail("HTTP/2 response with TE was accepted")
+    Err(err) =>
+      assert_eq(err, ProtocolError("Connection-specific HTTP/2 response header"))
+  }
+}
