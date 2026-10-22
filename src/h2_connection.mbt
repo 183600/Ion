@@ -115,6 +115,19 @@ fn h2_valid_field_name(name : String) -> Bool {
   true
 }
 
+fn h2_valid_field_value(value : String) -> Bool {
+  if !valid_header_value(value) {
+    return false
+  }
+  if value.length() == 0 {
+    return true
+  }
+  let first = value.get_char(0)
+  let last = value.get_char(value.length() - 1)
+  !(first == Some(' ') || first == Some('\t') ||
+    last == Some(' ') || last == Some('\t'))
+}
+
 fn h2_forbidden_header(name : String) -> Bool {
   match name.to_lower() {
     "connection" | "proxy-connection" | "keep-alive" | "transfer-encoding" |
@@ -151,7 +164,7 @@ fn H2ResponseState::apply_header_block(
       status_text = Some(value)
     } else {
       pseudo_allowed = false
-      if !h2_valid_field_name(name) || !valid_header_value(value) {
+      if !h2_valid_field_name(name) || !h2_valid_field_value(value) {
         return Err(ProtocolError("Invalid HTTP/2 response header"))
       }
       if h2_forbidden_header(name) ||

@@ -498,3 +498,29 @@ test "http2 rejects frames on unknown streams" {
     Err(err) => assert_eq(err, ProtocolError("HTTP/2 HEADERS on unknown stream"))
   }
 }
+
+test "http2 rejects leading and trailing whitespace in field values" {
+  for value in [" leading", "trailing ", "\ttabbed", "tabbed\t"] {
+    let response_headers = hpack_encode([(":status", "200"), ("x-test", value)])
+    let input = h2_test_concat([
+      h2_test_settings(),
+      h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+    ])
+    let stream = h2_frame_mock_stream(input, 0)
+    let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+    match h2_request(stream, request) {
+      Ok(_) => fail("HTTP/2 field value with surrounding whitespace was accepted")
+      Err(err) => assert_eq(err, ProtocolError("Invalid HTTP/2 response header"))
+    }
+  }
+
+  let response_headers = hpack_encode([(":status", "200"), ("x-test", "inner space")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  let response = h2_request(stream, request).unwrap()
+  assert_eq(response.headers.get("x-test"), Some("inner space"))
+}
