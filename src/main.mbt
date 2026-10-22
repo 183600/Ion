@@ -45,6 +45,7 @@ fn print_usage() -> Unit {
   println("       FEATHER_CLIENT_KEY=<pem file>          client private key for mTLS")
   println("       FEATHER_INSECURE=1 feather             DISABLE TLS verification (unsafe)")
   println("       FEATHER_KEYLOG=1 feather               print TLS key material (debug)")
+  println("       FEATHER_H2C=1 feather                  use HTTP/2 prior knowledge for http://")
   println("Methods: get, post, put, delete, head, options, patch, trace")
 }
 
@@ -203,6 +204,13 @@ fn run_request(method : HttpMethod, url : String, body : String) -> Bool {
       report(err)
       return false
     }
+  }
+  let h2c = match @env.get_env_var("FEATHER_H2C") {
+    Some(value) => value == "1" || value.to_lower() == "true"
+    None => false
+  }
+  if h2c {
+    client = client.with_http2_prior_knowledge(true)
   }
   let explicit_proxy = match @env.get_env_var("FEATHER_PROXY") {
     Some(value) => if value.length() > 0 {
