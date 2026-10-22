@@ -110,6 +110,91 @@ pub fn UnifiedClient::with_options(options : ClientOptions) -> UnifiedClient {
   }
 }
 
+/// A copy of the options currently used by this client.
+pub fn UnifiedClient::client_options(self : UnifiedClient) -> ClientOptions {
+  self.options
+}
+
+/// Change the per-request timeout used when a request does not override it.
+/// This also changes the timeout applied to future dials and TLS handshakes.
+pub fn UnifiedClient::with_timeout(self : UnifiedClient, timeout_ms : Int) -> UnifiedClient {
+  let timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
+  let _ = self.connector.with_timeout(timeout_ms)
+  UnifiedClient::{
+    connector: self.connector,
+    options: ClientOptions::{ ..self.options, timeout_ms },
+    redirect_count: 0,
+  }
+}
+
+/// Set the User-Agent sent on requests that do not supply one.
+pub fn UnifiedClient::with_user_agent(
+  self : UnifiedClient,
+  user_agent : String,
+) -> UnifiedClient {
+  UnifiedClient::{
+    connector: self.connector,
+    options: ClientOptions::{ ..self.options, user_agent },
+    redirect_count: 0,
+  }
+}
+
+/// Enable or disable following redirects for this client.
+pub fn UnifiedClient::with_follow_redirects(
+  self : UnifiedClient,
+  follow_redirects : Bool,
+) -> UnifiedClient {
+  UnifiedClient::{
+    connector: self.connector,
+    options: ClientOptions::{ ..self.options, follow_redirects },
+    redirect_count: 0,
+  }
+}
+
+/// Change the maximum number of redirects followed for one request.
+pub fn UnifiedClient::with_max_redirects(
+  self : UnifiedClient,
+  max_redirects : Int,
+) -> UnifiedClient {
+  UnifiedClient::{
+    connector: self.connector,
+    options: ClientOptions::{
+      ..self.options,
+      max_redirects: if max_redirects < 0 { 0 } else { max_redirects },
+    },
+    redirect_count: 0,
+  }
+}
+
+/// Change the maximum response body size for this client.
+pub fn UnifiedClient::with_max_response_body_bytes(
+  self : UnifiedClient,
+  max_response_body_bytes : Int,
+) -> UnifiedClient {
+  UnifiedClient::{
+    connector: self.connector,
+    options: ClientOptions::{
+      ..self.options,
+      max_response_body_bytes: if max_response_body_bytes < 0 {
+        0
+      } else {
+        max_response_body_bytes
+      },
+    },
+    redirect_count: 0,
+  }
+}
+
+/// Enable or disable HTTP/2 negotiation through ALPN. Existing pooled
+/// connections negotiated under the previous policy are closed.
+pub fn UnifiedClient::with_http2(self : UnifiedClient, enabled : Bool) -> UnifiedClient {
+  UnifiedClient::{
+    connector: self.connector.with_http2(enabled),
+    options: ClientOptions::{ ..self.options, http2: enabled },
+    redirect_count: 0,
+  }
+}
+
 /// Build a client with an explicit dialer and TLS provider.
 pub fn UnifiedClient::with_transport(
   dialer : &Dialer,

@@ -151,3 +151,26 @@ test "one-shot helpers preserve chunked trailers" {
   assert_eq(buffered.text().unwrap(), "hello")
   assert_eq(buffered.trailers().get("x-checksum"), Some("abc"))
 }
+
+///|
+test "UnifiedClient exposes runtime option builders" {
+  let client = UnifiedClient::new()
+    .with_user_agent("Runtime/1.0")
+    .with_timeout(-5)
+    .with_follow_redirects(false)
+    .with_max_redirects(-1)
+    .with_max_response_body_bytes(-1)
+    .with_http2(false)
+  let options = client.client_options()
+  assert_eq(options.user_agent, "Runtime/1.0")
+  assert_eq(options.timeout_ms, 0)
+  assert_eq(options.follow_redirects, false)
+  assert_eq(options.max_redirects, 0)
+  assert_eq(options.max_response_body_bytes, 0)
+  assert_eq(options.http2, false)
+  assert_false(client.connector.http2_enabled())
+
+  let enabled = client.with_http2(true)
+  assert_true(enabled.client_options().http2)
+  assert_true(enabled.connector.http2_enabled())
+}
