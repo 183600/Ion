@@ -64,6 +64,7 @@ struct H2ResponseState {
   mut in_header_block : Bool
   mut header_block_end_stream : Bool
   mut goaway_last_stream_id : Int?
+  mut informational_count : Int
 }
 
 fn H2ResponseState::new(
@@ -89,6 +90,7 @@ fn H2ResponseState::new(
     in_header_block: false,
     header_block_end_stream: false,
     goaway_last_stream_id: None,
+    informational_count: 0,
   }
 }
 
@@ -272,6 +274,10 @@ fn H2ResponseState::apply_header_block(
     if end_stream {
       return Err(ProtocolError("Informational HTTP/2 response ended the stream"))
     }
+    self.informational_count = self.informational_count + 1
+    if self.informational_count > 8 {
+      return Err(ProtocolError("Too many informational HTTP/2 responses"))
+    }
     return Ok(())
   }
   self.status = status
@@ -308,16 +314,32 @@ fn H2ResponseState::apply_header_block(
   Ok(())
 }
 
+fn h2_int_in_array(values : Array[Int], target : Int) -> Bool {
+  for value in values {
+    if value == target {
+      return true
+    }
+  }
+  false
+}
+
 fn h2_apply_settings(
   payload : Bytes,
   flow : H2FlowState,
 ) -> Result[Unit, HttpError] {
+  let seen : Array[Int] = []
   let mut offset = 0
   while offset < payload.length() {
     if offset + 6 > payload.length() {
       return Err(ProtocolError("Invalid HTTP/2 SETTINGS length"))
     }
     let identifier = (payload[offset].to_int() << 8) | payload[offset + 1].to_int()
+    // RFC 9113 §6.5: a SETTINGS frame containing the same parameter more than
+    // once is a connection error. This applies to unknown identifiers too.
+    if h2_int_in_array(seen, identifier) {
+      return Err(ProtocolError("Duplicate HTTP/2 setting"))
+    }
+    seen.push(identifier)
     let value_high = payload[offset + 2].to_int()
     let value = (value_high << 24) |
       (payload[offset + 3].to_int() << 16) |
@@ -927,32 +949,37 @@ fn H2ClientConnection::read_initial_settings(
       }
     }
     match frame.frame_type {
-      H2_FRAME_SETTINGS =>
-        if (frame.flags & H2_FLAG_ACK) == 0 {
-          match h2_apply_settings(frame.payload, flow) {
-            Ok(_) => ()
-            Err(err) => {
-              self.closed = true
-              return Err(err)
-            }
-          }
-          match h2_write_frame(self.stream, H2_FRAME_SETTINGS, H2_FLAG_ACK, 0, b"") {
-            Ok(_) => ()
-            Err(err) => {
-              self.closed = true
-              return Err(err)
-            }
-          }
-          match self.stream.flush() {
-            Ok(_) => ()
-            Err(err) => {
-              self.closed = true
-              return Err(http_error_from_net(err))
-            }
-          }
-          self.settings_received = true
-          return Ok(())
+      H2_FRAME_SETTINGS => {
+        if (frame.flags & H2_FLAG_ACK) != 0 {
+          // The server connection preface must begin with its own SETTINGS
+          // frame, not an acknowledgement of the client's settings.
+          self.closed = true
+          return Err(ProtocolError("HTTP/2 server did not start with SETTINGS"))
         }
+        match h2_apply_settings(frame.payload, flow) {
+          Ok(_) => ()
+          Err(err) => {
+            self.closed = true
+            return Err(err)
+          }
+        }
+        match h2_write_frame(self.stream, H2_FRAME_SETTINGS, H2_FLAG_ACK, 0, b"") {
+          Ok(_) => ()
+          Err(err) => {
+            self.closed = true
+            return Err(err)
+          }
+        }
+        match self.stream.flush() {
+          Ok(_) => ()
+          Err(err) => {
+            self.closed = true
+            return Err(http_error_from_net(err))
+          }
+        }
+        self.settings_received = true
+        return Ok(())
+      }
       H2_FRAME_PING =>
         if (frame.flags & H2_FLAG_ACK) == 0 {
           match h2_write_frame(self.stream, H2_FRAME_PING, H2_FLAG_ACK, 0, frame.payload) {

@@ -1088,3 +1088,65 @@ test "http2 ignores WINDOW_UPDATE for a stream that already ended" {
   assert_eq(response.status, 200)
   assert_true(connection.is_open())
 }
+
+test "http2 rejects duplicate settings identifiers" {
+  let response_headers = hpack_encode([(":status", "200")])
+  for payload in [
+    h2_settings_payload([
+      (H2_SETTINGS_MAX_FRAME_SIZE, H2_MAX_FRAME_SIZE),
+      (H2_SETTINGS_MAX_FRAME_SIZE, H2_MAX_FRAME_SIZE + 1),
+    ]),
+    h2_settings_payload([(0x99, 1), (0x99, 2)]),
+  ] {
+    let input = h2_test_concat([
+      h2_test_frame(H2_FRAME_SETTINGS, 0, 0, payload),
+      h2_test_frame(
+        H2_FRAME_HEADERS,
+        H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+        1,
+        response_headers,
+      ),
+    ])
+    let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+    match h2_request(h2_frame_mock_stream(input, 0), request) {
+      Ok(_) => fail("duplicate HTTP/2 setting was accepted")
+      Err(err) => assert_eq(err, ProtocolError("Duplicate HTTP/2 setting"))
+    }
+  }
+}
+
+test "http2 server preface must not begin with a settings acknowledgement" {
+  let response_headers = hpack_encode([(":status", "200")])
+  let input = h2_test_concat([
+    h2_test_frame(H2_FRAME_SETTINGS, H2_FLAG_ACK, 0, b""),
+    h2_test_settings(),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
+  ])
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match h2_request(h2_frame_mock_stream(input, 0), request) {
+    Ok(_) => fail("HTTP/2 settings acknowledgement was accepted as the preface")
+    Err(err) =>
+      assert_eq(err, ProtocolError("HTTP/2 server did not start with SETTINGS"))
+  }
+}
+
+test "http2 bounds informational responses" {
+  let informational = hpack_encode([(":status", "103"), ("link", "</style.css>")])
+  let frames : Array[Bytes] = [h2_test_settings()]
+  for _ in 0..<9 {
+    frames.push(
+      h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, informational),
+    )
+  }
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match h2_request(h2_frame_mock_stream(h2_test_concat(frames), 0), request) {
+    Ok(_) => fail("unbounded HTTP/2 informational responses were accepted")
+    Err(err) =>
+      assert_eq(err, ProtocolError("Too many informational HTTP/2 responses"))
+  }
+}
