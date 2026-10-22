@@ -248,12 +248,15 @@ fn trim_header_ows(value : String) -> String {
   value[start:end].to_owned()
 }
 
-fn valid_request_target(value : String) -> Bool {
+fn valid_request_target(value : String, allow_brackets? : Bool) -> Bool {
   if value.length() == 0 || !valid_encoded_url_chars(value) {
     return false
   }
   for ch in value {
     if ch <= ' ' || ch == '\u{7f}' || ch == '#' {
+      return false
+    }
+    if (ch == '[' || ch == ']') && !allow_brackets.unwrap_or(false) {
       return false
     }
   }
@@ -447,16 +450,17 @@ pub fn H1Codec::encode_request(
   req : Request,
   absolute_form? : Bool,
 ) -> Result[Unit, HttpError] {
-  let target = if absolute_form.unwrap_or(false) {
-    if req.url.scheme.to_lower() == "http" {
-      req.url.origin() + req.url.request_target()
-    } else {
-      req.url.request_target()
-    }
+  if !valid_url_component_chars(req.url.path) ||
+    !valid_url_component_chars(req.url.query) {
+    return Err(InvalidUrl("Invalid request target"))
+  }
+  let absolute = absolute_form.unwrap_or(false) && req.url.scheme.to_lower() == "http"
+  let target = if absolute {
+    req.url.origin() + req.url.request_target()
   } else {
     req.url.request_target()
   }
-  if !valid_request_target(target) {
+  if !valid_request_target(target, allow_brackets=absolute) {
     return Err(InvalidUrl("Invalid request target"))
   }
   if !valid_host(req.url.authority()) {

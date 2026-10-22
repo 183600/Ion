@@ -1652,6 +1652,27 @@ test "URL rejects unsafe characters outside the host" {
   }
 }
 
+///|
+test "URL rejects brackets and extra hashes outside the authority" {
+  for raw in [
+    "http://example.com/a[b",
+    "http://example.com/a]b",
+    "http://example.com/?x=[1]",
+    "http://example.com/#x[y]",
+    "http://example.com/#a#b",
+  ] {
+    assert_true(Url::parse(raw) is Err(_))
+  }
+  for raw in [
+    "http://example.com/%5Bx%5D",
+    "http://example.com/?x=%5B1%5D",
+    "http://example.com/#x%5By%5D",
+    "http://[::1]/a",
+  ] {
+    assert_true(Url::parse(raw) is Ok(_))
+  }
+}
+
 test "URL validates userinfo characters" {
   for raw in [
     "http://user%zz@example.com/",
@@ -1681,7 +1702,7 @@ test "URL validates userinfo characters" {
 ///|
 test "request encoding rejects malformed targets" {
   let url = Url::parse("http://example.com/").unwrap()
-  for path in ["/a%zz", "/a\\b"] {
+  for path in ["/a%zz", "/a\\b", "/a[b", "/a]b"] {
     let stream = regression_mock_stream("", 0, 0)
     let codec = H1Codec::new(stream)
     let request = Request::new(GET, url.with_path(path))

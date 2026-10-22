@@ -225,6 +225,30 @@ fn valid_encoded_url_chars(value : String) -> Bool {
   true
 }
 
+fn valid_url_component_chars(value : String) -> Bool {
+  if !valid_encoded_url_chars(value) {
+    return false
+  }
+  for ch in value {
+    if ch == '[' || ch == ']' {
+      return false
+    }
+  }
+  true
+}
+
+fn valid_url_fragment_chars(value : String) -> Bool {
+  if !valid_url_component_chars(value) {
+    return false
+  }
+  for ch in value {
+    if ch == '#' {
+      return false
+    }
+  }
+  true
+}
+
 fn valid_userinfo_chars(value : String) -> Bool {
   let mut index = 0
   while index < value.length() {
@@ -439,8 +463,8 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
     }
   }
 
-  if !valid_encoded_url_chars(path) || !valid_encoded_url_chars(query) ||
-    !valid_encoded_url_chars(fragment) {
+  if !valid_url_component_chars(path) || !valid_url_component_chars(query) ||
+    !valid_url_fragment_chars(fragment) {
     return Err(InvalidUrl("Invalid URL characters"))
   }
 
