@@ -88,9 +88,14 @@ fn h2_read_frame(reader : StreamReader) -> Result[H2Frame, HttpError] {
     frame_type == H2_FRAME_GOAWAY) && stream_id != 0 {
     return Err(ProtocolError("HTTP/2 connection frame on a stream"))
   }
-  if frame_type == H2_FRAME_SETTINGS && (flags & H2_FLAG_ACK) == 0 &&
-    length % 6 != 0 {
-    return Err(ProtocolError("Invalid HTTP/2 SETTINGS length"))
+  if frame_type == H2_FRAME_SETTINGS {
+    if (flags & H2_FLAG_ACK) != 0 {
+      if length != 0 {
+        return Err(ProtocolError("Invalid HTTP/2 SETTINGS ACK length"))
+      }
+    } else if length % 6 != 0 {
+      return Err(ProtocolError("Invalid HTTP/2 SETTINGS length"))
+    }
   }
   if frame_type == H2_FRAME_PING && length != 8 {
     return Err(ProtocolError("Invalid HTTP/2 PING length"))

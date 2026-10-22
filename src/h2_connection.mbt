@@ -191,12 +191,15 @@ fn h2_apply_settings(
   let mut offset = 0
   while offset < payload.length() {
     let identifier = (payload[offset].to_int() << 8) | payload[offset + 1].to_int()
-    let value = (payload[offset + 2].to_int() << 24) |
+    let value_high = payload[offset + 2].to_int()
+    let value = (value_high << 24) |
       (payload[offset + 3].to_int() << 16) |
       (payload[offset + 4].to_int() << 8) |
       payload[offset + 5].to_int()
     if identifier == H2_SETTINGS_INITIAL_WINDOW_SIZE {
-      if value > H2_MAX_WINDOW_SIZE {
+      // SETTINGS values are unsigned 32-bit. A high bit set exceeds the
+      // largest legal flow-control window (2^31-1).
+      if (value_high & 0x80) != 0 || value > H2_MAX_WINDOW_SIZE {
         return Err(ProtocolError("Invalid HTTP/2 initial window size"))
       }
       flow.stream_send_window = flow.stream_send_window + (value - flow.peer_initial_window)
@@ -287,7 +290,10 @@ fn H2ResponseState::handle_frame(
           Ok(_) => ()
           Err(err) => return Err(err)
         }
-        h2_write_frame(stream, H2_FRAME_SETTINGS, H2_FLAG_ACK, 0, b"")
+        match h2_write_frame(stream, H2_FRAME_SETTINGS, H2_FLAG_ACK, 0, b"") {
+          Ok(_) => Ok(())
+          Err(err) => Err(err)
+        }
       } else {
         Ok(())
       }
@@ -312,7 +318,10 @@ fn H2ResponseState::handle_frame(
     }
     H2_FRAME_PING => {
       if (frame.flags & H2_FLAG_ACK) == 0 {
-        h2_write_frame(stream, H2_FRAME_PING, H2_FLAG_ACK, 0, frame.payload)
+        match h2_write_frame(stream, H2_FRAME_PING, H2_FLAG_ACK, 0, frame.payload) {
+          Ok(_) => Ok(())
+          Err(err) => Err(err)
+        }
       } else {
         Ok(())
       }

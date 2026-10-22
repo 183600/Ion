@@ -183,6 +183,24 @@ test "http2 rejects a response body over the configured limit" {
   }
 }
 
+test "http2 rejects an out-of-range initial window setting" {
+  let flow = H2FlowState::new()
+  let too_large = h2_settings_payload([
+    (H2_SETTINGS_INITIAL_WINDOW_SIZE, -2147483648),
+  ])
+  match h2_apply_settings(too_large, flow) {
+    Err(err) => assert_eq(err, ProtocolError("Invalid HTTP/2 initial window size"))
+    Ok(_) => fail("out-of-range HTTP/2 initial window was accepted")
+  }
+
+  let maximum = h2_settings_payload([
+    (H2_SETTINGS_INITIAL_WINDOW_SIZE, H2_MAX_WINDOW_SIZE),
+  ])
+  h2_apply_settings(maximum, flow).unwrap()
+  assert_eq(flow.peer_initial_window, H2_MAX_WINDOW_SIZE)
+  assert_eq(flow.stream_send_window, H2_MAX_WINDOW_SIZE)
+}
+
 test "http2 propagates stream reset and GOAWAY errors" {
   let reset = h2_test_concat([
     h2_test_settings(),

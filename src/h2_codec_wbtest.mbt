@@ -116,6 +116,23 @@ test "http2 frame decoding rejects oversized and malformed frames" {
   }
 }
 
+test "http2 SETTINGS ACK must have an empty payload" {
+  let frame = h2_frame_bytes(
+    H2_FRAME_SETTINGS,
+    H2_FLAG_ACK,
+    0,
+    h2_settings_payload([(H2_SETTINGS_INITIAL_WINDOW_SIZE, H2_DEFAULT_WINDOW_SIZE)]),
+  )
+  match h2_read_frame(StreamReader::new(h2_frame_mock_stream(frame, 0))) {
+    Err(err) => assert_eq(err, ProtocolError("Invalid HTTP/2 SETTINGS ACK length"))
+    Ok(_) => fail("HTTP/2 SETTINGS ACK with a payload was accepted")
+  }
+  let empty = h2_frame_bytes(H2_FRAME_SETTINGS, H2_FLAG_ACK, 0, b"")
+  assert_true(
+    h2_read_frame(StreamReader::new(h2_frame_mock_stream(empty, 0))) is Ok(_),
+  )
+}
+
 test "http2 strips DATA and HEADERS padding" {
   let data = H2Frame::{
     frame_type: H2_FRAME_DATA,
