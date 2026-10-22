@@ -271,3 +271,22 @@ test "bodyless streaming responses release the session without being read" {
   assert_true(connection.is_open())
   let _ = connection.close()
 }
+
+///|
+test "explicit body limits can raise the cap for a streaming response" {
+  let headers = hpack_encode([(":status", "200")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, headers),
+    h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, b"abcdef"),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/limited").unwrap())
+  let response = connection.request_streaming_with_limit(request, 4).unwrap()
+  // The caller raises the limit before the DATA frame is consumed, matching
+  // H1's explicit `read_body_with_limit` behavior.
+  assert_eq(@utf8.decode_lossy(response.read_body_with_limit(8).unwrap()[:]), "abcdef")
+  assert_true(connection.is_open())
+  let _ = connection.close()
+}

@@ -72,7 +72,7 @@ fn h2_send_window_update(
 struct H2ResponseState {
   stream_id : Int
   decoder : HpackDecoder
-  max_body_bytes : Int
+  mut max_body_bytes : Int
   head : Bool
   connect : Bool
   mut status : Int
@@ -1309,6 +1309,16 @@ pub impl Stream for H2LiveBodyStream with fn read(
     self.finish(true)
   }
   Ok(take)
+}
+
+pub impl Stream for H2LiveBodyStream with fn set_body_limit(
+  self : H2LiveBodyStream,
+  max_body_bytes : Int,
+) -> Unit {
+  let limit = if max_body_bytes < 0 { 0 } else { max_body_bytes }
+  if limit > self.state.max_body_bytes {
+    self.state.max_body_bytes = limit
+  }
 }
 
 pub impl Stream for H2LiveBodyStream with fn read_ready(
