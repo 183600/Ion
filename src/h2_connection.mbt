@@ -74,7 +74,7 @@ struct H2ResponseState {
   mut headers : Headers
   mut content_length : Int?
   mut body_forbidden : Bool
-  body : Buffer
+  mut body : Buffer
   mut trailers : Headers
   mut ended : Bool
   mut header_block : Buffer
@@ -1031,6 +1031,194 @@ pub fn H2ClientConnection::close(self : H2ClientConnection) -> Unit {
   let _ = self.stream.close()
 }
 
+fn h2_tunnel_read_error(err : HttpError) -> NetError {
+  match err {
+    NetworkError(net) => net
+    Timeout => Timeout
+    ConnectionClosed => Closed
+    ProtocolError(message) => NetError::ReadError(message)
+    _ => NetError::IoError(@debug.to_string(err))
+  }
+}
+
+/// Streaming body for a successful HTTP/2 CONNECT tunnel. A tunnel's
+/// END_STREAM may only arrive when the tunnelled peer closes, so the response
+/// must be returned as soon as its headers are complete and further DATA
+/// frames read on demand.
+struct H2TunnelBody {
+  connection : H2ClientConnection
+  state : H2ResponseState
+  flow : H2FlowState
+  trailers : @ref.Ref[Headers]
+  mut is_open : Bool
+  mut on_close : (() -> Unit)?
+  mut notified : Bool
+}
+
+fn H2TunnelBody::finish(self : H2TunnelBody) -> Unit {
+  if self.notified {
+    return
+  }
+  self.notified = true
+  let callback = self.on_close
+  self.on_close = None
+  match callback {
+    Some(callback) => callback()
+    None => ()
+  }
+  // A CONNECT stream is opaque, so the session cannot safely be reused for
+  // another request even after the tunnel ends.
+  self.connection.close()
+}
+
+fn H2TunnelBody::sync_trailers(self : H2TunnelBody) -> Unit {
+  self.trailers.val = self.state.trailers
+}
+
+fn H2TunnelBody::drain_buffered(self : H2TunnelBody, buf : Buffer) -> Int {
+  let data = self.state.body.to_bytes()
+  if data.length() == 0 {
+    return 0
+  }
+  let take = if data.length() < 8192 { data.length() } else { 8192 }
+  buf.write_bytes(data.exact_view(start=0, end=take))
+  let remaining = data.exact_view(start=take, end=data.length()).to_owned()
+  let next = Buffer(size_hint=remaining.length())
+  next.write_bytes(remaining)
+  self.state.body = next
+  if self.state.body.length() == 0 && self.state.ended {
+    self.finish()
+  }
+  take
+}
+
+pub impl Stream for H2TunnelBody with fn read(
+  self : H2TunnelBody,
+  buf : Buffer,
+) -> Result[Int, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  if self.state.body.length() > 0 {
+    return Ok(self.drain_buffered(buf))
+  }
+  if self.state.ended {
+    self.finish()
+    return Ok(0)
+  }
+  while true {
+    let frame = match h2_read_frame(self.connection.reader) {
+      Ok(frame) => frame
+      Err(err) => {
+        self.finish()
+        self.is_open = false
+        return Err(h2_tunnel_read_error(err))
+      }
+    }
+    match self.state.handle_frame(frame, self.flow, self.connection.stream) {
+      Ok(_) => ()
+      Err(err) => {
+        self.finish()
+        self.is_open = false
+        return Err(h2_tunnel_read_error(err))
+      }
+    }
+    self.sync_trailers()
+    if self.state.body.length() > 0 {
+      return Ok(self.drain_buffered(buf))
+    }
+    if self.state.ended {
+      self.finish()
+      return Ok(0)
+    }
+  }
+  Err(NetError::ReadError("HTTP/2 tunnel read did not converge"))
+}
+
+pub impl Stream for H2TunnelBody with fn write(
+  self : H2TunnelBody,
+  buf : Buffer,
+) -> Result[Int, NetError] {
+  let _ = buf
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  Err(NetError::WriteError("HTTP/2 tunnel body is read-only"))
+}
+
+pub impl Stream for H2TunnelBody with fn flush(
+  self : H2TunnelBody,
+) -> Result[Unit, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  Ok(())
+}
+
+pub impl Stream for H2TunnelBody with fn close(
+  self : H2TunnelBody,
+) -> Result[Unit, NetError] {
+  if !self.is_open {
+    return Ok(())
+  }
+  self.is_open = false
+  self.finish()
+  Ok(())
+}
+
+pub impl Stream for H2TunnelBody with fn set_timeout(
+  self : H2TunnelBody,
+  timeout_ms : Int,
+) -> Result[Unit, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  self.connection.stream.set_timeout(timeout_ms)
+}
+
+pub impl Stream for H2TunnelBody with fn peer_addr(
+  self : H2TunnelBody,
+) -> Result[String, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  self.connection.stream.peer_addr()
+}
+
+pub impl Stream for H2TunnelBody with fn local_addr(
+  self : H2TunnelBody,
+) -> Result[String, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  self.connection.stream.local_addr()
+}
+
+fn h2_make_tunnel_response(
+  connection : H2ClientConnection,
+  state : H2ResponseState,
+  flow : H2FlowState,
+  on_close : (() -> Unit)?,
+) -> Response {
+  let trailers = @ref.Ref(state.trailers)
+  let body = H2TunnelBody::{
+    connection,
+    state,
+    flow,
+    trailers,
+    is_open: true,
+    on_close,
+    notified: false,
+  }
+  let stream : &Stream = body
+  Response::new_with_version(
+    "HTTP/2",
+    state.status,
+    state.headers,
+    stream,
+  ).with_trailers(trailers).with_max_body_bytes(state.max_body_bytes)
+}
+
 /// Consume connection-level frames that were already buffered when the
 /// response ended. A GOAWAY or malformed trailing frame makes the session
 /// unusable for another request; SETTINGS and PING are acknowledged.
@@ -1367,6 +1555,18 @@ pub fn H2ClientConnection::request_with_limit(
   request : Request,
   max_body_bytes : Int,
 ) -> Result[Response, HttpError] {
+  self.request_with_limit_and_callback(request, max_body_bytes, None)
+}
+
+/// Like `request_with_limit`, but a successful CONNECT tunnel owns the
+/// connection until its streaming body is exhausted or closed. `on_close` is
+/// invoked exactly once when that happens.
+fn H2ClientConnection::request_with_limit_and_callback(
+  self : H2ClientConnection,
+  request : Request,
+  max_body_bytes : Int,
+  connect_completion : (() -> Unit)?,
+) -> Result[Response, HttpError] {
   if !self.is_open() {
     return Err(ConnectionClosed)
   }
@@ -1537,6 +1737,17 @@ pub fn H2ClientConnection::request_with_limit(
         return Err(err)
       }
     }
+    if state.connect && state.status_seen &&
+      state.status >= 200 && state.status < 300 {
+      break
+    }
+  }
+  if state.connect && state.status_seen &&
+    state.status >= 200 && state.status < 300 {
+    // A successful CONNECT response ends the HTTP exchange but not the
+    // tunnel. Return as soon as the response head is complete so the caller
+    // can exchange tunnelled bytes while the stream remains open.
+    return Ok(h2_make_tunnel_response(self, state, flow, connect_completion))
   }
   self.drain_buffered_connection_frames(state, flow)
   // An early final response (for example 413 or 401) leaves the request side
@@ -1582,11 +1793,24 @@ fn h2_request_with_limit(
   request : Request,
   max_body_bytes : Int,
 ) -> Result[Response, HttpError] {
+  h2_request_with_limit_and_callback(stream, request, max_body_bytes, None)
+}
+
+fn h2_request_with_limit_and_callback(
+  stream : &Stream,
+  request : Request,
+  max_body_bytes : Int,
+  connect_completion : (() -> Unit)?,
+) -> Result[Response, HttpError] {
   let connection = match H2ClientConnection::new(stream) {
     Ok(connection) => connection
     Err(err) => return Err(err)
   }
-  connection.request_with_limit(request, max_body_bytes)
+  connection.request_with_limit_and_callback(
+    request,
+    max_body_bytes,
+    connect_completion,
+  )
 }
 
 /// Perform one HTTP/2 request over an ALPN-negotiated stream. The connection

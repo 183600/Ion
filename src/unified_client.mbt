@@ -649,17 +649,27 @@ fn UnifiedClient::do_request_once(
   }
   let is_http2 = negotiated_protocol == Some("h2")
   let h2_connection = lease.h2_connection()
+  // A successful HTTP/2 CONNECT becomes a streaming tunnel. Keep the lease
+  // checked out until the tunnel body is exhausted or closed.
+  let connect_completion : (() -> Unit)? = if is_http2 &&
+    request.method == CONNECT {
+    Some(fn() { lease.release(false) })
+  } else {
+    None
+  }
   let response_result = if is_http2 {
     match h2_connection {
       Some(connection) =>
-        connection.request_with_limit(
+        connection.request_with_limit_and_callback(
           request,
           self.options.max_response_body_bytes,
+          connect_completion,
         )
-      None => h2_request_with_limit(
+      None => h2_request_with_limit_and_callback(
         stream,
         request,
         self.options.max_response_body_bytes,
+        connect_completion,
       )
     }
   } else {
@@ -698,9 +708,12 @@ fn UnifiedClient::do_request_once(
       return Err(normalize_http_error(err))
     }
   }
-  if is_http2 {
+  let h2_tunnel = is_http2 && request.method == CONNECT &&
+    response.status >= 200 && response.status < 300
+  if is_http2 && !h2_tunnel {
     // The HTTP/2 exchange buffers the body, so the session can be returned to
-    // the pool for the next sequential request immediately.
+    // the pool for the next sequential request immediately. A CONNECT tunnel
+    // instead owns the session until its streaming body finishes.
     lease.release(true)
   }
 

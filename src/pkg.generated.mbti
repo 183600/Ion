@@ -191,6 +191,9 @@ type H2Frame
 
 type H2ResponseState
 
+type H2TunnelBody
+pub impl Stream for H2TunnelBody
+
 pub struct Header {
   name : String
   value : String
