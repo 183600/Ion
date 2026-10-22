@@ -428,6 +428,22 @@ fn parse_bypass_authority(value : String) -> (String, Int?)? {
   Some((value, None))
 }
 
+fn is_numeric_dotted_host(value : String) -> Bool {
+  let mut saw_digit = false
+  let mut saw_dot = false
+  for index = 0; index < value.length(); index = index + 1 {
+    let ch = value.get_char(index).unwrap()
+    if ch == '.' {
+      saw_dot = true
+    } else if ch >= '0' && ch <= '9' {
+      saw_digit = true
+    } else {
+      return false
+    }
+  }
+  saw_digit && saw_dot
+}
+
 fn proxy_bypass_matches(pattern : String, host : String, port : Int) -> Bool {
   let trimmed = pattern.trim().to_lower()
   if trimmed.length() == 0 {
@@ -466,8 +482,15 @@ fn proxy_bypass_matches(pattern : String, host : String, port : Int) -> Bool {
   if pattern_host == normalized_host {
     return true
   }
-  let is_ip = pattern_host.contains(":") || is_ipv4_literal(pattern_host)
-  !is_ip && normalized_host.has_suffix("." + pattern_host)
+  let numeric_ip = pattern_host.contains(":") ||
+    is_ipv4_literal(pattern_host) ||
+    is_numeric_dotted_host(pattern_host)
+  // A bare label such as `com` is a public suffix, not a domain owned by the
+  // caller; only match subdomains for multi-label domain patterns. The same
+  // rule keeps partial or malformed numeric hosts from matching by suffix.
+  !numeric_ip &&
+  pattern_host.contains(".") &&
+  normalized_host.has_suffix("." + pattern_host)
 }
 
 fn Connector::proxy_is_bypassed(self : Connector, url : Url) -> Bool {
