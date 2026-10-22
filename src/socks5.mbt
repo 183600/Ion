@@ -323,6 +323,9 @@ fn socks5_connect(
   if head[0].to_int() != SOCKS5_VERSION {
     return Err(ProtocolError("SOCKS5 proxy returned an invalid version"))
   }
+  if head[2].to_int() != 0 {
+    return Err(ProtocolError("SOCKS5 proxy returned an invalid reserved field"))
+  }
   let reply = head[1].to_int()
   if reply != SOCKS5_REPLY_SUCCEEDED {
     return Err(socks5_reply_error(reply))

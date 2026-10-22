@@ -286,3 +286,14 @@ test "SOCKS5 credentials are used by the client without adding proxy headers" {
   assert_false(wire.contains("Proxy-Authorization"))
   assert_true(wire.contains("GET / HTTP/1.1\r\n"))
 }
+
+test "SOCKS5 successful reply requires a zero reserved byte" {
+  let stream = socks5_test_stream(
+    socks5_test_bytes([5, 0, 5, 0, 1, 1, 127, 0, 0, 1, 0, 80]),
+    0,
+  )
+  match socks5_connect(stream, "example.com", 80, false, None) {
+    Err(ProtocolError(message)) => assert_true(message.contains("reserved"))
+    _ => abort("expected a non-zero SOCKS5 reserved byte to fail")
+  }
+}
