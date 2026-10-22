@@ -184,6 +184,7 @@ pub struct Connector {
   tls_provider : &TlsProvider
   tls_config : TlsConfig?
   proxy : Proxy?
+  proxy_bypass : Array[String]
   timeout_ms : Int
   mut max_connections_per_host : Int
   mut cookies_enabled : Bool
@@ -284,6 +285,7 @@ pub fn Connector::new(dialer : &Dialer, tls_provider : &TlsProvider) -> Connecto
     tls_provider,
     tls_config: None,
     proxy: None,
+    proxy_bypass: [],
     timeout_ms: 30000,
     max_connections_per_host: 0,
     cookies_enabled: false,
@@ -309,6 +311,7 @@ pub fn Connector::with_tls_config(self : Connector, config : TlsConfig) -> Conne
     tls_provider: self.tls_provider,
     tls_config: Some(config),
     proxy: self.proxy,
+    proxy_bypass: self.proxy_bypass,
     timeout_ms: self.timeout_ms,
     max_connections_per_host: self.max_connections_per_host,
     cookies_enabled: self.cookies_enabled,
@@ -327,6 +330,7 @@ pub fn Connector::with_proxy(self : Connector, proxy : Proxy) -> Connector {
     tls_provider: self.tls_provider,
     tls_config: self.tls_config,
     proxy: Some(proxy),
+    proxy_bypass: self.proxy_bypass,
     timeout_ms: self.timeout_ms,
     max_connections_per_host: self.max_connections_per_host,
     cookies_enabled: self.cookies_enabled,
@@ -335,15 +339,173 @@ pub fn Connector::with_proxy(self : Connector, proxy : Proxy) -> Connector {
   }
 }
 
+/// Route requests to matching hosts directly instead of through the proxy.
+/// Entries follow the common `NO_PROXY` syntax: a host name matches that host
+/// and its subdomains, a leading `.` or `*.` is allowed, `host:port` restricts
+/// the match to one port, IP literals match exactly, and `*` disables the
+/// proxy for every request. Matching is case-insensitive and ignores
+/// surrounding whitespace.
+///
+/// Existing pooled connections may have been opened through the proxy, so they
+/// are closed before the new routing rules take effect.
+pub fn Connector::with_proxy_bypass(
+  self : Connector,
+  patterns : Array[String],
+) -> Connector {
+  let pool = @ref.Ref(self.pool.val.empty_with_settings())
+  let _ = self.close_all()
+  Connector::{ ..self, proxy_bypass: patterns.copy(), pool }
+}
+
+/// The configured proxy bypass patterns.
+pub fn Connector::proxy_bypass(self : Connector) -> Array[String] {
+  self.proxy_bypass.copy()
+}
+
+fn normalize_bypass_host(host : String) -> String {
+  let lower = host.to_lower()
+  if lower.length() > 0 && lower.get_char(lower.length() - 1) == Some('.') {
+    lower[0:lower.length() - 1].to_owned()
+  } else {
+    lower
+  }
+}
+
+/// Split `host`, `host:port`, `[v6]`, or `[v6]:port` into its parts.
+/// Returns `None` for malformed entries so they simply never match.
+fn parse_bypass_authority(value : String) -> (String, Int?)? {
+  if value.length() == 0 {
+    return None
+  }
+  if value.get_char(0) == Some('[') {
+    let end = match value.find("]") {
+      Some(index) => index
+      None => return None
+    }
+    let host = value[1:end].to_owned()
+    if host.length() == 0 {
+      return None
+    }
+    let rest = value[end + 1:].to_owned()
+    if rest.length() == 0 {
+      return Some((host, None))
+    }
+    if rest.get_char(0) != Some(':') || rest.length() == 1 {
+      return None
+    }
+    let port_text = rest[1:].to_owned()
+    if !is_decimal_digits(port_text) {
+      return None
+    }
+    let port = try {
+      @string.parse_int(port_text[:])
+    } catch {
+      _ => return None
+    }
+    if port < 1 || port > 65535 {
+      return None
+    }
+    return Some((host, Some(port)))
+  }
+  let first_colon = value.find(":")
+  let last_colon = value.rev_find(":")
+  if first_colon is Some(index) && last_colon == first_colon {
+    let host = value[0:index].to_owned()
+    let port_text = value[index + 1:].to_owned()
+    if host.length() == 0 || !is_decimal_digits(port_text) {
+      return None
+    }
+    let port = try {
+      @string.parse_int(port_text[:])
+    } catch {
+      _ => return None
+    }
+    if port < 1 || port > 65535 {
+      return None
+    }
+    return Some((host, Some(port)))
+  }
+  Some((value, None))
+}
+
+fn proxy_bypass_matches(pattern : String, host : String, port : Int) -> Bool {
+  let trimmed = pattern.trim().to_lower()
+  if trimmed.length() == 0 {
+    return false
+  }
+  if trimmed == "*" {
+    return true
+  }
+  let mut candidate = trimmed.to_owned()
+  match candidate.find("://") {
+    Some(index) => candidate = candidate[index + 3:].to_owned()
+    None => ()
+  }
+  match candidate.find("/") {
+    Some(index) => candidate = candidate[0:index].to_owned()
+    None => ()
+  }
+  let (raw_pattern_host, pattern_port) = match parse_bypass_authority(candidate) {
+    Some(parts) => parts
+    None => return false
+  }
+  if pattern_port is Some(expected_port) && expected_port != port {
+    return false
+  }
+  let mut pattern_host = raw_pattern_host.to_lower()
+  if pattern_host.has_prefix("*.") {
+    pattern_host = pattern_host[2:].to_owned()
+  } else if pattern_host.has_prefix(".") {
+    pattern_host = pattern_host[1:].to_owned()
+  }
+  pattern_host = normalize_bypass_host(pattern_host)
+  if pattern_host.length() == 0 || pattern_host.contains("*") {
+    return false
+  }
+  let normalized_host = normalize_bypass_host(host)
+  if pattern_host == normalized_host {
+    return true
+  }
+  let is_ip = pattern_host.contains(":") || is_ipv4_literal(pattern_host)
+  !is_ip && normalized_host.has_suffix("." + pattern_host)
+}
+
+fn Connector::proxy_is_bypassed(self : Connector, url : Url) -> Bool {
+  for pattern in self.proxy_bypass {
+    if proxy_bypass_matches(pattern, url.host, url.port) {
+      return true
+    }
+  }
+  false
+}
+
+/// The proxy used for `url`, or `None` when the URL is not proxied because no
+/// proxy is configured or a bypass rule matches its host.
+pub fn Connector::proxy_for_url(self : Connector, url : Url) -> Proxy? {
+  if self.proxy_is_bypassed(url) {
+    return None
+  }
+  self.proxy
+}
+
 /// Whether requests for `url` must use absolute-form request targets (plain
 /// HTTP sent to a forward proxy).
 pub fn Connector::uses_absolute_form(self : Connector, url : Url) -> Bool {
-  self.proxy is Some(_) && url.scheme.to_lower() == "http"
+  self.proxy_for_url(url) is Some(_) && url.scheme.to_lower() == "http"
 }
 
 /// Proxy credentials for requests that travel through the proxy itself.
 pub fn Connector::proxy_authorization(self : Connector) -> String? {
   match self.proxy {
+    Some(proxy) => proxy.authorization
+    None => None
+  }
+}
+
+/// Proxy credentials for `url`, or `None` when the request goes directly to
+/// the origin (including when a bypass rule applies).
+pub fn Connector::proxy_authorization_for(self : Connector, url : Url) -> String? {
+  match self.proxy_for_url(url) {
     Some(proxy) => proxy.authorization
     None => None
   }
@@ -438,7 +600,7 @@ pub fn Connector::store_cookies(
 
 fn Connector::connection_key(self : Connector, url : Url) -> String {
   let origin = url.scheme.to_lower() + "://" + url.host.to_lower() + ":" + url.port.to_string()
-  match self.proxy {
+  match self.proxy_for_url(url) {
     Some(proxy) =>
       "proxy:" +
       proxy.url.scheme.to_lower() +
@@ -689,9 +851,10 @@ fn Connector::connect_impl(
   }
 
   let conn_key = self.connection_key(url)
+  let proxy = self.proxy_for_url(url)
 
   // Validate proxy settings before opening any socket.
-  match self.proxy {
+  match proxy {
     Some(proxy) => {
       if !valid_tcp_host(proxy.url.host) || !valid_tcp_port(proxy.url.port) {
         return Err(InvalidUrl("Invalid proxy address"))
@@ -737,7 +900,7 @@ fn Connector::connect_impl(
   }
 
   // Dial the proxy when one is configured, otherwise dial the origin.
-  let (dial_host, dial_port) = match self.proxy {
+  let (dial_host, dial_port) = match proxy {
     Some(proxy) => (proxy.url.host, proxy.url.port)
     None => (host, port)
   }
@@ -757,7 +920,7 @@ fn Connector::connect_impl(
 
   // An HTTPS proxy is reached over TLS before the proxy protocol starts. The
   // resulting stream carries either absolute-form HTTP or the CONNECT tunnel.
-  let proxy_stream : &Stream = match self.proxy {
+  let proxy_stream : &Stream = match proxy {
     Some(proxy) =>
       if proxy.is_secure() {
         let config = self.proxy_tls_config(proxy)
@@ -784,7 +947,7 @@ fn Connector::connect_impl(
   // For HTTPS through a proxy, open a CONNECT tunnel before starting TLS.
   let mut tunnel_leftover : Bytes = b""
   if scheme == "https" {
-    match self.proxy {
+    match proxy {
       Some(proxy) => match establish_tunnel(proxy_stream, url, proxy) {
         Ok(leftover) => tunnel_leftover = leftover
         Err(err) => {

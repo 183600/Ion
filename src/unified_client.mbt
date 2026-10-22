@@ -211,6 +211,19 @@ pub fn UnifiedClient::with_proxy(self : UnifiedClient, proxy : Proxy) -> Unified
   }
 }
 
+/// Send requests for matching hosts directly instead of through the proxy.
+/// See `Connector::with_proxy_bypass` for the supported pattern syntax.
+pub fn UnifiedClient::with_proxy_bypass(
+  self : UnifiedClient,
+  patterns : Array[String],
+) -> UnifiedClient {
+  UnifiedClient::{
+    connector: self.connector.with_proxy_bypass(patterns),
+    options: self.options,
+    redirect_count: 0,
+  }
+}
+
 /// Route HTTP requests through the proxy described by `url`
 /// (`http://` or `https://` `[user:password@]host[:port]`).
 pub fn UnifiedClient::with_proxy_url(
@@ -363,7 +376,7 @@ fn UnifiedClient::do_request_once(
   let absolute_form = self.connector.uses_absolute_form(request.url)
   if absolute_form {
     if request.get_header("Proxy-Authorization") is None {
-      match self.connector.proxy_authorization() {
+      match self.connector.proxy_authorization_for(request.url) {
         Some(value) => request = request.with_header("Proxy-Authorization", value)
         None => ()
       }
