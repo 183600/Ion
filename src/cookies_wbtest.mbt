@@ -1115,3 +1115,33 @@ test "domain cookies do not leak to a trailing-dot IP literal" {
   let dotted = Url::parse("http://127.0.0.1./").unwrap()
   assert_eq(jar.cookie_header_at(dotted, 1000), None)
 }
+
+///|
+test "an out-of-range time token invalidates the Expires date" {
+  // 07:60:00 matches the RFC 6265 time production, so the invalid minute
+  // makes the whole cookie-date fail; it must not be re-read as day 07.
+  for expires in [
+    "07:60:00 2030 Oct 21 08:49:37 GMT",
+    "25:00:00 2030 Oct 21 08:49:37 GMT",
+    "07:28:60 2030 Oct 21 08:49:37 GMT",
+  ] {
+    let jar = CookieJar::new()
+    let url = cookie_test_url("https://example.com/")
+    jar.store_at(url, "x=1; Expires=" + expires + "; Path=/", 0)
+    assert_eq(jar.cookies().length(), 1)
+    assert_eq(jar.cookies().nth(0).unwrap().expires_at_ms, None)
+  }
+}
+
+///|
+test "default cookie path is / for a non-absolute uri-path" {
+  // RFC 6265 §5.1.4 step 2: a uri-path that does not start with "/" uses "/".
+  let jar = CookieJar::new()
+  let url = cookie_test_url("https://example.com/").with_path("a/b")
+  jar.store_at(url, "x=1", 0)
+  assert_eq(jar.cookies().nth(0).unwrap().path, "/")
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("https://example.com/other"), 0),
+    Some("x=1"),
+  )
+}

@@ -151,15 +151,13 @@ fn cookie_split_first(value : String, delimiter : Char) -> (String, String) {
 
 ///|
 fn cookie_default_path(url : Url) -> String {
-  let path = if url.path.length() == 0 {
-    "/"
-  } else if url.path.has_prefix("/") {
-    url.path
-  } else {
-    "/" + url.path
+  // RFC 6265 §5.1.4 step 2: a uri-path that is empty or does not start with
+  // "/" has the default-path "/" regardless of its contents.
+  if url.path.length() == 0 || !url.path.has_prefix("/") {
+    return "/"
   }
-  match path.rev_find("/") {
-    Some(index) => if index == 0 { "/" } else { path[0:index].to_owned() }
+  match url.path.rev_find("/") {
+    Some(index) => if index == 0 { "/" } else { url.path[0:index].to_owned() }
     None => "/"
   }
 }
@@ -409,6 +407,36 @@ fn cookie_parse_year(value : String) -> Int32? {
   Some(normalized)
 }
 
+/// Whether a token has the shape of an RFC 6265 hms-time production,
+/// independent of whether its fields are in range. This distinction matters:
+/// a token that matches the time grammar but has an invalid minute is a hard
+/// date-parse failure, while a token that does not match the time grammar may
+/// legitimately fall through to the day-of-month production.
+fn cookie_is_time_token(value : String) -> Bool {
+  let first_colon = match value.find(":") {
+    Some(index) => index
+    None => return false
+  }
+  let rest = value[first_colon + 1:].to_owned()
+  let second_colon = match rest.find(":") {
+    Some(index) => index
+    None => return false
+  }
+  let hour_text = value[0:first_colon].to_owned()
+  let minute_text = rest[0:second_colon].to_owned()
+  let second_text = rest[second_colon + 1:].to_owned()
+  if hour_text.length() < 1 || hour_text.length() > 2 ||
+    minute_text.length() < 1 || minute_text.length() > 2 {
+    return false
+  }
+  if cookie_parse_decimal(hour_text) is None ||
+    cookie_parse_decimal(minute_text) is None ||
+    cookie_leading_number(second_text, 1, 2) is None {
+    return false
+  }
+  true
+}
+
 ///|
 fn cookie_parse_clock(value : String) -> (Int32, Int32, Int32)? {
   // RFC 6265 time = hms-time [ non-digit *OCTET ].
@@ -500,13 +528,16 @@ fn cookie_parse_date(value : String) -> UInt64? {
   for token in tokens {
     // RFC 6265 §5.1.1 consumes every time token in the date, even when a
     // previous token already supplied the time. Falling through would let a
-    // second time such as `08:49:37` be misread as a day-of-month.
-    match cookie_parse_clock(token) {
-      Some(value) => {
-        clock = Some(value)
-        continue
+    // second time such as `08:49:37` be misread as a day-of-month. A token
+    // that matches the time grammar but has an out-of-range field invalidates
+    // the whole cookie-date instead of being reinterpreted as a day.
+    if cookie_is_time_token(token) {
+      let value = match cookie_parse_clock(token) {
+        Some(value) => value
+        None => return None
       }
-      None => ()
+      clock = Some(value)
+      continue
     }
     if day is None {
       match cookie_leading_number(token, 1, 2) {
