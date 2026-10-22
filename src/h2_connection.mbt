@@ -502,6 +502,17 @@ fn H2ResponseState::handle_frame(
           Err(err) => return Err(err)
         }
       }
+      // Padding consumes the stream's flow-control window even though it is
+      // not part of the response body. Replenish the active stream as well so
+      // a peer that pads heavily cannot exhaust the window and stall while the
+      // client waits for more body bytes.
+      if frame.stream_id == self.stream_id && !self.ended &&
+        frame.payload.length() > 0 {
+        match h2_send_window_update(stream, self.stream_id, frame.payload.length()) {
+          Ok(_) => ()
+          Err(err) => return Err(err)
+        }
+      }
       Ok(())
     }
     H2_FRAME_HEADERS => {
