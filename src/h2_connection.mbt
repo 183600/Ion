@@ -24,6 +24,16 @@ fn H2FlowState::new() -> H2FlowState {
   }
 }
 
+/// Largest DATA payload we may send. The peer's setting can only increase the
+/// protocol default, and our frame writer also caps at the default.
+fn h2_outbound_frame_limit(peer_max_frame_size : Int) -> Int {
+  if peer_max_frame_size < H2_MAX_FRAME_SIZE {
+    peer_max_frame_size
+  } else {
+    H2_MAX_FRAME_SIZE
+  }
+}
+
 fn h2_window_update_payload(increment : Int) -> Bytes {
   let payload = Buffer(size_hint=4)
   payload.write_byte(((increment >> 24) & 0x7f).to_byte())
@@ -1227,7 +1237,8 @@ pub fn H2ClientConnection::request_with_limit(
     }
     let remaining = body.length() - sent
     let wanted = if available < remaining { available } else { remaining }
-    let take = if wanted < H2_MAX_FRAME_SIZE { wanted } else { H2_MAX_FRAME_SIZE }
+    let frame_limit = h2_outbound_frame_limit(flow.peer_max_frame_size)
+    let take = if wanted < frame_limit { wanted } else { frame_limit }
     let last = sent + take == body.length()
     let flags = if last { H2_FLAG_END_STREAM } else { 0 }
     match h2_write_frame(
