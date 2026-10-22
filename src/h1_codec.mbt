@@ -1858,7 +1858,7 @@ fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
     let reusable = !(self.status == 101 || self.close_after_body) &&
       self.reader.val.pending_offset >= self.reader.val.pending.length() &&
       !self.reader.val.stream.has_buffered_input()
-    if !reusable {
+    if !reusable && self.close_unless_poolsafe() {
       let _ = self.reader.val.stream.close()
     }
     self.body_mode = BodyNone
@@ -1911,12 +1911,25 @@ fn ResponseStream::complete_if_empty(
   }
 }
 
+/// Whether a non-reusable response must close the transport now. A direct
+/// `H1Codec` caller owns the stream and may have already supplied the next
+/// response in the same read; keeping the stream open lets its shared reader
+/// continue from those buffered bytes. The pooling client, by contrast, must
+/// close any transport whose framing can no longer be proven clean, and a
+/// response that requested `Connection: close` or switched protocols always
+/// closes.
+fn ResponseStream::close_unless_poolsafe(self : ResponseStream) -> Bool {
+  self.close_after_body || self.status == 101 || self.on_complete is Some(_)
+}
+
 fn ResponseStream::finish(self : ResponseStream) -> Unit {
   let reusable = !self.close_after_body &&
     self.reader.val.pending_offset >= self.reader.val.pending.length() &&
     !self.reader.val.stream.has_buffered_input()
   if !reusable {
-    let _ = self.reader.val.stream.close()
+    if self.close_unless_poolsafe() {
+      let _ = self.reader.val.stream.close()
+    }
     self.complete(false)
   } else {
     self.complete(true)
