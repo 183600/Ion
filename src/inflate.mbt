@@ -747,10 +747,15 @@ pub fn inflate(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
       Err(zlib_error) => {
         // A decoded-output limit failure is not evidence that these bytes are
         // actually raw DEFLATE. Retrying the whole input as raw DEFLATE could
-        // bypass the limit (and return unrelated bytes), so propagate it.
+        // bypass the limit (and return unrelated bytes), so propagate it. A
+        // distance beyond the window declared by a valid zlib header is also a
+        // semantic violation of that wrapper: raw DEFLATE has no such window,
+        // and reinterpreting the bytes would silently accept a different
+        // stream.
         match zlib_error {
           ProtocolError(message) =>
-            if message.contains("output too large") {
+            if message.contains("output too large") ||
+              message.contains("window") {
               return Err(zlib_error)
             }
           _ => ()
