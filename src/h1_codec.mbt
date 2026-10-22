@@ -1,7 +1,9 @@
 /// HTTP/1.1 codec for encoding requests and decoding responses
 pub struct H1Codec {
   stream : &Stream
-  reader : StreamReader
+  // Shared with the response stream so bytes buffered while reading a head
+  // remain visible when the same codec is reused for the next exchange.
+  reader : @ref.Ref[StreamReader]
   mut last_is_head : Bool
   mut close_after_request : Bool
   max_body_bytes : Int
@@ -41,7 +43,7 @@ fn H1Codec::make(
   let limit = if max_body_bytes < 0 { 0 } else { max_body_bytes }
   H1Codec::{
     stream,
-    reader: StreamReader::new(stream),
+    reader: @ref.Ref(StreamReader::new(stream)),
     last_is_head: false,
     close_after_request: false,
     max_body_bytes: limit,
@@ -639,7 +641,7 @@ pub fn H1Codec::encode_request(
   }
 
   // Flush the stream
-  match self.reader.stream.flush() {
+  match self.reader.val.stream.flush() {
     Ok(_) => {
       self.last_is_head = req.method == HEAD
       self.close_after_request = headers_have_token(req.headers, "Connection", "close")
@@ -813,7 +815,7 @@ pub fn H1Codec::decode_response(
   self.close_after_request = false
   let mut informational_count = 0
   while true {
-    let response_head = match read_response_head(self.reader) {
+    let response_head = match read_response_head(self.reader.val) {
       Ok(head) => head
       Err(err) => return Err(err)
     }
@@ -909,7 +911,7 @@ enum ChunkReadState {
 
 /// Response stream for reading HTTP response body
 struct ResponseStream {
-  reader : StreamReader
+  reader : @ref.Ref[StreamReader]
   version : String
   headers : Headers
   status : Int
@@ -1412,7 +1414,7 @@ fn response_content_length(headers : Headers) -> Result[Option[Int], NetError] {
 }
 
 fn ResponseStream::fail(self : ResponseStream, err : NetError) -> NetError {
-  let _ = self.reader.stream.close()
+  let _ = self.reader.val.stream.close()
   self.error = Some(err)
   self.complete(false)
   err
@@ -1479,9 +1481,9 @@ fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
   if self.head || self.status == 204 || self.status == 205 || self.status == 304 ||
     (self.status >= 100 && self.status < 200) {
     let reusable = !(self.status == 101 || self.close_after_body) &&
-      self.reader.pending_offset >= self.reader.pending.length()
+      self.reader.val.pending_offset >= self.reader.val.pending.length()
     if !reusable {
-      let _ = self.reader.stream.close()
+      let _ = self.reader.val.stream.close()
     }
     self.body_mode = BodyNone
     self.complete(reusable)
@@ -1535,9 +1537,9 @@ fn ResponseStream::complete_if_empty(
 
 fn ResponseStream::finish(self : ResponseStream) -> Unit {
   let reusable = !self.close_after_body &&
-    self.reader.pending_offset >= self.reader.pending.length()
+    self.reader.val.pending_offset >= self.reader.val.pending.length()
   if !reusable {
-    let _ = self.reader.stream.close()
+    let _ = self.reader.val.stream.close()
     self.complete(false)
   } else {
     self.complete(true)
@@ -1590,7 +1592,7 @@ pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buf
         } else {
           limit - produced
         }
-        let count = match self.reader.read_some(buf, want) {
+        let count = match self.reader.val.read_some(buf, want) {
           Ok(count) => count
           Err(err) => return Err(self.fail(err))
         }
@@ -1606,12 +1608,12 @@ pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buf
         }
       }
       BodyUntilEof => {
-        let count = match self.reader.read_some(buf, limit - produced) {
+        let count = match self.reader.val.read_some(buf, limit - produced) {
           Ok(count) => count
           Err(err) => return Err(self.fail(err))
         }
         if count == 0 {
-          let _ = self.reader.stream.close()
+          let _ = self.reader.val.stream.close()
           self.complete(false)
           break
         }
@@ -1624,12 +1626,12 @@ pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buf
       BodyChunked => {
         match self.chunk_state {
           ChunkSize => {
-            let size = match read_chunk_size(self.reader) {
+            let size = match read_chunk_size(self.reader.val) {
               Ok(size) => size
               Err(err) => return Err(self.fail(err))
             }
             if size == 0 {
-              match consume_chunk_trailers(self.reader, self.trailers) {
+              match consume_chunk_trailers(self.reader.val, self.trailers) {
                 Ok(_) => ()
                 Err(err) => return Err(self.fail(err))
               }
@@ -1645,7 +1647,7 @@ pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buf
           ChunkData => {
             if self.remaining == 0 {
               let terminator : Array[Byte] = []
-              match self.reader.read_exact(2, terminator) {
+              match self.reader.val.read_exact(2, terminator) {
                 Ok(_) => ()
                 Err(err) => return Err(self.fail(err))
               }
@@ -1661,7 +1663,7 @@ pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buf
             } else {
               limit - produced
             }
-            let count = match self.reader.read_some(buf, want) {
+            let count = match self.reader.val.read_some(buf, want) {
               Ok(count) => count
               Err(err) => return Err(self.fail(err))
             }
@@ -1694,7 +1696,7 @@ pub impl Stream for ResponseStream with fn flush(self : ResponseStream) -> Resul
   if self.is_released_to_pool() {
     return Ok(())
   }
-  self.reader.stream.flush()
+  self.reader.val.stream.flush()
 }
 
 pub impl Stream for ResponseStream with fn close(self : ResponseStream) -> Result[Unit, NetError] {
@@ -1709,9 +1711,9 @@ pub impl Stream for ResponseStream with fn close(self : ResponseStream) -> Resul
     Some(callback) => {
       self.completed = true
       callback(false)
-      self.reader.stream.close()
+      self.reader.val.stream.close()
     }
-    None => self.reader.stream.close()
+    None => self.reader.val.stream.close()
   }
 }
 
@@ -1722,7 +1724,7 @@ pub impl Stream for ResponseStream with fn set_timeout(self : ResponseStream, ti
   if self.is_released_to_pool() {
     return Ok(())
   }
-  self.reader.stream.set_timeout(timeout_ms)
+  self.reader.val.stream.set_timeout(timeout_ms)
 }
 
 pub impl Stream for ResponseStream with fn peer_addr(self : ResponseStream) -> Result[String, NetError] {
@@ -1732,7 +1734,7 @@ pub impl Stream for ResponseStream with fn peer_addr(self : ResponseStream) -> R
   if self.is_released_to_pool() {
     return Err(NetError::Closed)
   }
-  self.reader.stream.peer_addr()
+  self.reader.val.stream.peer_addr()
 }
 
 pub impl Stream for ResponseStream with fn local_addr(self : ResponseStream) -> Result[String, NetError] {
@@ -1742,5 +1744,5 @@ pub impl Stream for ResponseStream with fn local_addr(self : ResponseStream) -> 
   if self.is_released_to_pool() {
     return Err(NetError::Closed)
   }
-  self.reader.stream.local_addr()
+  self.reader.val.stream.local_addr()
 }
