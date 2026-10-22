@@ -80,9 +80,13 @@ pub struct ClientOptions {
   max_response_body_bytes : Int32
   http2 : Bool
   http2_prior_knowledge : Bool
+  default_headers : Headers
 } derive(Eq, @debug.Debug)
+pub fn ClientOptions::default_headers(Self) -> Headers
 pub fn ClientOptions::new() -> Self
 pub fn ClientOptions::with_connect_timeout(Self, Int32) -> Self
+pub fn ClientOptions::with_default_header(Self, String, String) -> Self
+pub fn ClientOptions::with_default_headers(Self, Headers) -> Self
 pub fn ClientOptions::with_follow_redirects(Self, Bool) -> Self
 pub fn ClientOptions::with_http2(Self, Bool) -> Self
 pub fn ClientOptions::with_http2_prior_knowledge(Self, Bool) -> Self
@@ -499,6 +503,8 @@ pub fn UnifiedClient::trace(Self, String) -> Result[Response, HttpError]
 pub fn UnifiedClient::with_connect_timeout(Self, Int32) -> Self
 pub fn UnifiedClient::with_cookie_jar(Self, CookieJar) -> Self
 pub fn UnifiedClient::with_cookies(Self) -> Self
+pub fn UnifiedClient::with_default_header(Self, String, String) -> Self
+pub fn UnifiedClient::with_default_headers(Self, Headers) -> Self
 pub fn UnifiedClient::with_follow_redirects(Self, Bool) -> Self
 pub fn UnifiedClient::with_http2(Self, Bool) -> Self
 pub fn UnifiedClient::with_http2_prior_knowledge(Self, Bool) -> Self

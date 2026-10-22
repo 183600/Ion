@@ -15,6 +15,10 @@ pub struct ClientOptions {
   max_response_body_bytes : Int
   http2 : Bool
   http2_prior_knowledge : Bool
+  /// Headers added to every top-level request that does not already supply
+  /// the same field. They are never re-applied after a redirect, and a
+  /// cross-origin redirect drops them along with caller-supplied credentials.
+  default_headers : Headers
 } derive(Eq, Debug)
 
 pub fn ClientOptions::new() -> ClientOptions {
@@ -27,6 +31,7 @@ pub fn ClientOptions::new() -> ClientOptions {
     max_response_body_bytes: DEFAULT_MAX_BODY_BYTES,
     http2: true,
     http2_prior_knowledge: false,
+    default_headers: Headers::new(),
   }
 }
 
@@ -91,6 +96,32 @@ pub fn ClientOptions::with_max_response_body_bytes(
     ..self,
     max_response_body_bytes: if max_response_body_bytes < 0 { 0 } else { max_response_body_bytes },
   }
+}
+
+/// Add a header applied to every top-level request that does not already set
+/// that field. Request-specific headers always win.
+pub fn ClientOptions::with_default_header(
+  self : ClientOptions,
+  name : String,
+  value : String,
+) -> ClientOptions {
+  ClientOptions::{
+    ..self,
+    default_headers: self.default_headers.add(name, value),
+  }
+}
+
+/// Replace the default headers applied to top-level requests.
+pub fn ClientOptions::with_default_headers(
+  self : ClientOptions,
+  headers : Headers,
+) -> ClientOptions {
+  ClientOptions::{ ..self, default_headers: headers }
+}
+
+/// The headers applied to top-level requests that do not set them.
+pub fn ClientOptions::default_headers(self : ClientOptions) -> Headers {
+  self.default_headers
 }
 
 #cfg(target="native")
@@ -193,6 +224,32 @@ pub fn UnifiedClient::with_user_agent(
   UnifiedClient::{
     connector: self.connector,
     options: ClientOptions::{ ..self.options, user_agent },
+    redirect_count: 0,
+  }
+}
+
+/// Add a header applied to every top-level request that does not already set
+/// that field. A request-specific header always takes precedence.
+pub fn UnifiedClient::with_default_header(
+  self : UnifiedClient,
+  name : String,
+  value : String,
+) -> UnifiedClient {
+  UnifiedClient::{
+    connector: self.connector,
+    options: self.options.with_default_header(name, value),
+    redirect_count: 0,
+  }
+}
+
+/// Replace the default headers applied to top-level requests.
+pub fn UnifiedClient::with_default_headers(
+  self : UnifiedClient,
+  headers : Headers,
+) -> UnifiedClient {
+  UnifiedClient::{
+    connector: self.connector,
+    options: self.options.with_default_headers(headers),
     redirect_count: 0,
   }
 }
@@ -565,9 +622,26 @@ fn request_can_be_retried(method : HttpMethod) -> Bool {
   }
 }
 
+/// Merge client-wide default headers into a request. A field explicitly set
+/// on the request wins; repeated default values for the same field are all
+/// preserved. Defaults are applied once, before the first request, so a
+/// redirect cannot reintroduce credentials the redirect logic stripped.
+fn apply_default_headers(req : Request, defaults : Headers) -> Request {
+  let mut request = req
+  for header in defaults.iter() {
+    if req.get_header(header.name) is None {
+      request = request.with_header(header.name, header.value)
+    }
+  }
+  request
+}
+
 /// Internal request implementation with redirect handling
 fn UnifiedClient::do_request(self : UnifiedClient, req : Request) -> Result[Response, HttpError] {
-  self.do_request_once(req, true)
+  self.do_request_once(
+    apply_default_headers(req, self.options.default_headers),
+    true,
+  )
 }
 
 fn UnifiedClient::do_request_once(
@@ -787,6 +861,13 @@ fn UnifiedClient::do_request_once(
         .remove("Authorization")
         .remove("Proxy-Authorization")
         .remove("Cookie")
+      // Client-wide defaults may carry API keys or other credentials. They
+      // were applied for the original origin, so do not forward them to a
+      // different one. They are also not re-applied by `do_request_once`,
+      // which keeps a redirect chain from leaking them to a later hop.
+      for header in self.options.default_headers.iter() {
+        next_headers = next_headers.remove(header.name)
+      }
     }
 
     // Create new request for redirect
@@ -800,8 +881,9 @@ fn UnifiedClient::do_request_once(
       timeout_explicit: request.timeout_explicit,
     }
 
-    // Follow redirect
-    return self.do_request(redirect_req)
+    // Follow redirect. Defaults were already merged into the original
+    // request and must not be applied again here.
+    return self.do_request_once(redirect_req, true)
   }
 
   Ok(response)
