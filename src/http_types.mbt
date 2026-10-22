@@ -1155,7 +1155,22 @@ pub fn Response::read_body_decoded_with_limit(
   if raw.length() == 0 || !has_encoding {
     return Ok(raw)
   }
-  let decoded = match decode_encodings(combined, raw, limit) {
+  // An intermediate decoding stage can legitimately be larger than the final
+  // plaintext (for example the inner gzip member in `gzip(gzip(data))`). Only
+  // the last stage determines the decoded output size, so allow intermediate
+  // stages to reach the response body cap while bounding the final stage by
+  // the caller's limit.
+  let intermediate_limit = if self.max_body_bytes > limit {
+    self.max_body_bytes
+  } else {
+    limit
+  }
+  let decoded = match decode_encodings(
+    combined,
+    raw,
+    limit,
+    intermediate_limit,
+  ) {
     Ok(decoded) => decoded
     Err(err) => return Err(err)
   }
@@ -1166,19 +1181,39 @@ pub fn Response::read_body_decoded_with_limit(
 }
 
 /// Apply a (possibly comma-separated) `Content-Encoding` header. Encodings are
-/// listed in the order they were applied, so they are undone in reverse.
+/// listed in the order they were applied, so they are undone in reverse. The
+/// final decode is bounded by `max_bytes`; intermediate decodes may use the
+/// larger `intermediate_max_bytes`.
 fn decode_encodings(
   header : String,
   data : Bytes,
   max_bytes : Int,
+  intermediate_max_bytes : Int,
 ) -> Result[Bytes, HttpError] {
   let encodings = header.split(",").to_array()
+  // The first encoding listed was applied last, so it is decoded last and
+  // produces the final output. Its result is the only one bounded by the
+  // caller's limit; earlier stages use the larger response-body cap.
+  let mut final_index = -1
+  let mut scan = 0
+  while scan < encodings.length() {
+    let token = encodings[scan].trim().to_owned()
+    if token.length() > 0 && token.to_lower() != "identity" && final_index < 0 {
+      final_index = scan
+    }
+    scan = scan + 1
+  }
   let mut current = data
   let mut index = encodings.length() - 1
   while index >= 0 {
     let token = encodings[index].trim().to_owned()
     if token.length() > 0 && token.to_lower() != "identity" {
-      current = match decode_content_encoding(token, current, max_bytes) {
+      let layer_limit = if index == final_index {
+        max_bytes
+      } else {
+        intermediate_max_bytes
+      }
+      current = match decode_content_encoding(token, current, layer_limit) {
         Ok(decoded) => decoded
         Err(err) => return Err(err)
       }
