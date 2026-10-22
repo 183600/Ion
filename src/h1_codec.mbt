@@ -580,6 +580,10 @@ pub fn H1Codec::encode_request(
     Some(body) => body.length()
     None => 0
   }
+  // RFC 9110 §9.3.8: a client MUST NOT generate content in a TRACE request.
+  if req.method == TRACE && (body_length > 0 || req.trailers.length() > 0) {
+    return Err(InvalidHeader("TRACE request content is not allowed"))
+  }
   match content_length {
     Some(declared) => if declared != body_length {
       return Err(InvalidHeader("Content-Length"))

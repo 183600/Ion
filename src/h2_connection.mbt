@@ -749,6 +749,11 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
     Some(body) => body.length()
     None => 0
   }
+  // RFC 9110 §9.3.8: a client MUST NOT generate content in a TRACE request.
+  if request.method == TRACE &&
+    (body_length > 0 || request.trailers.length() > 0) {
+    return Err(InvalidHeader("TRACE request content is not allowed"))
+  }
   let content_lengths = request.headers.get_all("Content-Length")
   // A field nominated by Connection is removed before the request is sent, so
   // it must not be validated as part of the HTTP/2 header list.
