@@ -45,3 +45,44 @@ test "h1_request frames HEAD responses without a body" {
   assert_eq(response.status, 200)
   assert_eq(response.read_body().unwrap(), b"")
 }
+
+///|
+test "H1Codec implements HttpClient and reuses buffered input" {
+  let stream = codec_reuse_stream([
+    "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\none",
+    "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\ntwo",
+  ])
+  let codec = H1Codec::new(stream)
+  let client : &HttpClient = codec
+  match client.get("http://example.com/one") {
+    Ok(response) => assert_eq(response.text().unwrap(), "one")
+    Err(err) => fail("trait request failed: " + @debug.to_string(err))
+  }
+  match client.get("http://example.com/two") {
+    Ok(response) => assert_eq(response.text().unwrap(), "two")
+    Err(err) => fail("second trait request failed: " + @debug.to_string(err))
+  }
+}
+
+///|
+test "H1Codec::request keeps a shared reader across exchanges" {
+  let stream = codec_reuse_stream([
+    "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\none",
+    "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\ntwo",
+  ])
+  let codec = H1Codec::new(stream)
+  let first = Request::from_url(GET, "http://example.com/one").unwrap()
+  assert_eq(codec.request(first).unwrap().text().unwrap(), "one")
+  let second = Request::from_url(GET, "http://example.com/two").unwrap()
+  assert_eq(codec.request(second).unwrap().text().unwrap(), "two")
+}
+
+///|
+test "H1Codec request rejects an invalid request without sending it" {
+  let stream = regression_mock_stream("", 0, 0)
+  let codec = H1Codec::new(stream)
+  let url = Url::parse("http://example.com/").unwrap()
+  let request = Request::new(GET, url).with_header("Bad Header", "x")
+  assert_true(codec.request(request) is Err(InvalidHeader(_)))
+  assert_eq(stream.output.length(), 0)
+}

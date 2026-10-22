@@ -1938,6 +1938,35 @@ pub impl Stream for ResponseStream with fn local_addr(self : ResponseStream) -> 
   self.reader.val.stream.local_addr()
 }
 
+/// Encode one request and decode its response, keeping the codec's buffered
+/// reader state for a later exchange on the same stream.
+pub fn H1Codec::request(
+  self : H1Codec,
+  request : Request,
+  absolute_form? : Bool,
+) -> Result[Response, HttpError] {
+  match self.encode_request(request, absolute_form=absolute_form.unwrap_or(false)) {
+    Ok(_) => ()
+    Err(err) => return Err(err)
+  }
+  self.decode_response(head=request.method == HEAD)
+}
+
+/// Run HTTP/1.1 exchanges on an already established stream. The codec keeps
+/// bytes read ahead from one response available to the next one, so callers
+/// with a persistent transport can issue sequential requests without losing
+/// buffered input.
+pub impl HttpClient for H1Codec with fn request(
+  self : H1Codec,
+  request : Request,
+) -> Result[Response, HttpError] {
+  match self.encode_request(request) {
+    Ok(_) => ()
+    Err(err) => return Err(err)
+  }
+  self.decode_response(head=request.method == HEAD)
+}
+
 /// Encode one HTTP/1.1 request and decode its response on an already
 /// established stream. This is the HTTP/1.1 counterpart to `h2_request` for
 /// callers that provide their own `Stream` (for example a custom transport or
@@ -1958,9 +1987,5 @@ pub fn h1_request_with_limit(
   absolute_form? : Bool,
 ) -> Result[Response, HttpError] {
   let codec = H1Codec::new_with_limit(stream, max_body_bytes)
-  match codec.encode_request(request, absolute_form=absolute_form.unwrap_or(false)) {
-    Ok(_) => ()
-    Err(err) => return Err(err)
-  }
-  codec.decode_response(head=request.method == HEAD)
+  codec.request(request, absolute_form=absolute_form.unwrap_or(false))
 }

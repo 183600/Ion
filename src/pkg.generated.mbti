@@ -189,6 +189,8 @@ pub fn H1Codec::new(&Stream) -> Self
 pub fn H1Codec::new_with_completion(&Stream, (Bool) -> Unit) -> Self
 pub fn H1Codec::new_with_limit(&Stream, Int32) -> Self
 pub fn H1Codec::new_with_limit_and_completion(&Stream, Int32, (Bool) -> Unit) -> Self
+pub fn H1Codec::request(Self, Request, absolute_form? : Bool) -> Result[Response, HttpError]
+pub impl HttpClient for H1Codec
 
 type H2BodyStream
 pub impl Stream for H2BodyStream
