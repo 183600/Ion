@@ -587,7 +587,13 @@ pub fn H1Codec::encode_request(
   } else {
     req.url.authority()
   }
-  let req_line = req.method.to_string() + " " + target + " HTTP/1.1\r\n"
+  let verb = req.method.to_string()
+  // `HttpMethod::Custom` is public, so validate the token again at the wire
+  // boundary instead of relying only on the constructor.
+  if !valid_header_name(verb) {
+    return Err(InvalidMethod(verb))
+  }
+  let req_line = verb + " " + target + " HTTP/1.1\r\n"
 
   for header in req.headers.iter() {
     if !valid_header_name(header.name) || !valid_header_value(header.value) {

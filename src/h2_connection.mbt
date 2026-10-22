@@ -918,9 +918,15 @@ fn h2_request_headers_with_protocol(
   if (is_connect || extended_connect) && content_length is Some(_) {
     return Err(InvalidHeader("CONNECT request content is not allowed"))
   }
+  let verb = request.method.to_string()
+  // The public `Custom` variant can be built without `HttpMethod::custom`, so
+  // reject invalid tokens at the HTTP/2 wire boundary too.
+  if !valid_header_name(verb) {
+    return Err(InvalidMethod(verb))
+  }
   // CONNECT uses authority-form and has no :scheme or :path (RFC 9113 §8.5).
   let headers : Array[(String, String)] = if is_connect {
-    [(":method", request.method.to_string()), (":authority", authority)]
+    [(":method", verb), (":authority", authority)]
   } else if extended_connect {
     let protocol = match extended_protocol {
       Some(value) => value
@@ -935,7 +941,7 @@ fn h2_request_headers_with_protocol(
     ]
   } else {
     [
-      (":method", request.method.to_string()),
+      (":method", verb),
       (":scheme", request.url.scheme.to_lower()),
       (":authority", authority),
       (":path", request_target),

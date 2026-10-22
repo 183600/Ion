@@ -35,6 +35,18 @@ test "custom methods are encoded as HTTP/2 :method fields" {
 }
 
 ///|
+test "invalid custom method tokens are rejected at the wire boundary" {
+  // The `Custom` variant is public, so a caller can bypass
+  // `HttpMethod::custom`. Both codecs must still refuse to serialize a token
+  // containing a separator or whitespace.
+  let url = Url::parse("http://example.com/").unwrap()
+  let request = Request::new(Custom("BAD METHOD"), url)
+  let stream = regression_mock_stream("", 0, 0)
+  assert_true(H1Codec::new(stream).encode_request(request) is Err(InvalidMethod(_)))
+  assert_true(h2_request_headers(request) is Err(InvalidMethod(_)))
+}
+
+///|
 test "strict method parsing still rejects extension methods" {
   // Extension methods need `HttpMethod::custom` so a typo such as "breww"
   // cannot silently become a wire method in the strict parser/CLI path.
