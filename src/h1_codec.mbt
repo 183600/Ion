@@ -727,8 +727,21 @@ pub fn H1Codec::encode_request(
     headers_str += "User-Agent: Feather/0.1.0\r\n"
   }
 
-  // Add other headers
+  // Add other headers. RFC 6265 §5.4 requires a request to carry at most one
+  // Cookie field, so combine repeated caller-supplied fragments with "; " at
+  // the position of the first one instead of emitting several field lines.
+  let mut cookie_written = false
   for header in req.headers.iter() {
+    if header.name.to_lower() == "cookie" {
+      if cookie_written {
+        continue
+      }
+      cookie_written = true
+      headers_str += header.name + ": " +
+        req.headers.get_all("Cookie").to_array().join("; ") +
+        "\r\n"
+      continue
+    }
     headers_str += header.name + ": " + header.value + "\r\n"
   }
 

@@ -1177,3 +1177,18 @@ test "later time-shaped tokens do not invalidate an already parsed date" {
   assert_eq(jar.cookie_header_at(url, expiry - 1), Some("x=1"))
   assert_eq(jar.cookie_header_at(url, expiry), None)
 }
+
+///|
+test "http1 combines split cookie fields into one header" {
+  let url = Url::parse("http://example.com/").unwrap()
+  let stream = regression_mock_stream("", 0, 0)
+  let request = Request::new(GET, url)
+    .with_header("X-Test", "yes")
+    .with_header("Cookie", "a=1")
+    .with_header("Cookie", "b=2")
+  assert_true(H1Codec::new(stream).encode_request(request) is Ok(_))
+  let wire = @utf8.decode(stream.output.to_bytes()[:])
+  assert_true(wire.contains("Cookie: a=1; b=2\r\n"))
+  assert_false(wire.contains("Cookie: a=1\r\nCookie: b=2") )
+  assert_eq(wire.split("Cookie:").length(), 2)
+}
