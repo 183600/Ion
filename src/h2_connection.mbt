@@ -2590,3 +2590,27 @@ pub impl HttpClient for H2ClientConnection with fn request(
 pub fn h2_request(stream : &Stream, request : Request) -> Result[Response, HttpError] {
   h2_request_with_limit(stream, request, DEFAULT_MAX_BODY_BYTES)
 }
+
+/// Perform one HTTP/2 request whose response body is read lazily from `stream`.
+/// This is the one-shot counterpart to `H2ClientConnection::request_streaming`
+/// for callers that provide their own ALPN-negotiated stream. The returned
+/// body owns the connection; close it when the body is no longer needed.
+pub fn h2_request_streaming(
+  stream : &Stream,
+  request : Request,
+) -> Result[Response, HttpError] {
+  let connection = match H2ClientConnection::new(stream) {
+    Ok(connection) => connection
+    Err(err) => return Err(err)
+  }
+  // This helper owns the connection. Close it once the body is finished or
+  // discarded, including the buffered fallback used for uploads.
+  let completion : ((Bool) -> Unit)? = Some(fn(_reusable) {
+    connection.close()
+  })
+  connection.request_streaming_with_callback(
+    request,
+    DEFAULT_MAX_BODY_BYTES,
+    completion,
+  )
+}

@@ -211,3 +211,19 @@ test "streaming HTTP/2 body does not reuse a session after GOAWAY" {
   let _ = connection.close()
   assert_false(stream.is_open)
 }
+
+///|
+test "h2_request_streaming provides a one-shot lazy exchange" {
+  let headers = hpack_encode([(":status", "200"), ("content-length", "2")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, headers),
+    h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, b"ok"),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let request = Request::new(GET, Url::parse("https://example.com/one-shot").unwrap())
+  let response = h2_request_streaming(stream, request).unwrap()
+  assert_eq(response.status, 200)
+  assert_eq(response.text().unwrap(), "ok")
+  assert_false(stream.is_open)
+}
