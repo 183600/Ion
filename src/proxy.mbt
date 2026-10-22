@@ -1,12 +1,18 @@
-/// HTTP proxy configuration.
+/// Proxy configuration.
 ///
-/// Feather supports `http://` and `https://` forward proxies. Plain HTTP
-/// requests are sent in absolute-form and HTTPS requests are tunnelled with
+/// Feather supports `http://` and `https://` forward proxies as well as
+/// `socks5://` / `socks5h://` tunnels. Plain HTTP requests are sent in
+/// absolute-form through a forward proxy and HTTPS requests are tunnelled with
 /// `CONNECT`. An `https://` proxy is reached over TLS before either form is
-/// used, so the proxy connection itself is encrypted too.
+/// used, so the proxy connection itself is encrypted too. SOCKS5 proxies carry
+/// both HTTP and HTTPS through a tunnel and resolve the target host themselves.
 pub struct Proxy {
   url : Url
   authorization : String?
+  // SOCKS5 username/password authentication is a byte-oriented sub-negotiation
+  // and is not an HTTP Authorization header, so it is kept separately.
+  socks_username : Bytes?
+  socks_password : Bytes?
 } derive(Eq, Debug)
 
 fn proxy_userinfo(url : String) -> String? {
@@ -47,6 +53,22 @@ fn proxy_basic_authorization(userinfo : String) -> Result[String, HttpError] {
   Ok(@base64.encode(credentials.to_bytes()))
 }
 
+fn proxy_socks5_credentials(userinfo : String) -> Result[(Bytes, Bytes), HttpError] {
+  let (user, password) = match userinfo.find(":") {
+    Some(index) => (
+      userinfo[0:index].to_owned(),
+      userinfo[index + 1:].to_owned(),
+    )
+    None => (userinfo, "")
+  }
+  let username = percent_decode_bytes(user)
+  let password = percent_decode_bytes(password)
+  match socks5_credentials_valid(username, password) {
+    Ok(_) => Ok((username, password))
+    Err(err) => Err(err)
+  }
+}
+
 fn proxy_from_url(url : String, scheme : String) -> Result[Proxy, HttpError] {
   let parsed = match Url::parse(url) {
     Ok(parsed) => parsed
@@ -76,7 +98,12 @@ fn proxy_from_url(url : String, scheme : String) -> Result[Proxy, HttpError] {
       }
     None => None
   }
-  Ok(Proxy::{ url: parsed, authorization })
+  Ok(Proxy::{
+    url: parsed,
+    authorization,
+    socks_username: None,
+    socks_password: None,
+  })
 }
 
 /// Create an HTTP proxy from an `http://`
@@ -90,6 +117,117 @@ pub fn Proxy::new(url : String) -> Result[Proxy, HttpError] {
 /// protected with TLS before any proxy request is sent.
 pub fn Proxy::new_https(url : String) -> Result[Proxy, HttpError] {
   proxy_from_url(url, "https")
+}
+
+/// Create a SOCKS5 proxy from a `socks5://` or `socks5h://`
+/// `[user:password@]host[:port]` URL. The default port is 1080. Both schemes
+/// send the target host name to the proxy, so DNS resolution happens on the
+/// proxy side.
+pub fn Proxy::new_socks5(url : String) -> Result[Proxy, HttpError] {
+  let scheme_end = match url.find("://") {
+    Some(index) => index
+    None => return Err(InvalidUrl("Invalid proxy URL"))
+  }
+  let scheme = url[0:scheme_end].to_owned().to_lower()
+  if scheme != "socks5" && scheme != "socks5h" {
+    return Err(InvalidUrl("Only socks5 and socks5h proxies are supported"))
+  }
+  let rest = url[scheme_end + 3:].to_owned()
+  // Parse the authority with the regular HTTP URL parser so host, port and
+  // userinfo validation stays in one place, then replace the scheme and apply
+  // the SOCKS default port when the URL did not spell one out.
+  let parsed = match Url::parse("http://" + rest) {
+    Ok(parsed) => parsed
+    Err(err) => return Err(err)
+  }
+  if rest.contains("?") || rest.contains("#") || parsed.path != "/" ||
+    parsed.query.length() > 0 || parsed.fragment.length() > 0 {
+    return Err(InvalidUrl("Proxy URL must not include a path, query, or fragment"))
+  }
+  let authority_end = match find_first_delimiter(rest) {
+    Some(index) => index
+    None => rest.length()
+  }
+  let authority = rest[0:authority_end].to_owned()
+  let host_port = match authority.rev_find("@") {
+    Some(index) => authority[index + 1:].to_owned()
+    None => authority
+  }
+  let has_port = if host_port.has_prefix("[") {
+    match host_port.find("]") {
+      Some(index) => index + 1 < host_port.length() &&
+        host_port.get_char(index + 1) == Some(':')
+      None => false
+    }
+  } else {
+    host_port.find(":").is_some()
+  }
+  let port = if has_port { parsed.port } else { 1080 }
+  let (socks_username, socks_password) = match proxy_userinfo(url) {
+    Some(userinfo) =>
+      if userinfo.length() == 0 {
+        (None, None)
+      } else {
+        match proxy_socks5_credentials(userinfo) {
+          Ok(credentials) => (Some(credentials.0), Some(credentials.1))
+          Err(err) => return Err(err)
+        }
+      }
+    None => (None, None)
+  }
+  Ok(Proxy::{
+    url: Url::{ ..parsed, scheme, port },
+    authorization: None,
+    socks_username,
+    socks_password,
+  })
+}
+
+/// Create a SOCKS5 proxy with username/password authentication.
+pub fn Proxy::new_socks5_with_auth(
+  host : String,
+  port : Int,
+  username : String,
+  password : String,
+) -> Result[Proxy, HttpError] {
+  let url = Url::new("socks5", host, port)
+  if !valid_tcp_host(url.host) {
+    return Err(InvalidUrl("Invalid proxy host"))
+  }
+  if !valid_tcp_port(url.port) {
+    return Err(InvalidUrl("Invalid proxy port"))
+  }
+  let username = @utf8.encode(username)
+  let password = @utf8.encode(password)
+  match socks5_credentials_valid(username, password) {
+    Ok(_) => ()
+    Err(err) => return Err(err)
+  }
+  Ok(Proxy::{
+    url,
+    authorization: None,
+    socks_username: Some(username),
+    socks_password: Some(password),
+  })
+}
+
+/// Parse a proxy URL, accepting the schemes Feather can route through. A bare
+/// `host:port` value selects an HTTP proxy, matching the convention used by
+/// the standard proxy environment variables.
+pub fn Proxy::parse(url : String) -> Result[Proxy, HttpError] {
+  let url = url.trim().to_owned()
+  let lower = url.to_lower()
+  if lower.has_prefix("socks5://") || lower.has_prefix("socks5h://") {
+    Proxy::new_socks5(url)
+  } else if lower.has_prefix("https://") {
+    Proxy::new_https(url)
+  } else if lower.has_prefix("http://") {
+    Proxy::new(url)
+  } else if lower.contains("://") {
+    Proxy::new(url)
+  } else {
+    Proxy::new("http://" + url)
+  }
 }
 
 /// Create a proxy that authenticates with the given credentials.
@@ -110,7 +248,12 @@ pub fn Proxy::new_with_basic_auth(
     return Err(InvalidUrl("Invalid username in proxy credentials"))
   }
   let encoded = @base64.encode(@utf8.encode(username + ":" + password))
-  Ok(Proxy::{ url, authorization: Some("Basic " + encoded) })
+  Ok(Proxy::{
+    url,
+    authorization: Some("Basic " + encoded),
+    socks_username: None,
+    socks_password: None,
+  })
 }
 
 /// Host and port of the proxy server.
@@ -121,6 +264,20 @@ pub fn Proxy::authority(self : Proxy) -> String {
 /// Whether the connection to the proxy itself must use TLS.
 pub fn Proxy::is_secure(self : Proxy) -> Bool {
   self.url.scheme.to_lower() == "https"
+}
+
+/// Whether this proxy is a SOCKS5 tunnel.
+pub fn Proxy::is_socks5(self : Proxy) -> Bool {
+  let scheme = self.url.scheme.to_lower()
+  scheme == "socks5" || scheme == "socks5h"
+}
+
+/// SOCKS5 username/password credentials, if configured.
+pub fn Proxy::socks_credentials(self : Proxy) -> (Bytes, Bytes)? {
+  match (self.socks_username, self.socks_password) {
+    (Some(username), Some(password)) => Some((username, password))
+    _ => None
+  }
 }
 
 /// Authorization header value for the proxy, if credentials were supplied.
@@ -148,6 +305,10 @@ fn proxy_env_value(
 /// treated as an HTTP proxy, matching the convention used by common HTTP
 /// clients and tools.
 fn proxy_from_env_url(value : String) -> Result[Proxy, HttpError] {
+  // Standard environment variables select HTTP(S) proxies. SOCKS5 is
+  // available through the explicit `Proxy::new_socks5` /
+  // `UnifiedClient::with_proxy_url` API instead of silently changing the
+  // meaning of existing `ALL_PROXY` values.
   let lower = value.to_lower()
   if lower.has_prefix("https://") {
     Proxy::new_https(value)

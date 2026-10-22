@@ -337,24 +337,15 @@ pub fn UnifiedClient::with_proxy_bypass(
   }
 }
 
-/// Route HTTP requests through the proxy described by `url`
-/// (`http://` or `https://` `[user:password@]host[:port]`). A bare
+/// Route requests through the proxy described by `url` (`http://`, `https://`,
+/// `socks5://`, or `socks5h://` `[user:password@]host[:port]`). A bare
 /// `host[:port]` value selects an HTTP proxy, matching the convention used by
 /// the standard proxy environment variables.
 pub fn UnifiedClient::with_proxy_url(
   self : UnifiedClient,
   url : String,
 ) -> Result[UnifiedClient, HttpError] {
-  let url = url.trim().to_owned()
-  let lower = url.to_lower()
-  let proxy = if lower.has_prefix("https://") {
-    Proxy::new_https(url)
-  } else if lower.contains("://") {
-    Proxy::new(url)
-  } else {
-    Proxy::new("http://" + url)
-  }
-  let proxy = match proxy {
+  let proxy = match Proxy::parse(url) {
     Ok(proxy) => proxy
     Err(err) => return Err(err)
   }

@@ -901,7 +901,9 @@ pub fn Connector::proxy_for_url(self : Connector, url : Url) -> Proxy? {
 /// Whether requests for `url` must use absolute-form request targets (plain
 /// HTTP sent to a forward proxy).
 pub fn Connector::uses_absolute_form(self : Connector, url : Url) -> Bool {
-  self.proxy_for_url(url) is Some(_) && url.scheme.to_lower() == "http"
+  self.proxy_for_url(url) is Some(proxy) &&
+  !proxy.is_socks5() &&
+  url.scheme.to_lower() == "http"
 }
 
 /// Proxy credentials for requests that travel through the proxy itself.
@@ -916,7 +918,7 @@ pub fn Connector::proxy_authorization(self : Connector) -> String? {
 /// the origin (including when a bypass rule applies).
 pub fn Connector::proxy_authorization_for(self : Connector, url : Url) -> String? {
   match self.proxy_for_url(url) {
-    Some(proxy) => proxy.authorization
+    Some(proxy) => if proxy.is_socks5() { None } else { proxy.authorization }
     None => None
   }
 }
@@ -1345,6 +1347,16 @@ fn Connector::connect_impl(
           Err(err) => return Err(TlsError(err))
         }
       }
+      if proxy.is_socks5() {
+        match proxy.socks_credentials() {
+          Some((username, password)) =>
+            match socks5_credentials_valid(username, password) {
+              Ok(_) => ()
+              Err(err) => return Err(err)
+            }
+          None => ()
+        }
+      }
     }
     None => ()
   }
@@ -1410,11 +1422,32 @@ fn Connector::connect_impl(
     }
   }
 
-  // An HTTPS proxy is reached over TLS before the proxy protocol starts. The
-  // resulting stream carries either absolute-form HTTP or the CONNECT tunnel.
+  // An HTTPS proxy is reached over TLS before the proxy protocol starts, and a
+  // SOCKS5 proxy is tunnelled immediately after dialing. The resulting stream
+  // carries either absolute-form HTTP, a CONNECT tunnel, or a SOCKS tunnel.
   let proxy_stream : &Stream = match proxy {
     Some(proxy) =>
-      if proxy.is_secure() {
+      if proxy.is_socks5() {
+        let leftover = match socks5_connect(
+          raw_stream,
+          host,
+          port,
+          url.bracketed,
+          proxy.socks_credentials(),
+        ) {
+          Ok(leftover) => leftover
+          Err(err) => {
+            let _ = raw_stream.close()
+            return Err(err)
+          }
+        }
+        if leftover.length() > 0 {
+          let prefix : &Stream = PrefixStream::new(leftover, raw_stream)
+          prefix
+        } else {
+          raw_stream
+        }
+      } else if proxy.is_secure() {
         let config = self.proxy_tls_config(proxy)
         let ctx = match self.tls_provider.new_client(config) {
           Ok(ctx) => ctx
@@ -1436,17 +1469,21 @@ fn Connector::connect_impl(
     None => raw_stream
   }
 
-  // For HTTPS through a proxy, open a CONNECT tunnel before starting TLS.
+  // For HTTPS through an HTTP proxy, open a CONNECT tunnel before starting
+  // TLS. A SOCKS5 proxy already established the tunnel above.
   let mut tunnel_leftover : Bytes = b""
   if scheme == "https" {
     match proxy {
-      Some(proxy) => match establish_tunnel(proxy_stream, url, proxy) {
-        Ok(leftover) => tunnel_leftover = leftover
-        Err(err) => {
-          let _ = proxy_stream.close()
-          return Err(err)
+      Some(proxy) =>
+        if !proxy.is_socks5() {
+          match establish_tunnel(proxy_stream, url, proxy) {
+            Ok(leftover) => tunnel_leftover = leftover
+            Err(err) => {
+              let _ = proxy_stream.close()
+              return Err(err)
+            }
+          }
         }
-      }
       None => ()
     }
   }

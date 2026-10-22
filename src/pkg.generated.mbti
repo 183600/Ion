@@ -277,15 +277,22 @@ pub impl KeyLogSink for PrintKeyLogSink
 pub struct Proxy {
   url : Url
   authorization : String?
+  socks_username : Bytes?
+  socks_password : Bytes?
 } derive(Eq, @debug.Debug)
 pub fn Proxy::authority(Self) -> String
 pub fn Proxy::authorization(Self) -> String?
 pub fn Proxy::from_env(Url) -> Result[Self?, HttpError]
 pub fn Proxy::is_secure(Self) -> Bool
+pub fn Proxy::is_socks5(Self) -> Bool
 pub fn Proxy::new(String) -> Result[Self, HttpError]
 pub fn Proxy::new_https(String) -> Result[Self, HttpError]
+pub fn Proxy::new_socks5(String) -> Result[Self, HttpError]
+pub fn Proxy::new_socks5_with_auth(String, Int32, String, String) -> Result[Self, HttpError]
 pub fn Proxy::new_with_basic_auth(String, Int32, String, String) -> Result[Self, HttpError]
 pub fn Proxy::no_proxy_from_env() -> Array[String]
+pub fn Proxy::parse(String) -> Result[Self, HttpError]
+pub fn Proxy::socks_credentials(Self) -> (Bytes, Bytes)?
 
 pub struct Request {
   method : HttpMethod
@@ -351,6 +358,8 @@ pub struct RootStore {
 } derive(Eq, @debug.Debug)
 pub fn RootStore::add_certificate(Self, Bytes) -> Self
 pub fn RootStore::new() -> Self
+
+type Socks5Reader
 
 type StreamReader
 
