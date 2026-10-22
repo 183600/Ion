@@ -117,7 +117,7 @@ test "client sends an expect body after 100 and keeps the exchange usable" {
   let client = UnifiedClient::{ connector, options, redirect_count: 0 }
   let url = Url::parse("http://example.com/upload").unwrap()
   let request = Request::new(POST, url)
-    .with_header("Expect", "100-continue")
+    .with_expect_continue()
     .with_body(@utf8.encode("client-body"))
   let response = client.request(request).unwrap()
   assert_eq(response.text().unwrap(), "ok")

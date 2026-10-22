@@ -1114,6 +1114,13 @@ pub fn Request::with_body(self : Request, body : Bytes) -> Request {
   Request::{ ..self, body: Some(body) }
 }
 
+/// Ask the peer to accept the request body before it is sent. On HTTP/1.1 the
+/// body is withheld until an interim `100 Continue` arrives; a final response
+/// such as `417 Expectation Failed` means the body is never written.
+pub fn Request::with_expect_continue(self : Request) -> Request {
+  self.with_header("Expect", "100-continue")
+}
+
 /// Append a trailer field. Request trailers require chunked framing on
 /// HTTP/1.1; HTTP/2 sends them in a trailing HEADERS frame.
 pub fn Request::with_trailer(self : Request, name : String, value : String) -> Request {

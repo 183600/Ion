@@ -327,6 +327,7 @@ pub fn Request::new(HttpMethod, Url) -> Self
 pub fn Request::set_header(Self, String, String) -> Self
 pub fn Request::with_basic_auth(Self, String, String) -> Self
 pub fn Request::with_body(Self, Bytes) -> Self
+pub fn Request::with_expect_continue(Self) -> Self
 pub fn Request::with_form(Self, Array[(String, String)]) -> Self
 pub fn Request::with_header(Self, String, String) -> Self
 pub fn Request::with_method(Self, HttpMethod) -> Self
