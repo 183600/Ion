@@ -224,6 +224,11 @@ test "http2 rejects an out-of-range initial window setting" {
   }
   assert_eq(overflow.stream_send_window, H2_MAX_WINDOW_SIZE)
   assert_eq(overflow.peer_initial_window, 0)
+
+  match h2_apply_settings(b"\x00\x04\x00\x00\x00", flow) {
+    Err(err) => assert_eq(err, ProtocolError("Invalid HTTP/2 SETTINGS length"))
+    Ok(_) => fail("truncated HTTP/2 SETTINGS was accepted")
+  }
 }
 
 test "http2 propagates stream reset and GOAWAY errors" {

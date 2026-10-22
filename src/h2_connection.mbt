@@ -232,6 +232,9 @@ fn h2_apply_settings(
 ) -> Result[Unit, HttpError] {
   let mut offset = 0
   while offset < payload.length() {
+    if offset + 6 > payload.length() {
+      return Err(ProtocolError("Invalid HTTP/2 SETTINGS length"))
+    }
     let identifier = (payload[offset].to_int() << 8) | payload[offset + 1].to_int()
     let value_high = payload[offset + 2].to_int()
     let value = (value_high << 24) |
