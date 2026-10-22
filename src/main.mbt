@@ -128,7 +128,7 @@ fn env_tls_config() -> Result[TlsConfig?, HttpError] {
   match ca_path {
     Some(path) => match read_file(path) {
       Some(pem) => config = config.with_root_store(RootStore::new().add_certificate(pem))
-      None => println("warning: could not read CA bundle: " + path)
+      None => return Err(TlsError(InvalidConfig("could not read CA bundle: " + path)))
     }
     None => ()
   }
