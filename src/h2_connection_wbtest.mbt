@@ -1170,3 +1170,51 @@ test "http2 rejects non-SETTINGS frames in the server preface" {
       assert_eq(err, ProtocolError("HTTP/2 server did not start with SETTINGS"))
   }
 }
+
+test "http2 rejects Content-Length on 204 and informational responses" {
+  let informational = hpack_encode([(":status", "103"), ("content-length", "0")])
+  let no_content = hpack_encode([(":status", "204"), ("content-length", "0")])
+  for input in [
+    h2_test_concat([
+      h2_test_settings(),
+      h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, informational),
+      h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, hpack_encode([(":status", "200")])),
+    ]),
+    h2_test_concat([
+      h2_test_settings(),
+      h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, no_content),
+    ]),
+  ] {
+    let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+    match h2_request(h2_frame_mock_stream(input, 0), request) {
+      Ok(_) => fail("HTTP/2 response with forbidden Content-Length was accepted")
+      Err(_) => ()
+    }
+  }
+}
+
+test "http2 only allows a zero Content-Length on 205" {
+  let invalid = hpack_encode([(":status", "205"), ("content-length", "1")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, invalid),
+  ])
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match h2_request(h2_frame_mock_stream(input, 0), request) {
+    Ok(_) => fail("HTTP/2 205 response with a body length was accepted")
+    Err(err) =>
+      assert_eq(
+        err,
+        ProtocolError("HTTP/2 205 response must not have a non-zero Content-Length"),
+      )
+  }
+
+  let valid = hpack_encode([(":status", "205"), ("content-length", "0")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, valid),
+  ])
+  let response = h2_request(h2_frame_mock_stream(input, 0), request).unwrap()
+  assert_eq(response.status, 205)
+  assert_eq(response.read_body().unwrap(), b"")
+}

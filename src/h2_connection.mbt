@@ -271,6 +271,11 @@ fn H2ResponseState::apply_header_block(
     return Err(ProtocolError("HTTP/2 does not allow 101 Switching Protocols"))
   }
   if status < 200 {
+    if regular.contains("content-length") {
+      return Err(ProtocolError(
+        "HTTP/2 informational response must not include Content-Length",
+      ))
+    }
     if end_stream {
       return Err(ProtocolError("Informational HTTP/2 response ended the stream"))
     }
@@ -291,6 +296,16 @@ fn H2ResponseState::apply_header_block(
   let declared = match response_content_length(regular) {
     Ok(value) => value
     Err(_) => return Err(ProtocolError("Invalid HTTP/2 Content-Length"))
+  }
+  // HTTP semantics forbid Content-Length on 204 responses entirely; a 205
+  // response may only advertise a zero-length body (RFC 9110 §8.6/§15.3.6).
+  if status == 204 && regular.contains("content-length") {
+    return Err(ProtocolError("HTTP/2 204 response must not include Content-Length"))
+  }
+  if status == 205 && declared is Some(length) && length != 0 {
+    return Err(ProtocolError(
+      "HTTP/2 205 response must not have a non-zero Content-Length",
+    ))
   }
   if !self.body_forbidden {
     match declared {
