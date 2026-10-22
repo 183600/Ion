@@ -465,3 +465,87 @@ test "HTTP/2 response bodies become closed streams after close" {
   assert_true(response.body.local_addr() is Err(Closed))
   let _ = client.close_all()
 }
+
+///|
+test "cleartext HTTP/2 prior knowledge sends the client preface" {
+  let response_headers = hpack_encode([(":status", "200"), ("x-h2c", "yes")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let provider = H2NegotiatingTlsProvider::{ protocol: None }
+  let client = UnifiedClient::with_transport(
+    dialer,
+    provider,
+    ClientOptions::new().with_follow_redirects(false),
+  ).with_http2_prior_knowledge(true)
+  let response = client.get("http://example.com/h2c").unwrap()
+  assert_eq(dialer.count, 1)
+  assert_eq(response.version, "HTTP/2")
+  assert_eq(response.status, 200)
+  assert_eq(response.headers.get("x-h2c"), Some("yes"))
+  assert_eq(response.read_body().unwrap(), b"")
+  let wire = stream.output.to_bytes()
+  assert_true(wire.length() > h2_preface_bytes.length())
+  assert_eq(
+    @utf8.decode_lossy(wire[: h2_preface_bytes.length()]),
+    H2_PREFACE,
+  )
+  let _ = client.close_all()
+  assert_true(!stream.is_open)
+}
+
+///|
+test "cleartext HTTP/2 prior knowledge reuses one session" {
+  let first = hpack_encode([(":status", "200"), ("x-request", "first")])
+  let second = hpack_encode([(":status", "201"), ("x-request", "second")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, first),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 3, second),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let provider = H2NegotiatingTlsProvider::{ protocol: None }
+  let client = UnifiedClient::with_transport(
+    dialer,
+    provider,
+    ClientOptions::new().with_follow_redirects(false),
+  ).with_http2_prior_knowledge(true)
+  let first_response = client.get("http://example.com/first").unwrap()
+  let second_response = client.get("http://example.com/second").unwrap()
+  assert_eq(dialer.count, 1)
+  assert_eq(first_response.headers.get("x-request"), Some("first"))
+  assert_eq(second_response.headers.get("x-request"), Some("second"))
+  assert_eq(second_response.status, 201)
+
+  let wire = stream.output.to_bytes()
+  let mut preface_count = 0
+  let mut index = 0
+  while index + h2_preface_bytes.length() <= wire.length() {
+    if wire.exact_view(start=index, end=index + h2_preface_bytes.length()) ==
+      h2_preface_bytes.exact_view(start=0, end=h2_preface_bytes.length()) {
+      preface_count = preface_count + 1
+    }
+    index = index + 1
+  }
+  assert_eq(preface_count, 1)
+  let _ = client.close_all()
+  assert_true(!stream.is_open)
+}
+
+///|
+test "disabling HTTP/2 also disables cleartext prior knowledge" {
+  let stream = regression_mock_stream("", 0, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  assert_false(connector.http2_prior_knowledge())
+  let enabled = connector.with_http2_prior_knowledge(true)
+  assert_true(enabled.http2_enabled())
+  assert_true(enabled.http2_prior_knowledge())
+  let disabled = enabled.with_http2(false)
+  assert_false(disabled.http2_enabled())
+  assert_false(disabled.http2_prior_knowledge())
+}

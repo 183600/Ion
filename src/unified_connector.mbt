@@ -277,6 +277,7 @@ pub struct Connector {
   mut timeout_ms : Int
   mut max_connections_per_host : Int
   http2 : Bool
+  http2_prior_knowledge : Bool
   mut cookies_enabled : Bool
   cookie_jar : @ref.Ref[CookieJar]
   pool : @ref.Ref[ConnectionPoolState]
@@ -404,6 +405,7 @@ pub fn Connector::new(dialer : &Dialer, tls_provider : &TlsProvider) -> Connecto
     timeout_ms: 30000,
     max_connections_per_host: 0,
     http2: false,
+    http2_prior_knowledge: false,
     cookies_enabled: false,
     cookie_jar: @ref.Ref(CookieJar::new()),
     pool: @ref.Ref(ConnectionPoolState::new()),
@@ -423,6 +425,7 @@ fn Connector::detached(self : Connector) -> Connector {
     timeout_ms: self.timeout_ms,
     max_connections_per_host: self.max_connections_per_host,
     http2: self.http2,
+    http2_prior_knowledge: self.http2_prior_knowledge,
     cookies_enabled: self.cookies_enabled,
     cookie_jar: self.cookie_jar,
     pool: @ref.Ref(self.pool.val.empty_with_settings()),
@@ -456,6 +459,7 @@ pub fn Connector::with_tls_config(self : Connector, config : TlsConfig) -> Conne
     timeout_ms: self.timeout_ms,
     max_connections_per_host: self.max_connections_per_host,
     http2: self.http2,
+    http2_prior_knowledge: self.http2_prior_knowledge,
     cookies_enabled: self.cookies_enabled,
     cookie_jar: self.cookie_jar,
     pool,
@@ -476,6 +480,7 @@ pub fn Connector::with_proxy(self : Connector, proxy : Proxy) -> Connector {
     timeout_ms: self.timeout_ms,
     max_connections_per_host: self.max_connections_per_host,
     http2: self.http2,
+    http2_prior_knowledge: self.http2_prior_knowledge,
     cookies_enabled: self.cookies_enabled,
     cookie_jar: self.cookie_jar,
     pool,
@@ -959,19 +964,55 @@ pub fn Connector::max_connections_per_host(self : Connector) -> Int {
 /// An explicit `with_tls_config` value is respected as-is, so callers that
 /// want HTTP/2 with shared credentials must include `h2` in its ALPN list.
 pub fn Connector::with_http2(self : Connector, enabled : Bool) -> Connector {
-  if self.http2 == enabled {
+  // Disabling HTTP/2 also disables cleartext prior knowledge; enabling it
+  // leaves the existing prior-knowledge policy untouched.
+  if self.http2 == enabled && (enabled || !self.http2_prior_knowledge) {
     return self
   }
   // Existing connections negotiated the old ALPN list and cannot be reused
   // for the new HTTP version policy.
   let pool = @ref.Ref(self.pool.val.empty_with_settings())
   let _ = self.close_all()
-  Connector::{ ..self, http2: enabled, pool }
+  Connector::{
+    ..self,
+    http2: enabled,
+    http2_prior_knowledge: enabled && self.http2_prior_knowledge,
+    pool,
+  }
 }
 
 /// Whether default TLS configurations advertise HTTP/2.
 pub fn Connector::http2_enabled(self : Connector) -> Bool {
   self.http2
+}
+
+/// Use HTTP/2 for cleartext `http://` origins without an ALPN negotiation
+/// (prior knowledge, RFC 9113 §3.4). This is opt-in because a server that only
+/// speaks HTTP/1.1 will reject the HTTP/2 client preface. HTTPS requests keep
+/// using normal ALPN negotiation.
+pub fn Connector::with_http2_prior_knowledge(
+  self : Connector,
+  enabled : Bool,
+) -> Connector {
+  if self.http2_prior_knowledge == enabled &&
+    (!enabled || self.http2) {
+    return self
+  }
+  let pool = @ref.Ref(self.pool.val.empty_with_settings())
+  let _ = self.close_all()
+  Connector::{
+    ..self,
+    // Prior knowledge is an HTTP/2 policy, so enabling it also enables the
+    // normal TLS ALPN advertisement for HTTPS origins.
+    http2: enabled || self.http2,
+    http2_prior_knowledge: enabled,
+    pool,
+  }
+}
+
+/// Whether cleartext origins use HTTP/2 prior knowledge.
+pub fn Connector::http2_prior_knowledge(self : Connector) -> Bool {
+  self.http2 && self.http2_prior_knowledge
 }
 
 /// The name passed to the TLS provider for a URL. Bracketed IPvFuture
@@ -1540,10 +1581,18 @@ fn Connector::connect_impl(
     Ok((tls_stream, false, negotiated_protocol, None))
   } else {
     // For plain HTTP, use the proxy stream (raw or TLS-to-proxy) directly.
-    if cache_new {
-      self.pool.val.cache_idle(conn_key, proxy_stream, @env.now())
+    // Prior knowledge can only be used on a direct connection: an HTTP proxy
+    // expects an HTTP/1.1 request in absolute-form, not an HTTP/2 preface.
+    if proxy is None && self.http2 && self.http2_prior_knowledge {
+      // The caller (or `checkout`) starts the HTTP/2 session on this stream.
+      // Do not cache it as an HTTP/1.1 connection.
+      Ok((proxy_stream, false, Some("h2"), None))
+    } else {
+      if cache_new {
+        self.pool.val.cache_idle(conn_key, proxy_stream, @env.now())
+      }
+      Ok((proxy_stream, false, None, None))
     }
-    Ok((proxy_stream, false, None, None))
   }
 }
 

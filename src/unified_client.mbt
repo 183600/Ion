@@ -199,6 +199,24 @@ pub fn UnifiedClient::with_http2(self : UnifiedClient, enabled : Bool) -> Unifie
   }
 }
 
+/// Use HTTP/2 for cleartext `http://` origins without ALPN (prior knowledge).
+/// This is opt-in: an HTTP/1.1-only server will reject the HTTP/2 preface.
+/// HTTPS requests continue to negotiate `h2` through ALPN.
+pub fn UnifiedClient::with_http2_prior_knowledge(
+  self : UnifiedClient,
+  enabled : Bool,
+) -> UnifiedClient {
+  UnifiedClient::{
+    connector: self.connector.detached().with_http2_prior_knowledge(enabled),
+    options: ClientOptions::{
+      ..self.options,
+      // Enabling cleartext prior knowledge also enables the HTTP/2 policy.
+      http2: enabled || self.options.http2,
+    },
+    redirect_count: 0,
+  }
+}
+
 /// Build a client with an explicit dialer and TLS provider.
 pub fn UnifiedClient::with_transport(
   dialer : &Dialer,
