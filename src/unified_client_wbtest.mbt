@@ -189,3 +189,13 @@ test "changing the client timeout also changes connection and handshake timeouts
   let _ = connector.with_timeout(4321)
   assert_eq(connector.timeout(), 4321)
 }
+
+///|
+test "client timeout builders do not mutate the source client" {
+  let original = UnifiedClient::new()
+  let changed = original.with_timeout(1234)
+  assert_eq(changed.client_options().timeout_ms, 1234)
+  assert_eq(changed.connector.timeout(), 1234)
+  assert_eq(original.client_options().timeout_ms, 30000)
+  assert_eq(original.connector.timeout(), 30000)
+}
