@@ -1546,6 +1546,29 @@ fn Connector::connect_impl(
   // example before `UnifiedClient::with_timeout` was called), so apply the
   // effective policy for this checkout before it opens the socket.
   self.dialer.set_timeout(timeout_ms)
+  // Plain `socks5://` resolves the destination locally and sends its address;
+  // `socks5h://` leaves the name for the proxy to resolve. Do the lookup before
+  // dialing so a resolution failure does not consume a proxy connection.
+  let mut socks_target_host = host
+  let mut socks_target_bracketed = url.bracketed
+  match proxy {
+    Some(proxy) =>
+      if proxy.is_socks5() && !proxy.is_socks5h() && !url.bracketed &&
+        !is_ipv4_literal(host) && !is_ipv6_literal_with_zone(host) {
+        let addresses = match self.dialer.resolve(host) {
+          Ok(addresses) => addresses
+          Err(err) => return Err(NetworkError(err))
+        }
+        if addresses.length() == 0 {
+          return Err(NetworkError(InvalidAddress(
+            "DNS resolution returned no addresses for " + host,
+          )))
+        }
+        socks_target_host = addresses.nth(0).unwrap()
+        socks_target_bracketed = false
+      }
+    None => ()
+  }
   let raw_stream = match self.dialer.dial_tcp(dial_host, dial_port) {
     Ok(stream) => stream
     Err(err) => return Err(NetworkError(err))
@@ -1568,9 +1591,9 @@ fn Connector::connect_impl(
       if proxy.is_socks5() {
         let leftover = match socks5_connect(
           raw_stream,
-          host,
+          socks_target_host,
           port,
-          url.bracketed,
+          socks_target_bracketed,
           proxy.socks_credentials(),
         ) {
           Ok(leftover) => leftover

@@ -349,6 +349,7 @@ pub fn Proxy::authorization(Self) -> String?
 pub fn Proxy::from_env(Url) -> Result[Self?, HttpError]
 pub fn Proxy::is_secure(Self) -> Bool
 pub fn Proxy::is_socks5(Self) -> Bool
+pub fn Proxy::is_socks5h(Self) -> Bool
 pub fn Proxy::new(String) -> Result[Self, HttpError]
 pub fn Proxy::new_https(String) -> Result[Self, HttpError]
 pub fn Proxy::new_socks5(String) -> Result[Self, HttpError]

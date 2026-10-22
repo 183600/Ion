@@ -120,9 +120,9 @@ pub fn Proxy::new_https(url : String) -> Result[Proxy, HttpError] {
 }
 
 /// Create a SOCKS5 proxy from a `socks5://` or `socks5h://`
-/// `[user:password@]host[:port]` URL. The default port is 1080. Both schemes
-/// send the target host name to the proxy, so DNS resolution happens on the
-/// proxy side.
+/// `[user:password@]host[:port]` URL. The default port is 1080. `socks5h`
+/// sends the target host name so DNS resolution happens on the proxy side;
+/// plain `socks5` resolves locally and sends the resulting address.
 pub fn Proxy::new_socks5(url : String) -> Result[Proxy, HttpError] {
   let scheme_end = match url.find("://") {
     Some(index) => index
@@ -283,6 +283,13 @@ pub fn Proxy::is_secure(self : Proxy) -> Bool {
 pub fn Proxy::is_socks5(self : Proxy) -> Bool {
   let scheme = self.url.scheme.to_lower()
   scheme == "socks5" || scheme == "socks5h"
+}
+
+/// Whether this is a SOCKS5 proxy that resolves destination names on the proxy
+/// side (`socks5h`). Plain `socks5` resolves names locally and sends an
+/// address, matching the convention used by curl and other clients.
+pub fn Proxy::is_socks5h(self : Proxy) -> Bool {
+  self.url.scheme.to_lower() == "socks5h"
 }
 
 /// SOCKS5 username/password credentials, if configured.

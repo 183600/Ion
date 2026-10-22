@@ -128,9 +128,10 @@ fn socks5_append_port(output : Buffer, port : Int) -> Unit {
   output.write_byte((port & 0xff).to_byte())
 }
 
-/// Append the destination address in the form the proxy understands. Domain
-/// names are passed through so a `socks5`/`socks5h` proxy can resolve them;
-/// IPv4 and IPv6 literals use their binary address forms.
+/// Append the destination address in the form the proxy understands. Callers
+/// choose whether a domain name is resolved locally (`socks5`) or passed
+/// through for the proxy to resolve (`socks5h`); IPv4 and IPv6 literals always
+/// use their binary address forms.
 fn socks5_append_target(
   output : Buffer,
   host : String,
