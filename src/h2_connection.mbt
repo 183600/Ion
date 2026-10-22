@@ -2140,6 +2140,10 @@ fn H2ClientConnection::drain_buffered_settings(
                 )
                 self.discard_buffered_stream_frames(skipped, flow, frame.stream_id)
                 self.next_stream_id = self.next_stream_id + 2
+                // Any WINDOW_UPDATE credit buffered for the skipped stream
+                // belonged to that stream, not to the next id. Carrying it
+                // forward would let the next stream exceed the peer's window.
+                flow.pending_stream_window = 0
                 return Err(ProtocolError("HTTP/2 stream WINDOW_UPDATE increment is zero"))
               } else if frame.stream_id < self.next_stream_id {
                 // The stream has already ended; the update has no effect.
