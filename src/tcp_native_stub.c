@@ -373,6 +373,7 @@ static int32_t feather_tcp_format_addr(
   const void *address = NULL;
   int port = 0;
   int ipv6 = 0;
+  unsigned int scope_id = 0;
   if (addr.ss_family == AF_INET) {
     struct sockaddr_in *inet = (struct sockaddr_in *)&addr;
     address = &inet->sin_addr;
@@ -382,14 +383,30 @@ static int32_t feather_tcp_format_addr(
     address = &inet6->sin6_addr;
     port = ntohs(inet6->sin6_port);
     ipv6 = 1;
+    scope_id = inet6->sin6_scope_id;
   } else {
     return -EAFNOSUPPORT;
   }
   if (inet_ntop(addr.ss_family, address, host, sizeof(host)) == NULL) {
     return -errno;
   }
-  char text[INET6_ADDRSTRLEN + 16];
-  int written = snprintf(text, sizeof(text), ipv6 ? "[%s]:%d" : "%s:%d", host, port);
+  // A link-local IPv6 address without its scope/zone is ambiguous and cannot
+  // be fed back to a dialer. Keep the numeric scope id (the form accepted by
+  // getaddrinfo) in peer/local address strings.
+  char text[INET6_ADDRSTRLEN + 32];
+  int written;
+  if (ipv6 && scope_id != 0) {
+    written = snprintf(
+      text,
+      sizeof(text),
+      "[%s%%%u]:%d",
+      host,
+      scope_id,
+      port
+    );
+  } else {
+    written = snprintf(text, sizeof(text), ipv6 ? "[%s]:%d" : "%s:%d", host, port);
+  }
   if (written < 0 || written >= (int)sizeof(text)) {
     return -EIO;
   }
