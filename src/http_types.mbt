@@ -1461,13 +1461,20 @@ fn decode_encodings(
   Ok(current)
 }
 
-/// Decode the complete response body as UTF-8 text, decompressing any
-/// recognised `Content-Encoding` first.
+/// Decode the complete response body as text, decompressing any recognised
+/// `Content-Encoding` first. The `charset` parameter of `Content-Type` is
+/// honoured for UTF-8, US-ASCII, ISO-8859-1, Windows-1252 and UTF-16; unknown
+/// charsets fall back to UTF-8.
 pub fn Response::text(self : Response) -> Result[String, HttpError] {
   match self.read_body_decoded() {
-    Ok(body) => Ok(@utf8.decode_lossy(body[:]))
+    Ok(body) => Ok(decode_text_body(body, response_charset(self.headers)))
     Err(err) => Err(err)
   }
+}
+
+/// The `charset` parameter of the response `Content-Type`, if present.
+pub fn Response::charset(self : Response) -> String? {
+  response_charset(self.headers)
 }
 
 pub fn Response::get_header(self : Response, name : String) -> Option[String] {

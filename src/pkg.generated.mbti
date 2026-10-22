@@ -329,6 +329,7 @@ pub struct Response {
   max_body_bytes : Int32
   // private fields
 }
+pub fn Response::charset(Self) -> String?
 pub fn Response::get_header(Self, String) -> String?
 pub fn Response::get_header_all(Self, String) -> @list.List[String]
 pub fn Response::is_client_error(Self) -> Bool
