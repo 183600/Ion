@@ -196,3 +196,25 @@ test "UnifiedClient exposes a CONNECT convenience method" {
   assert_true(wire.has_prefix("CONNECT example.com:80 HTTP/1.1\r\n"))
   let _ = client.close_all()
 }
+
+///|
+test "CONNECT responses are not followed as redirects" {
+  let raw = "HTTP/1.1 303 See Other\r\nLocation: http://evil.example/pwn\r\nContent-Length: 0\r\n\r\n"
+  let stream = regression_mock_stream(raw, 4096, 4096)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new(),
+    redirect_count: 0,
+  }
+  let response = client.connect("http://example.com:80/").unwrap()
+  assert_eq(response.status, 303)
+  assert_eq(response.get_header("Location"), Some("http://evil.example/pwn"))
+  assert_eq(response.read_body().unwrap(), b"")
+  assert_eq(dialer.count, 1)
+  let wire = @utf8.decode(stream.output.to_bytes()[:])
+  assert_true(!wire.contains("GET http://evil.example/pwn"))
+  assert_true(!wire.contains("CONNECT evil.example"))
+  let _ = client.close_all()
+}

@@ -904,8 +904,11 @@ fn UnifiedClient::do_request_once(
   // Persist cookies before following a redirect so the next hop sees them.
   self.connector.store_cookies(request.url, response.headers)
 
-  // Handle redirects if enabled
-  if self.options.follow_redirects && is_redirect(response.status) {
+  // Handle redirects if enabled. CONNECT is not a resource retrieval: a 3xx
+  // must be returned to the caller rather than turning the tunnel into a GET
+  // or silently retargeting it to another authority.
+  if self.options.follow_redirects && is_redirect(response.status) &&
+    canonical_http_method(request.method) != CONNECT {
     let location = response.get_header("Location")
 
     if location is None {
