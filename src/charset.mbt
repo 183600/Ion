@@ -195,17 +195,26 @@ fn decode_ascii(data : Bytes) -> String {
 }
 
 fn decode_utf16(data : Bytes, requested : String) -> String {
-  let mut little_endian = requested == "utf-16le"
+  let explicit_little = requested == "utf-16le"
+  let explicit_big = requested == "utf-16be"
+  let mut little_endian = explicit_little
   let mut offset = 0
   if data.length() >= 2 {
     let first = data[0].to_int()
     let second = data[1].to_int()
+    // RFC 2781 §4.1/§4.2: an explicit endianness label is authoritative, so
+    // an opposite-order BOM must be decoded as data (and is an error), never
+    // used to swap the byte order. Generic "utf-16" still sniffs the BOM.
     if first == 0xFF && second == 0xFE {
-      little_endian = true
-      offset = 2
+      if !explicit_big {
+        little_endian = true
+        offset = 2
+      }
     } else if first == 0xFE && second == 0xFF {
-      little_endian = false
-      offset = 2
+      if !explicit_little {
+        little_endian = false
+        offset = 2
+      }
     }
   }
   let output = Buffer(size_hint=data.length())
@@ -234,6 +243,11 @@ fn decode_utf16(data : Bytes, requested : String) -> String {
         codepoint = 0xFFFD
       }
     } else if unit >= 0xDC00 && unit <= 0xDFFF {
+      codepoint = 0xFFFD
+    }
+    // U+FFFE and U+FFFF are noncharacters; in particular a mismatched BOM
+    // under an explicit UTF-16 endianness must not surface as U+FFFE.
+    if codepoint == 0xFFFE || codepoint == 0xFFFF {
       codepoint = 0xFFFD
     }
     output.write_char_utf8(Char::from_int(codepoint))

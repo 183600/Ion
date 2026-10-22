@@ -151,3 +151,19 @@ test "astral text in an earlier quoted parameter does not hide charset" {
   assert_eq(response.charset(), Some("iso-8859-1"))
   assert_eq(response.text().unwrap(), "h\u{e9}llo")
 }
+
+test "explicit UTF-16 endianness is not overridden by an opposite BOM" {
+  // RFC 2781 §4.1: text labelled UTF-16BE is always big-endian. FF FE is
+  // therefore U+FFFE (an error), not an LE BOM that swaps the remaining text.
+  let big = charset_text_response(
+    "text/plain; charset=utf-16be",
+    charset_test_bytes([0xFF, 0xFE, 0x00, 0x41]),
+  )
+  assert_eq(big.text().unwrap(), "\u{fffd}A")
+  // The matching BOM for an explicit label is still consumed.
+  let big_bom = charset_text_response(
+    "text/plain; charset=utf-16be",
+    charset_test_bytes([0xFE, 0xFF, 0x00, 0x68, 0x00, 0x69]),
+  )
+  assert_eq(big_bom.text().unwrap(), "hi")
+}
