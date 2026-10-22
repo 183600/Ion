@@ -551,3 +551,47 @@ test "disabling HTTP/2 also disables cleartext prior knowledge" {
   assert_false(disabled.http2_enabled())
   assert_false(disabled.http2_prior_knowledge())
 }
+
+///|
+test "UnifiedClient keeps an HTTP/2 session after a stream WINDOW_UPDATE error" {
+  let first_headers = hpack_encode([(":status", "204")])
+  let second_headers = hpack_encode([(":status", "200"), ("x-request", "second")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_WINDOW_UPDATE, 0, 1, b"\x00\x00\x00\x00"),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      first_headers,
+    ),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      3,
+      second_headers,
+    ),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let client = UnifiedClient::with_transport(
+    dialer,
+    provider,
+    ClientOptions::new().with_follow_redirects(false),
+  )
+  match client.get("https://example.com/first") {
+    Ok(_) => fail("zero WINDOW_UPDATE increment was accepted")
+    Err(err) =>
+      assert_eq(
+        err,
+        ProtocolError("HTTP/2 stream WINDOW_UPDATE increment is zero"),
+      )
+  }
+  assert_true(stream.is_open)
+  let response = client.get("https://example.com/second").unwrap()
+  assert_eq(response.status, 200)
+  assert_eq(response.get_header("x-request"), Some("second"))
+  assert_eq(dialer.count, 1)
+  let _ = client.close_all()
+}

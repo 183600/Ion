@@ -522,7 +522,10 @@ fn request_error_is_local(err : HttpError) -> Bool {
       message == "HTTP/2 request trailer list too large" ||
       message == "HTTP/2 max concurrent streams is zero" ||
       message == "HTTP/2 server did not enable extended CONNECT" ||
-      message == "Extended CONNECT requires a GET or CONNECT request"
+      message == "Extended CONNECT requires a GET or CONNECT request" ||
+      // A zero WINDOW_UPDATE increment is scoped to one stream; the stream
+      // was reset and the HTTP/2 session remains reusable.
+      message == "HTTP/2 stream WINDOW_UPDATE increment is zero"
     _ => false
   }
 }
