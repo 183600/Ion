@@ -274,6 +274,18 @@ fn resolve_redirect_url(base : Url, location : String) -> Result[Url, HttpError]
   Ok(joined.with_path(normalize_path_and_suffix(joined.path)))
 }
 
+/// Whether two URLs address the same resource for request purposes. Fragments
+/// are client-side only, so a redirect that changes nothing but the fragment
+/// must not trigger another HTTP request.
+fn same_request_target(first : Url, second : Url) -> Bool {
+  first.scheme.to_lower() == second.scheme.to_lower() &&
+  first.host.to_lower() == second.host.to_lower() &&
+  first.bracketed == second.bracketed &&
+  first.port == second.port &&
+  first.path == second.path &&
+  first.query == second.query
+}
+
 fn redirect_method(status : Int, method : HttpMethod) -> (HttpMethod, Bool) {
   // Returns the method for the next request and whether the body is kept.
   match status {
@@ -461,6 +473,12 @@ fn UnifiedClient::do_request_once(
     let parsed_url = match resolve_redirect_url(request.url, location.unwrap()) {
       Ok(url) => url
       Err(_) => return Ok(response) // Invalid redirect URL
+    }
+
+    // A fragment-only change (or a Location naming the same target) is not a
+    // new request. Returning the redirect response avoids an infinite loop.
+    if same_request_target(parsed_url, request.url) {
+      return Ok(response)
     }
 
     if self.redirect_count >= self.options.max_redirects {
