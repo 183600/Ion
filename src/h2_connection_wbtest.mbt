@@ -224,3 +224,42 @@ test "http2 propagates stream reset and GOAWAY errors" {
     Err(err) => assert_eq(err, ProtocolError("HTTP/2 connection closed by GOAWAY"))
   }
 }
+
+test "http2 fragments oversized request header blocks" {
+  let response_headers = hpack_encode([(":status", "200")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let large_value = "a".repeat(20000)
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+    .with_header("X-Large", large_value)
+  let response = h2_request(stream, request).unwrap()
+  assert_eq(response.status, 200)
+
+  let frames = h2_test_client_frames(stream)
+  let block = Buffer(size_hint=21000)
+  let mut saw_headers = false
+  let mut continuations = 0
+  for frame in frames {
+    if frame.stream_id != 1 {
+      continue
+    }
+    if frame.frame_type == H2_FRAME_HEADERS {
+      saw_headers = true
+      assert_eq(frame.flags & H2_FLAG_END_HEADERS, 0)
+      assert_true((frame.flags & H2_FLAG_END_STREAM) != 0)
+      block.write_bytes(frame.payload)
+    } else if frame.frame_type == H2_FRAME_CONTINUATION {
+      continuations = continuations + 1
+      block.write_bytes(frame.payload)
+    }
+  }
+  assert_true(saw_headers)
+  assert_true(continuations > 0)
+  let decoder = HpackDecoder::new()
+  let fields = decoder.decode(block.to_bytes()).unwrap()
+  assert_eq(h2_test_header_value(fields, "x-large").unwrap().length(), 20000)
+}
+

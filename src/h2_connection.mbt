@@ -456,6 +456,40 @@ fn h2_make_response(state : H2ResponseState) -> Response {
   response.with_trailers(trailers).with_max_body_bytes(state.max_body_bytes)
 }
 
+fn h2_write_header_block(
+  stream : &Stream,
+  stream_id : Int,
+  block : Bytes,
+  end_stream : Bool,
+) -> Result[Unit, HttpError] {
+  let total = block.length()
+  let mut offset = 0
+  let mut first = true
+  while true {
+    let remaining = total - offset
+    let take = if remaining < H2_MAX_FRAME_SIZE { remaining } else { H2_MAX_FRAME_SIZE }
+    let payload = block.exact_view(start=offset, end=offset + take).to_owned()
+    let mut flags = 0
+    if first && end_stream {
+      flags = flags | H2_FLAG_END_STREAM
+    }
+    if offset + take == total {
+      flags = flags | H2_FLAG_END_HEADERS
+    }
+    let frame_type = if first { H2_FRAME_HEADERS } else { H2_FRAME_CONTINUATION }
+    match h2_write_frame(stream, frame_type, flags, stream_id, payload) {
+      Ok(_) => ()
+      Err(err) => return Err(err)
+    }
+    offset = offset + take
+    first = false
+    if offset >= total {
+      return Ok(())
+    }
+  }
+  Ok(())
+}
+
 fn h2_request_with_limit(
   stream : &Stream,
   request : Request,
@@ -489,11 +523,7 @@ fn h2_request_with_limit(
     None => b""
   }
   let end_stream = body.length() == 0
-  let mut header_flags = H2_FLAG_END_HEADERS
-  if end_stream {
-    header_flags = header_flags | H2_FLAG_END_STREAM
-  }
-  match h2_write_frame(stream, H2_FRAME_HEADERS, header_flags, 1, block) {
+  match h2_write_header_block(stream, 1, block, end_stream) {
     Ok(_) => ()
     Err(err) => return Err(err)
   }
