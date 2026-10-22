@@ -1225,15 +1225,19 @@ fn H2LiveBodyStream::finish(self : H2LiveBodyStream, reusable : Bool) -> Unit {
   }
 }
 
-fn H2LiveBodyStream::fail(self : H2LiveBodyStream, err : HttpError) -> NetError {
-  self.error = Some(err)
-  self.finish(false)
+fn h2_live_body_net_error(err : HttpError) -> NetError {
   match err {
     NetworkError(net) => net
     Timeout => Timeout
     ConnectionClosed => Closed
     _ => NetError::ReadError(@debug.to_string(err))
   }
+}
+
+fn H2LiveBodyStream::fail(self : H2LiveBodyStream, err : HttpError) -> NetError {
+  self.error = Some(err)
+  self.finish(false)
+  h2_live_body_net_error(err)
 }
 
 /// Read frames until at least one body byte is available or the stream ends.
@@ -1257,11 +1261,16 @@ fn H2LiveBodyStream::pull(self : H2LiveBodyStream) -> Result[Unit, NetError] {
       Ok(_) => ()
       Err(err) => {
         if h2_error_is_stream_reset(err) {
+          // The peer reset only this stream. Consume its already-buffered
+          // frames so they cannot be mistaken for a later response, then
+          // release the session as reusable instead of tearing it down.
           self.connection
             .discard_buffered_stream_frames(self.state, self.flow, self.state.stream_id)
-        } else {
-          self.connection.closed = true
+          self.error = Some(err)
+          self.finish(true)
+          return Err(h2_live_body_net_error(err))
         }
+        self.connection.closed = true
         return Err(self.fail(err))
       }
     }
@@ -1285,7 +1294,10 @@ pub impl Stream for H2LiveBodyStream with fn read(
     return Err(NetError::Closed)
   }
   match self.error {
-    Some(err) => return Err(self.fail(err))
+    // Errors set by `fail` have already completed and closed the body; map
+    // the stored error again without repeating that teardown. A stream-reset
+    // error also leaves the connection reusable.
+    Some(err) => return Err(h2_live_body_net_error(err))
     None => ()
   }
   while self.pending_offset >= self.pending.length() {

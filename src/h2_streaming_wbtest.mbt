@@ -336,3 +336,33 @@ test "h2_request_streaming_with_limit bounds and releases a one-shot exchange" {
   assert_eq(@utf8.decode_lossy(response.read_body_with_limit(8).unwrap()[:]), "abcdef")
   assert_false(stream.is_open)
 }
+
+///|
+test "streaming body keeps the session after a stream-scoped window reset" {
+  let first_headers = hpack_encode([(":status", "200")])
+  let second_headers = hpack_encode([(":status", "201")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, first_headers),
+    h2_test_frame(H2_FRAME_WINDOW_UPDATE, 0, 1, b"\x00\x00\x00\x00"),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      3,
+      second_headers,
+    ),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/first").unwrap())
+  let response = connection.request_streaming(request).unwrap()
+  let body = Buffer(size_hint=8)
+  assert_true(response.body_stream().read(body) is Err(_))
+  // A zero increment is a stream error; the connection remains usable.
+  assert_true(connection.is_open())
+  let next = connection.request_streaming(request).unwrap()
+  assert_eq(next.status, 201)
+  assert_eq(next.text().unwrap(), "")
+  assert_true(connection.is_open())
+  let _ = connection.close()
+}
