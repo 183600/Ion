@@ -56,6 +56,7 @@ struct H2ResponseState {
   mut header_block : Buffer
   mut in_header_block : Bool
   mut header_block_end_stream : Bool
+  mut goaway_last_stream_id : Int?
 }
 
 fn H2ResponseState::new(
@@ -80,7 +81,21 @@ fn H2ResponseState::new(
     header_block: Buffer(size_hint=256),
     in_header_block: false,
     header_block_end_stream: false,
+    goaway_last_stream_id: None,
   }
+}
+
+/// Extract the last processed stream id from a GOAWAY payload. The high bit of
+/// the first four octets is reserved and must be ignored.
+fn h2_parse_goaway_last_stream_id(payload : Bytes) -> Result[Int, HttpError] {
+  if payload.length() < 8 {
+    return Err(ProtocolError("Invalid HTTP/2 GOAWAY length"))
+  }
+  let stream_id = ((payload[0].to_int() & 0x7f) << 24) |
+    (payload[1].to_int() << 16) |
+    (payload[2].to_int() << 8) |
+    payload[3].to_int()
+  Ok(stream_id)
 }
 
 fn h2_parse_status(value : String) -> Result[Int, HttpError] {
@@ -213,11 +228,13 @@ fn H2ResponseState::apply_header_block(
   // is not used by HTTP/2, but it also terminates the HTTP message.
   self.body_forbidden = self.head || status == 101 || status == 204 ||
     status == 205 || status == 304
+  // Content-Length is still validated for bodyless responses so a malformed
+  // field cannot be silently accepted just because no body follows it.
+  let declared = match response_content_length(regular) {
+    Ok(value) => value
+    Err(_) => return Err(ProtocolError("Invalid HTTP/2 Content-Length"))
+  }
   if !self.body_forbidden {
-    let declared = match response_content_length(regular) {
-      Ok(value) => value
-      Err(_) => return Err(ProtocolError("Invalid HTTP/2 Content-Length"))
-    }
     match declared {
       Some(length) => {
         if length > self.max_body_bytes {
@@ -435,7 +452,27 @@ fn H2ResponseState::handle_frame(
         Ok(())
       }
     }
-    H2_FRAME_GOAWAY => Err(ProtocolError("HTTP/2 connection closed by GOAWAY"))
+    H2_FRAME_GOAWAY => {
+      let last_stream_id = match h2_parse_goaway_last_stream_id(frame.payload) {
+        Ok(value) => value
+        Err(err) => return Err(err)
+      }
+      match self.goaway_last_stream_id {
+        Some(previous) => if last_stream_id > previous {
+          return Err(ProtocolError("HTTP/2 GOAWAY stream id increased"))
+        }
+        None => ()
+      }
+      self.goaway_last_stream_id = Some(last_stream_id)
+      // A graceful GOAWAY may be sent before the server has finished the
+      // streams it already accepted. Those responses are still valid; only
+      // streams newer than the advertised id must fail.
+      if last_stream_id < self.stream_id {
+        Err(ProtocolError("HTTP/2 connection closed by GOAWAY"))
+      } else {
+        Ok(())
+      }
+    }
     H2_FRAME_PUSH_PROMISE => {
       Err(ProtocolError("HTTP/2 server push is disabled"))
     }
@@ -652,6 +689,7 @@ pub struct H2ClientConnection {
   decoder : HpackDecoder
   flow : H2FlowState
   mut next_stream_id : Int
+  mut closed : Bool
 }
 
 /// Create a connection and send the client preface and initial SETTINGS. The
@@ -664,6 +702,7 @@ pub fn H2ClientConnection::new(stream : &Stream) -> Result[H2ClientConnection, H
     decoder: HpackDecoder::new(),
     flow: H2FlowState::new(),
     next_stream_id: 1,
+    closed: false,
   }
   match connection.send_preface() {
     Ok(_) => Ok(connection)
@@ -673,12 +712,13 @@ pub fn H2ClientConnection::new(stream : &Stream) -> Result[H2ClientConnection, H
 
 /// Whether this connection can still be used for another request.
 fn H2ClientConnection::is_open(self : H2ClientConnection) -> Bool {
-  self.stream.peer_addr() is Ok(_)
+  !self.closed && self.stream.peer_addr() is Ok(_)
 }
 
 /// Close the underlying stream. Closing an already closed connection is a
 /// no-op.
 pub fn H2ClientConnection::close(self : H2ClientConnection) -> Unit {
+  self.closed = true
   let _ = self.stream.close()
 }
 
@@ -739,7 +779,12 @@ pub fn H2ClientConnection::request_with_limit(
       }
       match state.handle_frame(frame, flow, self.stream) {
         Ok(_) => ()
-        Err(err) => return Err(err)
+        Err(err) => {
+          if state.goaway_last_stream_id is Some(_) {
+            self.closed = true
+          }
+          return Err(err)
+        }
       }
       continue
     }
@@ -776,12 +821,21 @@ pub fn H2ClientConnection::request_with_limit(
     }
     match state.handle_frame(frame, flow, self.stream) {
       Ok(_) => ()
-      Err(err) => return Err(err)
+      Err(err) => {
+        if state.goaway_last_stream_id is Some(_) {
+          self.closed = true
+        }
+        return Err(err)
+      }
     }
   }
   match self.stream.flush() {
     Ok(_) => ()
     Err(err) => return Err(http_error_from_net(err))
+  }
+  if state.goaway_last_stream_id is Some(_) {
+    // The peer will not accept another stream on this connection.
+    self.closed = true
   }
   self.next_stream_id = stream_id + 2
   Ok(h2_make_response(state))

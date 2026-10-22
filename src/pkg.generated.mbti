@@ -164,6 +164,7 @@ pub struct H2ClientConnection {
   decoder : HpackDecoder
   flow : H2FlowState
   mut next_stream_id : Int32
+  mut closed : Bool
 }
 pub fn H2ClientConnection::close(Self) -> Unit
 pub fn H2ClientConnection::new(&Stream) -> Result[Self, HttpError]

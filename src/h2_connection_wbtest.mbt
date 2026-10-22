@@ -590,3 +590,71 @@ test "http2 client connection reuses one stream for sequential requests" {
   assert_eq(settings_count, 1)
   assert_eq(header_streams, [1, 3])
 }
+
+test "http2 completes an accepted stream after a graceful GOAWAY" {
+  let response_headers = hpack_encode([(":status", "200"), ("x-graceful", "yes")])
+  let goaway = h2_test_frame(
+    H2_FRAME_GOAWAY,
+    0,
+    0,
+    b"\x00\x00\x00\x01\x00\x00\x00\x00",
+  )
+  let input = h2_test_concat([
+    h2_test_settings(),
+    goaway,
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  let response = connection.request(request).unwrap()
+  assert_eq(response.status, 200)
+  assert_eq(response.headers.get("x-graceful"), Some("yes"))
+  // The server will not accept another stream, even though this response was
+  // delivered successfully.
+  assert_false(connection.is_open())
+  let _ = connection.close()
+  assert_false(stream.is_open)
+}
+
+test "http2 GOAWAY last stream ids must not increase" {
+  let response_headers = hpack_encode([(":status", "200")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_GOAWAY, 0, 0, b"\x00\x00\x00\x01\x00\x00\x00\x00"),
+    h2_test_frame(H2_FRAME_GOAWAY, 0, 0, b"\x00\x00\x00\x03\x00\x00\x00\x00"),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match connection.request(request) {
+    Ok(_) => fail("increasing HTTP/2 GOAWAY stream id was accepted")
+    Err(err) => assert_eq(err, ProtocolError("HTTP/2 GOAWAY stream id increased"))
+  }
+  assert_false(connection.is_open())
+}
+
+test "http2 validates Content-Length on bodyless responses" {
+  let head_headers = hpack_encode([(":status", "200"), ("content-length", "invalid")])
+  let head_input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, head_headers),
+  ])
+  let head_request = Request::new(HEAD, Url::parse("https://example.com/").unwrap())
+  match h2_request(h2_frame_mock_stream(head_input, 0), head_request) {
+    Ok(_) => fail("invalid HTTP/2 HEAD Content-Length was accepted")
+    Err(err) => assert_eq(err, ProtocolError("Invalid HTTP/2 Content-Length"))
+  }
+
+  let no_content_headers = hpack_encode([(":status", "204"), ("content-length", "0, 1")])
+  let no_content_input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, no_content_headers),
+  ])
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match h2_request(h2_frame_mock_stream(no_content_input, 0), request) {
+    Ok(_) => fail("conflicting HTTP/2 204 Content-Length was accepted")
+    Err(err) => assert_eq(err, ProtocolError("Invalid HTTP/2 Content-Length"))
+  }
+}
