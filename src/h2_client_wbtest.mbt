@@ -265,3 +265,39 @@ test "connection keys distinguish IPvFuture literals from DNS names" {
   let literal = Url::parse("https://[v1.foo]/").unwrap()
   assert_true(connector.connection_key(dns) != connector.connection_key(literal))
 }
+
+test "local HTTP/2 request errors preserve the pooled session" {
+  let first = hpack_encode([(":status", "200"), ("x-request", "first")])
+  let second = hpack_encode([(":status", "201"), ("x-request", "second")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, first),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 3, second),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let client = UnifiedClient::with_transport(
+    dialer,
+    provider,
+    ClientOptions::new().with_follow_redirects(false),
+  )
+  let url = "https://example.com/path"
+  let first_response = client.get(url).unwrap()
+  assert_eq(first_response.status, 200)
+
+  let invalid = Request::new(POST, Url::parse(url).unwrap())
+    .with_header("Content-Length", "1")
+  match client.request(invalid) {
+    Ok(_) => fail("invalid HTTP/2 request was accepted")
+    Err(err) => assert_eq(err, InvalidHeader("Content-Length"))
+  }
+  assert_eq(dialer.count, 1)
+  assert_true(stream.is_open)
+
+  let second_response = client.get(url).unwrap()
+  assert_eq(second_response.status, 201)
+  assert_eq(second_response.headers.get("x-request"), Some("second"))
+  assert_eq(dialer.count, 1)
+  let _ = client.close_all()
+}

@@ -325,6 +325,15 @@ fn drain_response(response : Response) -> Result[Unit, HttpError] {
   Ok(())
 }
 
+/// Errors raised while validating a request locally, before any bytes reach
+/// the wire. They do not make an already-open connection unusable.
+fn request_error_is_local(err : HttpError) -> Bool {
+  match err {
+    InvalidUrl(_) | InvalidHeader(_) | InvalidMethod(_) => true
+    _ => false
+  }
+}
+
 fn request_can_be_retried(method : HttpMethod) -> Bool {
   match method {
     GET => true
@@ -433,7 +442,7 @@ fn UnifiedClient::do_request_once(
     match codec.encode_request(request, absolute_form~) {
       Ok(_) => codec.decode_response(head=request.method == HEAD)
       Err(err) => {
-        lease.release(false)
+        lease.release(request_error_is_local(err))
         Err(normalize_http_error(err))
       }
     }
@@ -442,6 +451,10 @@ fn UnifiedClient::do_request_once(
   let response = match response_result {
     Ok(response) => response
     Err(err) => {
+      if request_error_is_local(err) {
+        lease.release(true)
+        return Err(normalize_http_error(err))
+      }
       lease.release(false)
       if allow_retry && lease.reused && request_can_be_retried(request.method) {
         return self.do_request_once(req, false)
