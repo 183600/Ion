@@ -43,6 +43,16 @@ test "CONNECT response parsing rejects malformed header lines" {
   }
 }
 
+test "CONNECT response parsing rejects framing headers on informational responses" {
+  for header in ["Content-Length: 0", "Transfer-Encoding: chunked"] {
+    let raw = "HTTP/1.1 100 Continue\r\n" +
+      header +
+      "\r\n\r\nHTTP/1.1 200 Connection Established\r\n\r\nTUNNEL"
+    let stream = regression_mock_stream(raw, 0, 0)
+    assert_true(read_connect_response(stream) is Err(ProtocolError(_)))
+  }
+}
+
 test "prefix stream replays leftover bytes before the underlying stream" {
   let underlying = regression_mock_stream("REST", 0, 0)
   let stream = PrefixStream::new(@utf8.encode("TUNNELDATA"), underlying)

@@ -1288,6 +1288,15 @@ fn parse_connect_response_head(head : Bytes) -> Result[Int, HttpError] {
     if !valid_header_value(raw_value) {
       return Err(ProtocolError("Invalid proxy CONNECT response headers"))
     }
+    // Interim responses cannot carry content, so framing fields would be
+    // meaningless and could otherwise desynchronize the tunnel parsing.
+    let lower_name = name.to_lower()
+    if status < 200 &&
+      (lower_name == "content-length" || lower_name == "transfer-encoding") {
+      return Err(ProtocolError(
+        "Informational proxy response must not include framing headers",
+      ))
+    }
     index = index + 1
   }
   Err(ProtocolError("Invalid proxy CONNECT response"))
