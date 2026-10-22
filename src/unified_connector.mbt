@@ -593,10 +593,11 @@ pub fn Connector::with_proxy(self : Connector, proxy : Proxy) -> Connector {
 /// Route requests to matching hosts directly instead of through the proxy.
 /// Entries follow the common `NO_PROXY` syntax: a host name matches that host
 /// and its subdomains, a leading `.` or `*.` is allowed, `host:port` restricts
-/// the match to one port, IP literals match exactly, IPv4 and IPv6 CIDR blocks
-/// (`10.0.0.0/8`, `2001:db8::/32`) match an address range, and `*` disables
-/// the proxy for every request. Matching is case-insensitive and ignores
-/// surrounding whitespace.
+/// the match to one port, `host:*` matches every port, `<local>` matches
+/// single-label hosts such as `localhost`, IP literals match exactly, IPv4 and
+/// IPv6 CIDR blocks (`10.0.0.0/8`, `2001:db8::/32`) match an address range, and
+/// `*` disables the proxy for every request. Matching is case-insensitive and
+/// ignores surrounding whitespace.
 ///
 /// Existing pooled connections may have been opened through the proxy, so they
 /// are closed before the new routing rules take effect.
@@ -646,6 +647,9 @@ fn parse_bypass_authority(value : String) -> (String, Int?)? {
       return None
     }
     let port_text = rest[1:].to_owned()
+    if port_text == "*" {
+      return Some((host, None))
+    }
     if !is_decimal_digits(port_text) {
       return None
     }
@@ -664,7 +668,13 @@ fn parse_bypass_authority(value : String) -> (String, Int?)? {
   if first_colon is Some(index) && last_colon == first_colon {
     let host = value[0:index].to_owned()
     let port_text = value[index + 1:].to_owned()
-    if host.length() == 0 || !is_decimal_digits(port_text) {
+    if host.length() == 0 {
+      return None
+    }
+    if port_text == "*" {
+      return Some((host, None))
+    }
+    if !is_decimal_digits(port_text) {
       return None
     }
     let port = try {
@@ -908,6 +918,14 @@ fn proxy_bypass_matches(
   }
   if candidate == "*" {
     return true
+  }
+  // The `<local>` convention bypasses the proxy for single-label host names
+  // (for example `localhost` or an intranet machine name) but never for an IP
+  // literal or a fully qualified name.
+  if candidate == "<local>" {
+    let local_host = normalize_bypass_host(host)
+    return !bracketed && local_host.length() > 0 && !local_host.contains(".") &&
+      !local_host.contains(":")
   }
   // A `network/prefix` entry is a CIDR block, not a host followed by a path.
   // If the text before the slash is an IP literal (or a numeric dotted
