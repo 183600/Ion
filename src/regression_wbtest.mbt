@@ -1941,6 +1941,7 @@ test "connector applies its timeout before opening the socket" {
   let dialer = TimeoutRecordingDialer::{ stream, timeout_ms: 30000, dials: 0 }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
     .with_timeout(4321)
+  assert_eq(dialer.timeout_ms, 4321)
   let url = Url::parse("http://example.com/").unwrap()
   let _ = connector.connect(url).unwrap()
   assert_eq(dialer.timeout_ms, 4321)

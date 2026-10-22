@@ -374,6 +374,7 @@ pub fn Connector::new(dialer : &Dialer, tls_provider : &TlsProvider) -> Connecto
 /// Set the timeout applied to newly dialed connections and TLS handshakes.
 pub fn Connector::with_timeout(self : Connector, timeout_ms : Int) -> Connector {
   self.timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
+  self.dialer.set_timeout(self.timeout_ms)
   self
 }
 
