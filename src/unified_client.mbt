@@ -119,10 +119,12 @@ pub fn UnifiedClient::client_options(self : UnifiedClient) -> ClientOptions {
 /// This also changes the timeout applied to future dials and TLS handshakes.
 pub fn UnifiedClient::with_timeout(self : UnifiedClient, timeout_ms : Int) -> UnifiedClient {
   let timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
+  let connector = Connector::{ ..self.connector.detached(), timeout_ms }
   UnifiedClient::{
-    // Keep the derived client independent from the source, like the other
-    // client builders. The connector applies this timeout before each dial.
-    connector: Connector::{ ..self.connector, timeout_ms },
+    // Keep the derived client independent from the source, including its
+    // connection pool, like the other client builders. The connector applies
+    // this timeout before each dial.
+    connector,
     options: ClientOptions::{ ..self.options, timeout_ms },
     redirect_count: 0,
   }
