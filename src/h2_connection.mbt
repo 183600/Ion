@@ -13,6 +13,8 @@ struct H2FlowState {
   mut peer_max_concurrent_streams : Int
   // WINDOW_UPDATE received for the next stream before its HEADERS were sent.
   mut pending_stream_window : Int
+  // RFC 8441 extended CONNECT (used for WebSocket over HTTP/2).
+  mut peer_enable_connect_protocol : Bool
 }
 
 fn H2FlowState::new() -> H2FlowState {
@@ -24,6 +26,7 @@ fn H2FlowState::new() -> H2FlowState {
     peer_max_header_list_size: H2_MAX_WINDOW_SIZE,
     peer_max_concurrent_streams: H2_MAX_WINDOW_SIZE,
     pending_stream_window: 0,
+    peer_enable_connect_protocol: false,
   }
 }
 
@@ -465,6 +468,11 @@ fn h2_apply_settings(
       } else {
         value
       }
+    } else if identifier == H2_SETTINGS_ENABLE_CONNECT_PROTOCOL {
+      if (value_high & 0x80) != 0 || value > 1 {
+        return Err(ProtocolError("Invalid HTTP/2 enable connect protocol"))
+      }
+      flow.peer_enable_connect_protocol = value == 1
     }
     offset = offset + 6
   }
@@ -744,12 +752,46 @@ fn h2_header_list_size(headers : Array[(String, String)]) -> Int {
   total
 }
 
+/// The first protocol token offered by a request's `Upgrade` field, if the
+/// request also nominated `upgrade` in its `Connection` field.
+fn h2_upgrade_protocol(request : Request) -> String? {
+  if !headers_have_token(request.headers, "Connection", "upgrade") {
+    return None
+  }
+  for value in request.headers.get_all("Upgrade") {
+    for part in split_header_list(value) {
+      let token = part.trim().to_owned().to_lower()
+      if token.length() > 0 && h2_valid_field_name(token) {
+        return Some(token)
+      }
+    }
+  }
+  None
+}
+
 fn h2_request_headers(request : Request) -> Result[Array[(String, String)], HttpError] {
+  h2_request_headers_with_protocol(request, None)
+}
+
+/// Build the HTTP/2 field list for a request. When `extended_protocol` is set,
+/// the request is an RFC 8441 extended CONNECT: the wire method is CONNECT and
+/// `:protocol` names the upgraded protocol, while `:scheme` and `:path` remain
+/// present so the peer can route the original resource.
+fn h2_request_headers_with_protocol(
+  request : Request,
+  extended_protocol : String?,
+) -> Result[Array[(String, String)], HttpError] {
   if !valid_url_path_chars(request.url.path) ||
     !valid_url_query_chars(request.url.query) {
     return Err(InvalidUrl("Invalid request target"))
   }
-  let is_connect = request.method == CONNECT
+  let extended_connect = extended_protocol is Some(_)
+  if extended_connect && request.method != GET && request.method != CONNECT {
+    return Err(ProtocolError(
+      "Extended CONNECT requires a GET or CONNECT request",
+    ))
+  }
+  let is_connect = request.method == CONNECT && !extended_connect
   if is_connect &&
     (request.url.path != "/" || request.url.query.length() > 0) {
     return Err(InvalidUrl("CONNECT requires an authority-form target"))
@@ -768,6 +810,9 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
   }
   if asterisk_form && request.url.query.length() > 0 {
     return Err(InvalidUrl("Asterisk-form cannot include a query"))
+  }
+  if asterisk_form && extended_connect {
+    return Err(InvalidUrl("Asterisk-form cannot be an extended CONNECT target"))
   }
   let request_target = if is_connect {
     authority
@@ -791,8 +836,9 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
     return Err(InvalidHeader("TRACE request content is not allowed"))
   }
   // CONNECT establishes a tunnel; request content would be ambiguous with the
-  // first tunnelled bytes, so it is not generated here.
-  if is_connect &&
+  // first tunnelled bytes, so it is not generated here. Extended CONNECT has
+  // the same framing rule because the 2xx response switches to the protocol.
+  if (is_connect || extended_connect) &&
     (body_length > 0 || request.trailers.length() > 0) {
     return Err(InvalidHeader("CONNECT request content is not allowed"))
   }
@@ -813,12 +859,24 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
     }
     None => ()
   }
-  if is_connect && content_length is Some(_) {
+  if (is_connect || extended_connect) && content_length is Some(_) {
     return Err(InvalidHeader("CONNECT request content is not allowed"))
   }
   // CONNECT uses authority-form and has no :scheme or :path (RFC 9113 §8.5).
   let headers : Array[(String, String)] = if is_connect {
     [(":method", request.method.to_string()), (":authority", authority)]
+  } else if extended_connect {
+    let protocol = match extended_protocol {
+      Some(value) => value
+      None => ""
+    }
+    [
+      (":method", "CONNECT"),
+      (":scheme", request.url.scheme.to_lower()),
+      (":authority", authority),
+      (":path", request_target),
+      (":protocol", protocol),
+    ]
   } else {
     [
       (":method", request.method.to_string()),
@@ -982,6 +1040,7 @@ fn H2ClientConnection::send_preface(self : H2ClientConnection) -> Result[Unit, H
     (H2_SETTINGS_ENABLE_PUSH, 0),
     (H2_SETTINGS_INITIAL_WINDOW_SIZE, H2_MAX_WINDOW_SIZE),
     (H2_SETTINGS_MAX_HEADER_LIST_SIZE, 1048576),
+    (H2_SETTINGS_ENABLE_CONNECT_PROTOCOL, 1),
   ])
   match h2_write_frame(self.stream, H2_FRAME_SETTINGS, 0, 0, settings) {
     Ok(_) => ()
@@ -1647,10 +1706,9 @@ fn H2ClientConnection::request_with_limit_and_callback(
     Err(err) => return Err(err)
   }
   let has_trailers = trailer_fields.length() > 0
-  let headers = match h2_request_headers(request) {
-    Ok(headers) => headers
-    Err(err) => return Err(err)
-  }
+  // The peer's SETTINGS decide whether an Upgrade request can be expressed as
+  // an extended CONNECT, so they must be applied before the field list is
+  // built.
   if !self.settings_received {
     match self.read_initial_settings(self.flow) {
       Ok(_) => ()
@@ -1659,6 +1717,23 @@ fn H2ClientConnection::request_with_limit_and_callback(
   }
   match self.drain_buffered_settings(self.flow) {
     Ok(_) => ()
+    Err(err) => return Err(err)
+  }
+  let upgrade_protocol = h2_upgrade_protocol(request)
+  let extended_protocol = match upgrade_protocol {
+    Some(protocol) => {
+      if !self.flow.peer_enable_connect_protocol {
+        return Err(
+          ProtocolError("HTTP/2 server did not enable extended CONNECT"),
+        )
+      }
+      Some(protocol)
+    }
+    None => None
+  }
+  let tunnel = request.method == CONNECT || extended_protocol is Some(_)
+  let headers = match h2_request_headers_with_protocol(request, extended_protocol) {
+    Ok(headers) => headers
     Err(err) => return Err(err)
   }
   if self.flow.peer_max_concurrent_streams < 1 {
@@ -1688,12 +1763,12 @@ fn H2ClientConnection::request_with_limit_and_callback(
   }
   // A request with trailers must leave the stream open until the trailing
   // HEADERS frame is written, even when the body itself is empty. A CONNECT
-  // request is different: after a 2xx response the same stream carries the
-  // tunnelled bytes, so its request side must stay open for later DATA frames
-  // even when there is no initial body. Sending END_STREAM on the CONNECT
-  // HEADERS would make every subsequent tunnel write a stream error.
-  let end_stream = body.length() == 0 && !has_trailers &&
-    request.method != CONNECT
+  // request (including an RFC 8441 extended CONNECT) is different: after a 2xx
+  // response the same stream carries the tunnelled bytes, so its request side
+  // must stay open for later DATA frames even when there is no initial body.
+  // Sending END_STREAM on the CONNECT HEADERS would make every subsequent
+  // tunnel write a stream error.
+  let end_stream = body.length() == 0 && !has_trailers && !tunnel
   // A new stream starts with the peer's current initial window plus any
   // WINDOW_UPDATE that arrived before the stream was opened.
   if self.flow.peer_initial_window >
@@ -1728,7 +1803,7 @@ fn H2ClientConnection::request_with_limit_and_callback(
     self.decoder,
     max_body_bytes,
     request.method == HEAD,
-    request.method == CONNECT,
+    tunnel,
   )
   let flow = self.flow
   let mut sent = 0
@@ -1837,11 +1912,10 @@ fn H2ClientConnection::request_with_limit_and_callback(
   self.drain_buffered_connection_frames(state, flow)
   // An early final response (for example 413 or 401) leaves the request side
   // of this stream half-open. Reset the stream instead of returning the
-  // connection to the pool with an unfinished upload. A failed CONNECT is the
-  // same case: its request side was deliberately left open for tunnel DATA,
-  // but no tunnel was established.
-  let request_finished = sent == body.length() && trailers_sent &&
-    request.method != CONNECT
+  // connection to the pool with an unfinished upload. A failed CONNECT or
+  // extended CONNECT is the same case: its request side was deliberately left
+  // open for tunnel DATA, but no tunnel was established.
+  let request_finished = sent == body.length() && trailers_sent && !tunnel
   if !request_finished && !self.closed {
     match h2_write_frame(
       self.stream,

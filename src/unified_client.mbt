@@ -520,7 +520,8 @@ fn request_error_is_local(err : HttpError) -> Bool {
     ProtocolError(message) =>
       message == "HTTP/2 request header list too large" ||
       message == "HTTP/2 request trailer list too large" ||
-      message == "HTTP/2 max concurrent streams is zero"
+      message == "HTTP/2 max concurrent streams is zero" ||
+      message == "HTTP/2 server did not enable extended CONNECT"
     _ => false
   }
 }
@@ -649,10 +650,12 @@ fn UnifiedClient::do_request_once(
   }
   let is_http2 = negotiated_protocol == Some("h2")
   let h2_connection = lease.h2_connection()
-  // A successful HTTP/2 CONNECT becomes a streaming tunnel. Keep the lease
-  // checked out until the tunnel body is exhausted or closed.
-  let connect_completion : (() -> Unit)? = if is_http2 &&
-    request.method == CONNECT {
+  // A successful HTTP/2 CONNECT (including an RFC 8441 extended CONNECT for a
+  // protocol upgrade) becomes a streaming tunnel. Keep the lease checked out
+  // until the tunnel body is exhausted or closed.
+  let h2_tunnel_request = is_http2 &&
+    (request.method == CONNECT || request_requests_upgrade(request.headers))
+  let connect_completion : (() -> Unit)? = if h2_tunnel_request {
     Some(fn() { lease.release(false) })
   } else {
     None
@@ -708,7 +711,7 @@ fn UnifiedClient::do_request_once(
       return Err(normalize_http_error(err))
     }
   }
-  let h2_tunnel = is_http2 && request.method == CONNECT &&
+  let h2_tunnel = h2_tunnel_request &&
     response.status >= 200 && response.status < 300
   if is_http2 && !h2_tunnel {
     // The HTTP/2 exchange buffers the body, so the session can be returned to
