@@ -926,7 +926,25 @@ fn read_chunk_size(reader : StreamReader) -> Result[Int, NetError] {
   }
   let extension_index = line.find(";")
   let size_text = match extension_index {
-    Some(index) => trim_header_ows(line[0:index].to_owned())
+    Some(index) => {
+      let raw = line[0:index].to_owned()
+      // BWS is only allowed between the size and the extension. Leading
+      // whitespace is not part of chunk-size and must be rejected.
+      if raw.length() == 0 || raw.get_char(0) == Some(' ') ||
+        raw.get_char(0) == Some('\t') {
+        return Err(NetError::ReadError("invalid chunk size"))
+      }
+      let mut end = raw.length()
+      while end > 0 {
+        let ch = raw.get_char(end - 1)
+        if ch == Some(' ') || ch == Some('\t') {
+          end = end - 1
+        } else {
+          break
+        }
+      }
+      raw[0:end].to_owned()
+    }
     None => line
   }
   if !is_hex_digits(size_text) {
