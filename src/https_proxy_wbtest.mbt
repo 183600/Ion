@@ -113,3 +113,13 @@ test "proxy connection keys distinguish TLS and plaintext proxies" {
   let url = Url::parse("http://example.com/").unwrap()
   assert_true(plain.connection_key(url) != secure.connection_key(url))
 }
+
+///|
+test "proxy connection keys distinguish bracketed literals from DNS names" {
+  let dns = Connector::new(TcpDialer::new(), MockTlsProvider::new("test"))
+    .with_proxy(Proxy::new("http://v1.foo:3128").unwrap())
+  let literal = Connector::new(TcpDialer::new(), MockTlsProvider::new("test"))
+    .with_proxy(Proxy::new("http://[v1.foo]:3128").unwrap())
+  let url = Url::parse("http://example.com/").unwrap()
+  assert_true(dns.connection_key(url) != literal.connection_key(url))
+}

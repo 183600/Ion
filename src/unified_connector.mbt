@@ -1061,15 +1061,22 @@ fn Connector::connection_key(self : Connector, url : Url) -> String {
   let authority = url_authority_host(url.host.to_lower(), url.bracketed)
   let origin = url.scheme.to_lower() + "://" + authority + ":" + url.port.to_string()
   match self.proxy_for_url(url) {
-    Some(proxy) =>
+    Some(proxy) => {
+      // Preserve the proxy authority form as well: an IPvFuture literal that
+      // looks like a DNS name must not share a key with that DNS name.
+      let proxy_authority = url_authority_host(
+        proxy.url.host.to_lower(),
+        proxy.url.bracketed,
+      )
       "proxy:" +
       proxy.url.scheme.to_lower() +
       "://" +
-      proxy.url.host.to_lower() +
+      proxy_authority +
       ":" +
       proxy.url.port.to_string() +
       "|" +
       origin
+    }
     None => origin
   }
 }
