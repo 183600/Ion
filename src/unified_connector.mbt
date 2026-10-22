@@ -865,7 +865,7 @@ fn read_connect_response(stream : &Stream) -> Result[Bytes, HttpError] {
 }
 
 fn connect_authority(url : Url) -> String {
-  url_authority_host(url.host) + ":" + url.port.to_string()
+  url_authority_host(url.host, url.bracketed) + ":" + url.port.to_string()
 }
 
 fn establish_tunnel(
@@ -925,6 +925,14 @@ fn Connector::connect_impl(
 
   let conn_key = self.connection_key(url)
   let proxy = self.proxy_for_url(url)
+  // A bracketed IPvFuture literal is not a DNS name. Keep its brackets when
+  // handing it to the TLS provider so SNI is not attempted for it. Bracketed
+  // IPv6 addresses keep the raw host form understood by every provider.
+  let tls_host = if url.bracketed && !is_ipv6_literal_with_zone(host) {
+    "[" + host + "]"
+  } else {
+    host
+  }
 
   // Validate proxy settings before opening any socket.
   match proxy {
@@ -945,7 +953,7 @@ fn Connector::connect_impl(
   // Validate TLS settings before opening a socket. The connection host
   // overrides any server name from the shared configuration.
   if scheme == "https" {
-    let tls_config = self.origin_tls_config(host)
+    let tls_config = self.origin_tls_config(tls_host)
     match tls_config.validate() {
       Ok(_) => ()
       Err(err) => return Err(TlsError(err))
@@ -1034,7 +1042,7 @@ fn Connector::connect_impl(
   // If HTTPS, wrap with TLS
   if scheme == "https" {
     // Use the shared configuration when present, otherwise secure defaults.
-    let tls_config = self.origin_tls_config(host)
+    let tls_config = self.origin_tls_config(tls_host)
     let tls_config = match tls_config.validate() {
       Ok(_) => tls_config
       Err(err) => {

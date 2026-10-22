@@ -150,10 +150,14 @@ pub struct Url {
   path : String
   query : String
   fragment : String
+  // Whether the authority used an IP-literal (`[ ... ]`) form. This matters
+  // for IPvFuture hosts, whose text is otherwise indistinguishable from a
+  // regular DNS name.
+  bracketed : Bool
 } derive(Eq, Debug)
 
 pub fn Url::new(scheme : String, host : String, port : Int) -> Url {
-  Url::{ scheme, host, port, path: "/", query: "", fragment: "" }
+  Url::{ scheme, host, port, path: "/", query: "", fragment: "", bracketed: false }
 }
 
 fn find_char(str : String, target : Char) -> Int? {
@@ -473,14 +477,13 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
     return Err(InvalidUrl("Invalid URL characters"))
   }
 
-  Ok(Url::{ scheme, host, port, path, query, fragment })
+  Ok(Url::{ scheme, host, port, path, query, fragment, bracketed })
 }
 
-fn url_authority_host(host : String) -> String {
+fn url_authority_host(host : String, bracketed : Bool) -> String {
   if host.has_prefix("[") && host.has_suffix("]") {
     host
-  } else if host.contains(":") ||
-    (is_ip_literal(host) && !is_ipv6_literal_with_zone(host)) {
+  } else if bracketed || host.contains(":") {
     "[" + host + "]"
   } else {
     host
@@ -490,7 +493,7 @@ fn url_authority_host(host : String) -> String {
 /// Host and optional non-default port, bracketing IP literals.
 pub fn Url::authority(self : Url) -> String {
   let scheme = self.scheme.to_lower()
-  let host_text = url_authority_host(self.host)
+  let host_text = url_authority_host(self.host, self.bracketed)
   let default_port = if scheme == "https" {
     443
   } else if scheme == "http" {

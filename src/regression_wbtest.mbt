@@ -161,6 +161,26 @@ test "URL preserves bracketed IPvFuture authorities" {
 }
 
 ///|
+test "unbracketed hosts that look like IPvFuture remain DNS names" {
+  for raw in ["http://v1.example.com/x", "http://v1.foo/x"] {
+    let url = Url::parse(raw).unwrap()
+    assert_false(url.bracketed)
+    assert_eq(url.authority(), url.host)
+    assert_eq(url.to_string(), raw)
+  }
+  let literal = Url::parse("http://[v1.foo]/x").unwrap()
+  assert_true(literal.bracketed)
+  assert_eq(literal.authority(), "[v1.foo]")
+
+  let stream = regression_mock_stream("", 0, 0)
+  let codec = H1Codec::new(stream)
+  let dns_name = Url::parse("http://v1.example.com/x").unwrap()
+  assert_true(codec.encode_request(Request::new(GET, dns_name)) is Ok(_))
+  let wire = @utf8.decode_lossy(stream.output.to_bytes()[:])
+  assert_true(wire.contains("Host: v1.example.com\r\n"))
+}
+
+///|
 test "URL rejects control characters" {
   assert_true(Url::parse("http://example.com/\r\nInjected: yes") is Err(_))
   assert_true(Url::parse("http://example.com/\u{0}") is Err(_))
@@ -262,6 +282,7 @@ test "encode rejects request-target and host injection" {
     path: "/a\r\nX-Injected: yes",
     query: "",
     fragment: "",
+    bracketed: false,
   }
   assert_true(codec.encode_request(Request::new(GET, injected_path)) is Err(_))
   let injected_host = Url::{
@@ -271,6 +292,7 @@ test "encode rejects request-target and host injection" {
     path: "/",
     query: "",
     fragment: "",
+    bracketed: false,
   }
   assert_true(codec.encode_request(Request::new(GET, injected_host)) is Err(_))
   assert_eq(stream.output.to_bytes().length(), 0)
