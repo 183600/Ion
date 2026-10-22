@@ -1937,3 +1937,30 @@ pub impl Stream for ResponseStream with fn local_addr(self : ResponseStream) -> 
   }
   self.reader.val.stream.local_addr()
 }
+
+/// Encode one HTTP/1.1 request and decode its response on an already
+/// established stream. This is the HTTP/1.1 counterpart to `h2_request` for
+/// callers that provide their own `Stream` (for example a custom transport or
+/// a tunnel) instead of using `UnifiedClient`'s dialer.
+pub fn h1_request(
+  stream : &Stream,
+  request : Request,
+  absolute_form? : Bool,
+) -> Result[Response, HttpError] {
+  h1_request_with_limit(stream, request, DEFAULT_MAX_BODY_BYTES, absolute_form?)
+}
+
+/// Like `h1_request`, but cap the response body at `max_body_bytes`.
+pub fn h1_request_with_limit(
+  stream : &Stream,
+  request : Request,
+  max_body_bytes : Int,
+  absolute_form? : Bool,
+) -> Result[Response, HttpError] {
+  let codec = H1Codec::new_with_limit(stream, max_body_bytes)
+  match codec.encode_request(request, absolute_form=absolute_form.unwrap_or(false)) {
+    Ok(_) => ()
+    Err(err) => return Err(err)
+  }
+  codec.decode_response(head=request.method == HEAD)
+}

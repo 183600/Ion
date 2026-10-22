@@ -23,6 +23,10 @@ pub fn get(String) -> Result[Response, HttpError]
 
 pub fn gunzip(Bytes, Int32) -> Result[Bytes, HttpError]
 
+pub fn h1_request(&Stream, Request, absolute_form? : Bool) -> Result[Response, HttpError]
+
+pub fn h1_request_with_limit(&Stream, Request, Int32, absolute_form? : Bool) -> Result[Response, HttpError]
+
 pub fn h2_request(&Stream, Request) -> Result[Response, HttpError]
 
 pub fn head(String) -> Result[Response, HttpError]
