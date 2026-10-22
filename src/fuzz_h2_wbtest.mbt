@@ -75,5 +75,6 @@ test "fuzz: arbitrary Set-Cookie values never panic" {
     let _ = jar.cookie_header_at(url, index.to_uint64())
     index = index + 1
   }
-  assert_true(jar.length() >= 0)
+  let length = jar.length()
+  assert_true(length >= 0 && length <= 3000)
 }
