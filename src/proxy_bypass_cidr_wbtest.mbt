@@ -13,12 +13,16 @@ test "malformed CIDR bypass entries do not fall back to the base host" {
     "10.0.0.0/not",
     "10.0.0.0/",
     "192.168.0.0/24/8",
+    "010.0.0.0/8",
+    "999.999.999.999/8",
     "[2001:db8::]/129",
     "2001:db8::/not",
   ])
   for url in [
     "http://10.0.0.0/",
     "http://192.168.0.0/",
+    "http://010.0.0.0/",
+    "http://999.999.999.999/",
     "http://[2001:db8::]/",
   ] {
     assert_true(connector.proxy_for_url(Url::parse(url).unwrap()) is Some(_))
