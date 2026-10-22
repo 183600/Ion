@@ -649,6 +649,12 @@ fn H2ResponseState::handle_frame(
           if frame.stream_id != 0 &&
             err == ProtocolError("Invalid HTTP/2 WINDOW_UPDATE increment") {
             if frame.stream_id == self.stream_id {
+              if self.ended {
+                // The stream is already closed. RFC 9113 §6.9 only makes a
+                // zero increment an error for streams that can still send, so
+                // a late update must not tear down a reusable connection.
+                return Ok(())
+              }
               // A zero increment is a stream error on a non-zero stream. Reset
               // only that stream so the connection can carry later requests.
               let _ = h2_write_frame(
