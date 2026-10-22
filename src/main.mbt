@@ -294,14 +294,16 @@ fn parse_cli_request(args : Array[String]) -> (String, String, String) {
   let mut url = ""
   let mut body = ""
   if index < args.length() {
-    let first = args[index]
+    // Whitespace around a URL or method is a common shell/ environment
+    // accident and is never meaningful in either value.
+    let first = args[index].trim().to_owned()
     let lower = first.to_lower()
     if lower.has_prefix("http://") || lower.has_prefix("https://") {
       url = first
     } else {
       method = lower
       if index + 1 < args.length() {
-        url = args[index + 1]
+        url = args[index + 1].trim().to_owned()
         if index + 2 < args.length() {
           body = args[index + 2]
         }
@@ -316,7 +318,7 @@ fn wants_help(args : Array[String]) -> Bool {
   if index >= args.length() {
     return false
   }
-  let first = args[index].to_lower()
+  let first = args[index].trim().to_lower()
   first == "-h" || first == "--help" || first == "help"
 }
 
@@ -330,7 +332,7 @@ fn main {
   let mut url = parsed_url
   if url.length() == 0 {
     match @env.get_env_var("FEATHER_URL") {
-      Some(value) => url = value
+      Some(value) => url = value.trim().to_owned()
       None => ()
     }
   }
