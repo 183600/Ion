@@ -552,6 +552,210 @@ fn parse_bypass_authority(value : String) -> (String, Int?)? {
   Some((value, None))
 }
 
+/// Parse a dotted-quad IPv4 address into its 32-bit numeric form. Leading
+/// zeroes are rejected so an address cannot be interpreted differently by the
+/// resolver (where they may mean octal) and the bypass matcher.
+fn bypass_ipv4_value(value : String) -> Int? {
+  let parts = value.split(".").collect()
+  if parts.length() != 4 {
+    return None
+  }
+  let mut result = 0
+  for part in parts {
+    let part = part.to_owned()
+    if part.length() == 0 || part.length() > 3 || !is_decimal_digits(part) ||
+      (part.length() > 1 && part.get_char(0) == Some('0')) {
+      return None
+    }
+    let octet = try {
+      @string.parse_int(part[:])
+    } catch {
+      _ => return None
+    }
+    if octet < 0 || octet > 255 {
+      return None
+    }
+    result = (result << 8) | octet
+  }
+  Some(result)
+}
+
+fn bypass_prefix_matches(first : Int, second : Int, bits : Int) -> Bool {
+  let mut remaining = bits
+  let mut shift = 24
+  while remaining > 0 {
+    let take = if remaining < 8 { remaining } else { 8 }
+    let mask = (0xff << (8 - take)) & 0xff
+    if (((first >> shift) & 0xff) & mask) != (((second >> shift) & 0xff) & mask) {
+      return false
+    }
+    remaining = remaining - take
+    shift = shift - 8
+  }
+  true
+}
+
+fn bypass_hex_group(value : String) -> Int? {
+  if value.length() == 0 || value.length() > 4 || !is_hex_digits(value) {
+    return None
+  }
+  let group = try {
+    @string.parse_int(value[:], base=16)
+  } catch {
+    _ => return None
+  }
+  Some(group)
+}
+
+/// Parse the colon-separated groups of one half of an IPv6 address. An
+/// embedded dotted-quad tail is accepted only at the end when requested.
+fn bypass_ipv6_groups(
+  value : String,
+  allow_ipv4_tail : Bool,
+) -> Array[Int]? {
+  if value.length() == 0 {
+    return Some([])
+  }
+  let parts = value.split(":").collect()
+  let groups : Array[Int] = []
+  let mut index = 0
+  for part in parts {
+    let part = part.to_owned()
+    index = index + 1
+    if part.length() == 0 {
+      return None
+    }
+    if allow_ipv4_tail && index == parts.length() && part.contains(".") {
+      let address = match bypass_ipv4_value(part) {
+        Some(address) => address
+        None => return None
+      }
+      groups.push((address >> 16) & 0xffff)
+      groups.push(address & 0xffff)
+    } else {
+      let group = match bypass_hex_group(part) {
+        Some(group) => group
+        None => return None
+      }
+      groups.push(group)
+    }
+  }
+  Some(groups)
+}
+
+fn bypass_ipv6_bytes(value : String) -> Bytes? {
+  let mut text = value
+  if text.has_prefix("[") && text.has_suffix("]") {
+    text = text[1:text.length() - 1].to_owned()
+  }
+  match text.find("%") {
+    Some(index) => text = text[0:index].to_owned()
+    None => ()
+  }
+  let groups = match text.find("::") {
+    Some(index) => {
+      let right_text = text[index + 2:].to_owned()
+      if right_text.contains("::") {
+        return None
+      }
+      let left = match bypass_ipv6_groups(text[0:index].to_owned(), false) {
+        Some(groups) => groups
+        None => return None
+      }
+      let right = match bypass_ipv6_groups(right_text, true) {
+        Some(groups) => groups
+        None => return None
+      }
+      if left.length() + right.length() >= 8 {
+        return None
+      }
+      let groups = Array::make(8, 0)
+      let mut left_index = 0
+      while left_index < left.length() {
+        groups[left_index] = left[left_index]
+        left_index = left_index + 1
+      }
+      let mut right_index = 0
+      while right_index < right.length() {
+        groups[8 - right.length() + right_index] = right[right_index]
+        right_index = right_index + 1
+      }
+      groups
+    }
+    None => {
+      let groups = match bypass_ipv6_groups(text, true) {
+        Some(groups) => groups
+        None => return None
+      }
+      if groups.length() != 8 {
+        return None
+      }
+      groups
+    }
+  }
+  let output : Array[Byte] = Array::make(16, b'\x00')
+  let mut index = 0
+  while index < 8 {
+    let group = groups[index]
+    output[index * 2] = ((group >> 8) & 0xff).to_byte()
+    output[index * 2 + 1] = (group & 0xff).to_byte()
+    index = index + 1
+  }
+  Some(Bytes::from_array(output[:]))
+}
+
+fn bypass_prefix_bytes_match(first : Bytes, second : Bytes, bits : Int) -> Bool {
+  let mut remaining = bits
+  let mut index = 0
+  while remaining > 0 {
+    let take = if remaining < 8 { remaining } else { 8 }
+    let mask = (0xff << (8 - take)) & 0xff
+    if (first[index].to_int() & mask) != (second[index].to_int() & mask) {
+      return false
+    }
+    remaining = remaining - take
+    index = index + 1
+  }
+  true
+}
+
+/// Match `base/prefix` against a host. Returns false for anything that is not
+/// a well-formed CIDR block, leaving ordinary host and path patterns to the
+/// existing matcher.
+fn bypass_cidr_matches(candidate : String, host : String) -> Bool {
+  let slash = match candidate.find("/") {
+    Some(index) => index
+    None => return false
+  }
+  let base = candidate[0:slash].to_owned()
+  let prefix_text = candidate[slash + 1:].to_owned()
+  if prefix_text.length() == 0 || !is_decimal_digits(prefix_text) {
+    return false
+  }
+  let prefix = try {
+    @string.parse_int(prefix_text[:])
+  } catch {
+    _ => return false
+  }
+  if prefix < 0 {
+    return false
+  }
+  match (bypass_ipv4_value(base), bypass_ipv4_value(host)) {
+    (Some(network), Some(address)) =>
+      return prefix <= 32 && bypass_prefix_matches(network, address, prefix)
+    _ => ()
+  }
+  let network = match bypass_ipv6_bytes(base) {
+    Some(bytes) => bytes
+    None => return false
+  }
+  let address = match bypass_ipv6_bytes(host) {
+    Some(bytes) => bytes
+    None => return false
+  }
+  prefix <= 128 && bypass_prefix_bytes_match(network, address, prefix)
+}
+
 fn is_numeric_dotted_host(value : String) -> Bool {
   let mut saw_digit = false
   let mut saw_dot = false
@@ -579,6 +783,11 @@ fn proxy_bypass_matches(pattern : String, host : String, port : Int) -> Bool {
   match candidate.find("://") {
     Some(index) => candidate = candidate[index + 3:].to_owned()
     None => ()
+  }
+  // A `network/prefix` entry is a CIDR block, not a host followed by a path.
+  // Test it before the generic path stripping below.
+  if bypass_cidr_matches(candidate, host) {
+    return true
   }
   match candidate.find("/") {
     Some(index) => candidate = candidate[0:index].to_owned()

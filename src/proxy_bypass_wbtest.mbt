@@ -38,6 +38,35 @@ test "proxy bypass supports IP literals and wildcard-all" {
 }
 
 ///|
+test "proxy bypass matches IPv4 and IPv6 CIDR blocks" {
+  let stream = regression_mock_stream("", 0, 0)
+  let connector = bypass_test_connector(RegressionMockDialer::{ stream, count: 0 }, [
+    "10.0.0.0/8", "192.168.1.0/24", "2001:db8::/32", "::1/128", "203.0.113.5/32",
+  ])
+  assert_true(connector.proxy_for_url(Url::parse("http://10.1.2.3/").unwrap()) is None)
+  assert_true(connector.proxy_for_url(Url::parse("http://11.0.0.1/").unwrap()) is Some(_))
+  assert_true(connector.proxy_for_url(Url::parse("http://192.168.1.99/").unwrap()) is None)
+  assert_true(connector.proxy_for_url(Url::parse("http://192.168.2.1/").unwrap()) is Some(_))
+  assert_true(
+    connector.proxy_for_url(Url::parse("http://[2001:db8::1]/").unwrap()) is None,
+  )
+  assert_true(
+    connector.proxy_for_url(Url::parse("http://[2001:db9::1]/").unwrap()) is Some(_),
+  )
+  assert_true(connector.proxy_for_url(Url::parse("http://[::1]/").unwrap()) is None)
+  assert_true(connector.proxy_for_url(Url::parse("http://203.0.113.5/").unwrap()) is None)
+  assert_true(connector.proxy_for_url(Url::parse("http://198.51.100.7/").unwrap()) is Some(_))
+
+  let invalid = bypass_test_connector(RegressionMockDialer::{ stream, count: 0 }, [
+    "10.0.0.0/33", "10.0.0.0/not", "[2001:db8::]/129",
+  ])
+  assert_true(invalid.proxy_for_url(Url::parse("http://10.0.0.1/").unwrap()) is Some(_))
+  assert_true(
+    invalid.proxy_for_url(Url::parse("http://[2001:db8::1]/").unwrap()) is Some(_),
+  )
+}
+
+///|
 test "malformed bypass entries never match" {
   let stream = regression_mock_stream("", 0, 0)
   let connector = bypass_test_connector(RegressionMockDialer::{ stream, count: 0 }, [
