@@ -188,11 +188,12 @@ pub fn UnifiedClient::with_max_response_body_bytes(
   }
 }
 
-/// Enable or disable HTTP/2 negotiation through ALPN. Existing pooled
-/// connections negotiated under the previous policy are closed.
+/// Enable or disable HTTP/2 negotiation through ALPN. The derived client gets
+/// a fresh pool, so connections negotiated under the source client's policy
+/// are neither reused nor closed by this builder.
 pub fn UnifiedClient::with_http2(self : UnifiedClient, enabled : Bool) -> UnifiedClient {
   UnifiedClient::{
-    connector: self.connector.with_http2(enabled),
+    connector: self.connector.detached().with_http2(enabled),
     options: ClientOptions::{ ..self.options, http2: enabled },
     redirect_count: 0,
   }
