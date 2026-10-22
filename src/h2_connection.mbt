@@ -411,14 +411,15 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
     None => 0
   }
   let content_lengths = request.headers.get_all("Content-Length")
-  if content_lengths.length() > 1 {
-    return Err(InvalidHeader("Content-Length"))
+  let content_length = match request_content_length(request.headers) {
+    Ok(value) => value
+    Err(_) => return Err(InvalidHeader("Content-Length"))
   }
-  if content_lengths.length() == 1 {
-    let declared = content_lengths.nth(0).unwrap()
-    if declared != body_length.to_string() {
+  match content_length {
+    Some(declared) => if declared != body_length {
       return Err(InvalidHeader("Content-Length"))
     }
+    None => ()
   }
   let headers : Array[(String, String)] = [
     (":method", request.method.to_string()),

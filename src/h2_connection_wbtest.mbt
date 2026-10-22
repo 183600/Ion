@@ -280,8 +280,7 @@ test "http2 rejects forbidden trailer fields" {
   }
 }
 
-test "http2 enforces response content length" {
-  let headers = hpack_encode([(":status", "200"), ("content-length", "10")])
+test "http2 enforces response content length" {  let headers = hpack_encode([(":status", "200"), ("content-length", "10")])
   let input = h2_test_concat([
     h2_test_settings(),
     h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, headers),
@@ -359,3 +358,18 @@ test "http2 rejects bodies on HEAD and bodyless responses" {
 
 
 
+
+test "http2 request content length accepts HTTP whitespace and leading zeroes" {
+  let url = Url::parse("https://example.com/upload").unwrap()
+  for declared in [" 5 ", "05", "005"] {
+    let request = Request::new(POST, url)
+      .with_header("Content-Length", declared)
+      .with_body(@utf8.encode("hello"))
+    let headers = h2_request_headers(request).unwrap()
+    assert_eq(h2_test_header_value(headers, "content-length"), Some(declared))
+  }
+  let request = Request::new(POST, url)
+    .with_header("Content-Length", "6")
+    .with_body(@utf8.encode("hello"))
+  assert_eq(h2_request_headers(request), Err(InvalidHeader("Content-Length")))
+}
