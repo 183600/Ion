@@ -1350,3 +1350,90 @@ test "http2 rejects TE in responses" {
       assert_eq(err, ProtocolError("Connection-specific HTTP/2 response header"))
   }
 }
+
+///|
+test "http2 rejects invalid padded DATA buffered after the response" {
+  let response_headers = hpack_encode([(":status", "204")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
+    // Pad Length 5 exceeds the two-byte payload.
+    h2_test_frame(H2_FRAME_DATA, H2_FLAG_PADDED, 1, b"\x05\x00"),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match connection.request(request) {
+    Ok(_) => fail("invalid buffered DATA padding was accepted")
+    Err(err) => assert_eq(err, ProtocolError("Invalid HTTP/2 DATA padding"))
+  }
+  assert_false(connection.is_open())
+}
+
+///|
+test "http2 keeps the session after a self-dependent PRIORITY frame" {
+  let response_headers = hpack_encode([(":status", "204")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    // PRIORITY on idle stream 3 depending on itself is a stream-scoped
+    // priority violation, not a connection failure.
+    h2_test_frame(H2_FRAME_PRIORITY, 0, 3, b"\x00\x00\x00\x03\x10"),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  let response = connection.request(request).unwrap()
+  assert_eq(response.status, 204)
+  assert_true(connection.is_open())
+  let _ = connection.close()
+}
+
+///|
+test "http2 resets only the stream after a zero WINDOW_UPDATE increment" {
+  let first_headers = hpack_encode([(":status", "204")])
+  let second_headers = hpack_encode([(":status", "200"), ("x-request", "second")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_WINDOW_UPDATE, 0, 1, b"\x00\x00\x00\x00"),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      first_headers,
+    ),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      3,
+      second_headers,
+    ),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match connection.request(request) {
+    Ok(_) => fail("zero WINDOW_UPDATE increment was accepted")
+    Err(err) =>
+      assert_eq(
+        err,
+        ProtocolError("HTTP/2 stream WINDOW_UPDATE increment is zero"),
+      )
+  }
+  assert_true(connection.is_open())
+  let second = connection.request(request).unwrap()
+  assert_eq(second.status, 200)
+  assert_eq(second.headers.get("x-request"), Some("second"))
+  assert_true(connection.is_open())
+  let _ = connection.close()
+}

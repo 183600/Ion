@@ -163,6 +163,40 @@ fn h2_parse_status(value : String) -> Result[Int, HttpError] {
   Ok(status)
 }
 
+/// Read a frame for a client connection. `h2_read_frame` reports a
+/// self-dependent PRIORITY frame as a protocol error; that is a stream-scoped
+/// priority violation, so a client that does not use priority can discard the
+/// frame and keep the connection usable.
+fn h2_read_connection_frame(reader : StreamReader) -> Result[H2Frame, HttpError] {
+  match h2_read_frame(reader) {
+    Err(ProtocolError(message)) =>
+      if message == "HTTP/2 stream cannot depend on itself" {
+        // The frame was fully consumed. Surface an inert PRIORITY frame so the
+        // caller ignores the stream-scoped priority violation without
+        // consuming the next frame.
+        Ok(H2Frame::{
+          frame_type: H2_FRAME_PRIORITY,
+          flags: 0,
+          stream_id: 0,
+          payload: b"",
+        })
+      } else {
+        Err(ProtocolError(message))
+      }
+    result => result
+  }
+}
+
+/// A stream-scoped fatal error that leaves the connection usable after a
+/// RST_STREAM has been sent for the affected stream.
+fn h2_error_is_stream_reset(err : HttpError) -> Bool {
+  match err {
+    ProtocolError(message) =>
+      message == "HTTP/2 stream WINDOW_UPDATE increment is zero"
+    _ => false
+  }
+}
+
 fn h2_valid_field_name(name : String) -> Bool {
   if name.length() == 0 {
     return false
@@ -611,7 +645,28 @@ fn H2ResponseState::handle_frame(
     H2_FRAME_WINDOW_UPDATE => {
       let increment = match h2_parse_window_update(frame.payload) {
         Ok(value) => value
-        Err(err) => return Err(err)
+        Err(err) => {
+          if frame.stream_id != 0 &&
+            err == ProtocolError("Invalid HTTP/2 WINDOW_UPDATE increment") {
+            if frame.stream_id == self.stream_id {
+              // A zero increment is a stream error on a non-zero stream. Reset
+              // only that stream so the connection can carry later requests.
+              let _ = h2_write_frame(
+                stream,
+                H2_FRAME_RST_STREAM,
+                0,
+                frame.stream_id,
+                b"\x00\x00\x00\x01",
+              )
+              let _ = stream.flush()
+              return Err(ProtocolError("HTTP/2 stream WINDOW_UPDATE increment is zero"))
+            } else if frame.stream_id < self.stream_id {
+              // The stream has already ended; the update has no effect.
+              return Ok(())
+            }
+          }
+          return Err(err)
+        }
       }
       if frame.stream_id == 0 {
         if flow.connection_send_window > H2_MAX_WINDOW_SIZE - increment {
@@ -1146,7 +1201,7 @@ fn H2TunnelBody::sync_trailers(self : H2TunnelBody) -> Unit {
 }
 
 fn H2TunnelBody::advance(self : H2TunnelBody) -> Result[Unit, NetError] {
-  let frame = match h2_read_frame(self.connection.reader) {
+  let frame = match h2_read_connection_frame(self.connection.reader) {
     Ok(frame) => frame
     Err(err) => {
       self.finish()
@@ -1360,7 +1415,7 @@ fn H2ClientConnection::drain_buffered_connection_frames(
   self : H2ClientConnection,
   state : H2ResponseState,
   flow : H2FlowState,
-) -> Unit {
+) -> Result[Unit, HttpError] {
   while h2_frame_is_buffered(self.reader) {
     let frame_type = self.reader.pending[self.reader.pending_offset + 3].to_int()
     match frame_type {
@@ -1375,11 +1430,11 @@ fn H2ClientConnection::drain_buffered_connection_frames(
           (self.reader.pending[offset + 6].to_int() << 16) |
           (self.reader.pending[offset + 7].to_int() << 8) |
           self.reader.pending[offset + 8].to_int()
-        match h2_read_frame(self.reader) {
+        match h2_read_connection_frame(self.reader) {
           Ok(_) => ()
           Err(_) => {
             self.closed = true
-            return
+            return Ok(())
           }
         }
         // After END_STREAM, the peer may still have a RST_STREAM in flight
@@ -1391,7 +1446,7 @@ fn H2ClientConnection::drain_buffered_connection_frames(
           continue
         }
         self.closed = true
-        return
+        return Ok(())
       }
       H2_FRAME_DATA => {
         let offset = self.reader.pending_offset
@@ -1403,17 +1458,24 @@ fn H2ClientConnection::drain_buffered_connection_frames(
           // Push was disabled, so even stream identifiers cannot belong to a
           // legitimate response, past or future.
           self.closed = true
-          return
+          return Ok(())
         }
         if frame_stream_id > state.stream_id {
           // Leave a frame for a future stream buffered for the next request.
-          return
+          return Ok(())
         }
-        let frame = match h2_read_frame(self.reader) {
+        let frame = match h2_read_connection_frame(self.reader) {
           Ok(frame) => frame
           Err(_) => {
             self.closed = true
-            return
+            return Ok(())
+          }
+        }
+        match h2_data_payload(frame) {
+          Ok(_) => ()
+          Err(err) => {
+            self.closed = true
+            return Err(err)
           }
         }
         // The stream has already ended (or was reset); discard its payload
@@ -1423,7 +1485,7 @@ fn H2ClientConnection::drain_buffered_connection_frames(
             Ok(_) => ()
             Err(_) => {
               self.closed = true
-              return
+              return Ok(())
             }
           }
         }
@@ -1433,11 +1495,11 @@ fn H2ClientConnection::drain_buffered_connection_frames(
         // Unknown extension frame types must be ignored and discarded
         // (RFC 9113 §4.1); they carry no stream state we need to preserve.
         if frame_type > H2_FRAME_CONTINUATION {
-          match h2_read_frame(self.reader) {
+          match h2_read_connection_frame(self.reader) {
             Ok(_) => ()
             Err(_) => {
               self.closed = true
-              return
+              return Ok(())
             }
           }
           continue
@@ -1456,14 +1518,14 @@ fn H2ClientConnection::drain_buffered_connection_frames(
           frame_stream_id <= state.stream_id {
           self.closed = true
         }
-        return
+        return Ok(())
       }
     }
-    let frame = match h2_read_frame(self.reader) {
+    let frame = match h2_read_connection_frame(self.reader) {
       Ok(frame) => frame
       Err(_) => {
         self.closed = true
-        return
+        return Ok(())
       }
     }
     match frame.frame_type {
@@ -1472,7 +1534,7 @@ fn H2ClientConnection::drain_buffered_connection_frames(
           Ok(_) => ()
           Err(_) => {
             self.closed = true
-            return
+            return Ok(())
           }
         }
       H2_FRAME_GOAWAY => {
@@ -1481,14 +1543,56 @@ fn H2ClientConnection::drain_buffered_connection_frames(
           Err(_) => ()
         }
         self.closed = true
-        return
+        return Ok(())
       }
       H2_FRAME_PRIORITY => ()
       _ => {
         self.closed = true
+        return Ok(())
+      }
+    }
+  }
+  Ok(())
+}
+
+/// After resetting one stream, consume already-buffered frames that belong to
+/// it so they cannot be mistaken for the next stream's response. Feeding them
+/// through the response state keeps the HPACK dynamic table synchronized.
+fn H2ClientConnection::discard_buffered_stream_frames(
+  self : H2ClientConnection,
+  state : H2ResponseState,
+  flow : H2FlowState,
+  stream_id : Int,
+) -> Unit {
+  while h2_frame_is_buffered(self.reader) {
+    let offset = self.reader.pending_offset
+    let frame_type = self.reader.pending[offset + 3].to_int()
+    let frame_stream_id = ((self.reader.pending[offset + 5].to_int() & 0x7f) << 24) |
+      (self.reader.pending[offset + 6].to_int() << 16) |
+      (self.reader.pending[offset + 7].to_int() << 8) |
+      self.reader.pending[offset + 8].to_int()
+    if frame_stream_id != stream_id {
+      return
+    }
+    let frame = match h2_read_connection_frame(self.reader) {
+      Ok(frame) => frame
+      Err(_) => {
+        self.closed = true
         return
       }
     }
+    match state.handle_frame(frame, flow, self.stream) {
+      Ok(_) => ()
+      Err(_) => {
+        // Header blocks that fail to decode can leave HPACK state unusable.
+        if frame.frame_type == H2_FRAME_HEADERS ||
+          frame.frame_type == H2_FRAME_CONTINUATION {
+          self.closed = true
+          return
+        }
+      }
+    }
+    let _ = frame_type
   }
 }
 
@@ -1507,7 +1611,7 @@ fn H2ClientConnection::read_initial_settings(
     }
   }
   while true {
-    let frame = match h2_read_frame(self.reader) {
+    let frame = match h2_read_connection_frame(self.reader) {
       Ok(frame) => frame
       Err(err) => {
         self.closed = true
@@ -1577,7 +1681,7 @@ fn H2ClientConnection::drain_buffered_settings(
       | H2_FRAME_WINDOW_UPDATE => ()
       _ => return Ok(())
     }
-    let frame = match h2_read_frame(self.reader) {
+    let frame = match h2_read_connection_frame(self.reader) {
       Ok(frame) => frame
       Err(err) => {
         self.closed = true
@@ -1630,6 +1734,27 @@ fn H2ClientConnection::drain_buffered_settings(
         let increment = match h2_parse_window_update(frame.payload) {
           Ok(value) => value
           Err(err) => {
+            if frame.stream_id != 0 &&
+              err == ProtocolError("Invalid HTTP/2 WINDOW_UPDATE increment") {
+              if frame.stream_id == self.next_stream_id {
+                // The offending stream has not been opened yet. Treat this as
+                // a stream error for that id, skip it, and keep the session
+                // usable for the next stream.
+                let skipped = H2ResponseState::new(
+                  frame.stream_id,
+                  self.decoder,
+                  0,
+                  false,
+                  false,
+                )
+                self.discard_buffered_stream_frames(skipped, flow, frame.stream_id)
+                self.next_stream_id = self.next_stream_id + 2
+                return Err(ProtocolError("HTTP/2 stream WINDOW_UPDATE increment is zero"))
+              } else if frame.stream_id < self.next_stream_id {
+                // The stream has already ended; the update has no effect.
+                continue
+              }
+            }
             self.closed = true
             return Err(err)
           }
@@ -1815,7 +1940,7 @@ fn H2ClientConnection::request_with_limit_and_callback(
       flow.stream_send_window
     }
     if available <= 0 {
-      let frame = match h2_read_frame(self.reader) {
+      let frame = match h2_read_connection_frame(self.reader) {
         Ok(frame) => frame
         Err(err) => {
           self.closed = true
@@ -1825,7 +1950,11 @@ fn H2ClientConnection::request_with_limit_and_callback(
       match state.handle_frame(frame, flow, self.stream) {
         Ok(_) => ()
         Err(err) => {
-          self.closed = true
+          if h2_error_is_stream_reset(err) {
+            self.discard_buffered_stream_frames(state, flow, state.stream_id)
+          } else {
+            self.closed = true
+          }
           return Err(err)
         }
       }
@@ -1883,7 +2012,7 @@ fn H2ClientConnection::request_with_limit_and_callback(
   }
 
   while !state.ended {
-    let frame = match h2_read_frame(self.reader) {
+    let frame = match h2_read_connection_frame(self.reader) {
       Ok(frame) => frame
       Err(err) => {
         self.closed = true
@@ -1893,7 +2022,11 @@ fn H2ClientConnection::request_with_limit_and_callback(
     match state.handle_frame(frame, flow, self.stream) {
       Ok(_) => ()
       Err(err) => {
-        self.closed = true
+        if h2_error_is_stream_reset(err) {
+          self.discard_buffered_stream_frames(state, flow, state.stream_id)
+        } else {
+          self.closed = true
+        }
         return Err(err)
       }
     }
@@ -1909,7 +2042,13 @@ fn H2ClientConnection::request_with_limit_and_callback(
     // can exchange tunnelled bytes while the stream remains open.
     return Ok(h2_make_tunnel_response(self, state, flow, connect_completion))
   }
-  self.drain_buffered_connection_frames(state, flow)
+  match self.drain_buffered_connection_frames(state, flow) {
+    Ok(_) => ()
+    Err(err) => {
+      self.closed = true
+      return Err(err)
+    }
+  }
   // An early final response (for example 413 or 401) leaves the request side
   // of this stream half-open. Reset the stream instead of returning the
   // connection to the pool with an unfinished upload. A failed CONNECT or
