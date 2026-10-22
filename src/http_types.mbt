@@ -667,6 +667,77 @@ pub fn Request::new(method : HttpMethod, url : Url) -> Request {
   }
 }
 
+/// Extract the raw (still percent-encoded) userinfo from a URL string.
+fn raw_url_userinfo(value : String) -> String? {
+  let scheme_end = match value.find("://") {
+    Some(index) => index
+    None => return None
+  }
+  let rest = value[scheme_end + 3:].to_owned()
+  let authority_end = match find_first_delimiter(rest) {
+    Some(index) => index
+    None => rest.length()
+  }
+  let authority = rest[0:authority_end].to_owned()
+  match authority.find("@") {
+    Some(index) => Some(authority[0:index].to_owned())
+    None => None
+  }
+}
+
+fn basic_authorization(username : Bytes, password : Bytes) -> String {
+  let credentials = Buffer(size_hint=username.length() + password.length() + 1)
+  credentials.write_bytes(username)
+  credentials.write_byte(b':')
+  credentials.write_bytes(password)
+  "Basic " + @base64.encode(credentials.to_bytes())
+}
+
+fn Request::with_basic_auth_bytes(
+  self : Request,
+  username : Bytes,
+  password : Bytes,
+) -> Request {
+  Request::{
+    ..self,
+    headers: self.headers.set("Authorization", basic_authorization(username, password)),
+  }
+}
+
+/// Build a request from a URL string. Credentials in the URL's userinfo
+/// component (`http://user:password@host/`) are sent as HTTP Basic
+/// authentication, matching the behavior users expect from URLs of that form.
+/// The credentials are never copied into the URL itself, so redirects cannot
+/// leak them to another origin.
+pub fn Request::from_url(
+  http_method : HttpMethod,
+  url_string : String,
+) -> Result[Request, HttpError] {
+  let url = match Url::parse(url_string) {
+    Ok(url) => url
+    Err(err) => return Err(err)
+  }
+  let mut request = Request::new(http_method, url)
+  match raw_url_userinfo(url_string) {
+    Some(userinfo) =>
+      if userinfo.length() > 0 {
+        let (user, password) = match userinfo.find(":") {
+          Some(index) => (
+            userinfo[0:index].to_owned(),
+            userinfo[index + 1:].to_owned(),
+          )
+          None => (userinfo, "")
+        }
+        request = request.with_basic_auth_bytes(
+          percent_decode_bytes(user),
+          percent_decode_bytes(password),
+        )
+      }
+    None => ()
+  }
+  Ok(request)
+}
+
 pub fn Request::with_method(self : Request, verb : HttpMethod) -> Request {
   Request::{ ..self, method: verb }
 }
@@ -878,8 +949,7 @@ pub fn Request::with_multipart(
 }
 
 pub fn Request::with_basic_auth(self : Request, username : String, password : String) -> Request {
-  let encoded = @base64.encode(@utf8.encode(username + ":" + password))
-  Request::{ ..self, headers: self.headers.set("Authorization", "Basic " + encoded) }
+  self.with_basic_auth_bytes(@utf8.encode(username), @utf8.encode(password))
 }
 
 pub fn Request::set_header(self : Request, name : String, value : String) -> Request {
@@ -1122,21 +1192,19 @@ pub trait HttpClient {
 
 /// Convenience functions for common HTTP methods
 pub fn &HttpClient::get(self : &HttpClient, url : String) -> Result[Response, HttpError] {
-  let parsed_url = match Url::parse(url) {
-    Ok(url) => url
+  let req = match Request::from_url(GET, url) {
+    Ok(req) => req
     Err(err) => return Err(err)
   }
-  let req = Request::new(GET, parsed_url)
   self.request(req)
 }
 
 pub fn &HttpClient::post(self : &HttpClient, url : String, body : Bytes) -> Result[Response, HttpError] {
-  let parsed_url = match Url::parse(url) {
-    Ok(url) => url
+  let req = match Request::from_url(POST, url) {
+    Ok(req) => req
     Err(err) => return Err(err)
   }
-  let req = Request::new(POST, parsed_url).with_body(body)
-  self.request(req)
+  self.request(req.with_body(body))
 }
 
 pub fn &HttpClient::post_form(
@@ -1144,11 +1212,11 @@ pub fn &HttpClient::post_form(
   url : String,
   fields : Array[(String, String)],
 ) -> Result[Response, HttpError] {
-  let parsed_url = match Url::parse(url) {
-    Ok(url) => url
+  let request = match Request::from_url(POST, url) {
+    Ok(request) => request
     Err(err) => return Err(err)
   }
-  self.request(Request::new(POST, parsed_url).with_form(fields))
+  self.request(request.with_form(fields))
 }
 
 pub fn &HttpClient::post_multipart(
@@ -1157,51 +1225,49 @@ pub fn &HttpClient::post_multipart(
   fields : Array[(String, String)],
   files : Array[MultipartFile],
 ) -> Result[Response, HttpError] {
-  let parsed_url = match Url::parse(url) {
-    Ok(url) => url
+  let request = match Request::from_url(POST, url) {
+    Ok(request) => request
     Err(err) => return Err(err)
   }
-  self.request(Request::new(POST, parsed_url).with_multipart(fields, files))
+  self.request(request.with_multipart(fields, files))
 }
 
 pub fn &HttpClient::put(self : &HttpClient, url : String, body : Bytes) -> Result[Response, HttpError] {
-  let parsed_url = match Url::parse(url) {
-    Ok(url) => url
+  let req = match Request::from_url(PUT, url) {
+    Ok(req) => req
     Err(err) => return Err(err)
   }
-  let req = Request::new(PUT, parsed_url).with_body(body)
-  self.request(req)
+  self.request(req.with_body(body))
 }
 
 pub fn &HttpClient::delete(self : &HttpClient, url : String) -> Result[Response, HttpError] {
-  let parsed_url = match Url::parse(url) {
-    Ok(url) => url
+  let req = match Request::from_url(DELETE, url) {
+    Ok(req) => req
     Err(err) => return Err(err)
   }
-  let req = Request::new(DELETE, parsed_url)
   self.request(req)
 }
 
 pub fn &HttpClient::head(self : &HttpClient, url : String) -> Result[Response, HttpError] {
-  let parsed_url = match Url::parse(url) {
-    Ok(url) => url
+  let request = match Request::from_url(HEAD, url) {
+    Ok(request) => request
     Err(err) => return Err(err)
   }
-  self.request(Request::new(HEAD, parsed_url))
+  self.request(request)
 }
 
 pub fn &HttpClient::options(self : &HttpClient, url : String) -> Result[Response, HttpError] {
-  let parsed_url = match Url::parse(url) {
-    Ok(url) => url
+  let request = match Request::from_url(OPTIONS, url) {
+    Ok(request) => request
     Err(err) => return Err(err)
   }
-  self.request(Request::new(OPTIONS, parsed_url))
+  self.request(request)
 }
 
 pub fn &HttpClient::patch(self : &HttpClient, url : String, body : Bytes) -> Result[Response, HttpError] {
-  let parsed_url = match Url::parse(url) {
-    Ok(url) => url
+  let request = match Request::from_url(PATCH, url) {
+    Ok(request) => request
     Err(err) => return Err(err)
   }
-  self.request(Request::new(PATCH, parsed_url).with_body(body))
+  self.request(request.with_body(body))
 }

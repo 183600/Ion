@@ -488,11 +488,11 @@ pub fn UnifiedClient::post_form(
   url : String,
   fields : Array[(String, String)],
 ) -> Result[Response, HttpError] {
-  let parsed_url = match Url::parse(url) {
-    Ok(url) => url
+  let request = match Request::from_url(POST, url) {
+    Ok(request) => request
     Err(err) => return Err(err)
   }
-  self.request(Request::new(POST, parsed_url).with_form(fields))
+  self.request(request.with_form(fields))
 }
 
 /// Send a multipart/form-data POST request.
@@ -502,86 +502,86 @@ pub fn UnifiedClient::post_multipart(
   fields : Array[(String, String)],
   files : Array[MultipartFile],
 ) -> Result[Response, HttpError] {
-  let parsed_url = match Url::parse(url) {
-    Ok(url) => url
+  let request = match Request::from_url(POST, url) {
+    Ok(request) => request
     Err(err) => return Err(err)
   }
-  self.request(Request::new(POST, parsed_url).with_multipart(fields, files))
+  self.request(request.with_multipart(fields, files))
 }
 
 /// Convenience method for GET requests
 pub fn UnifiedClient::get(self : UnifiedClient, url : String) -> Result[Response, HttpError] {
-  let parsed_url = match Url::parse(url) {
-    Ok(url) => url
+  let req = match Request::from_url(GET, url) {
+    Ok(req) => req
     Err(err) => return Err(err)
   }
-  let req = Request::new(GET, parsed_url).with_timeout(self.options.timeout_ms)
+  let req = req.with_timeout(self.options.timeout_ms)
   self.redirect_count = 0
   self.do_request(req)
 }
 
 /// Convenience method for POST requests
 pub fn UnifiedClient::post(self : UnifiedClient, url : String, body : Bytes) -> Result[Response, HttpError] {
-  let parsed_url = match Url::parse(url) {
-    Ok(url) => url
+  let req = match Request::from_url(POST, url) {
+    Ok(req) => req
     Err(err) => return Err(err)
   }
-  let req = Request::new(POST, parsed_url).with_body(body).with_timeout(self.options.timeout_ms)
+  let req = req.with_body(body).with_timeout(self.options.timeout_ms)
   self.redirect_count = 0
   self.do_request(req)
 }
 
 /// Convenience method for PUT requests
 pub fn UnifiedClient::put(self : UnifiedClient, url : String, body : Bytes) -> Result[Response, HttpError] {
-  let parsed_url = match Url::parse(url) {
-    Ok(url) => url
+  let req = match Request::from_url(PUT, url) {
+    Ok(req) => req
     Err(err) => return Err(err)
   }
-  let req = Request::new(PUT, parsed_url).with_body(body).with_timeout(self.options.timeout_ms)
+  let req = req.with_body(body).with_timeout(self.options.timeout_ms)
   self.redirect_count = 0
   self.do_request(req)
 }
 
 /// Convenience method for DELETE requests
 pub fn UnifiedClient::delete(self : UnifiedClient, url : String) -> Result[Response, HttpError] {
-  let parsed_url = match Url::parse(url) {
-    Ok(url) => url
+  let req = match Request::from_url(DELETE, url) {
+    Ok(req) => req
     Err(err) => return Err(err)
   }
-  let req = Request::new(DELETE, parsed_url).with_timeout(self.options.timeout_ms)
+  let req = req.with_timeout(self.options.timeout_ms)
   self.redirect_count = 0
   self.do_request(req)
 }
 
 /// Convenience method for HEAD requests
 pub fn UnifiedClient::head(self : UnifiedClient, url : String) -> Result[Response, HttpError] {
-  let parsed_url = match Url::parse(url) {
-    Ok(url) => url
+  let req = match Request::from_url(HEAD, url) {
+    Ok(req) => req
     Err(err) => return Err(err)
   }
-  let req = Request::new(HEAD, parsed_url).with_timeout(self.options.timeout_ms)
+  let req = req.with_timeout(self.options.timeout_ms)
   self.redirect_count = 0
   self.do_request(req)
 }
 
 /// Convenience method for OPTIONS requests
 pub fn UnifiedClient::options(self : UnifiedClient, url : String) -> Result[Response, HttpError] {
-  let parsed_url = match Url::parse(url) {
-    Ok(url) => url
+  let req = match Request::from_url(OPTIONS, url) {
+    Ok(req) => req
     Err(err) => return Err(err)
   }
-  let req = Request::new(OPTIONS, parsed_url).with_timeout(self.options.timeout_ms)
+  let req = req.with_timeout(self.options.timeout_ms)
   self.redirect_count = 0
   self.do_request(req)
 }
 
 /// Convenience method for PATCH requests
 pub fn UnifiedClient::patch(self : UnifiedClient, url : String, body : Bytes) -> Result[Response, HttpError] {
-  let parsed_url = match Url::parse(url) {
-    Ok(url) => url
+  let req = match Request::from_url(PATCH, url) {
+    Ok(req) => req
     Err(err) => return Err(err)
   }
-  let req = Request::new(PATCH, parsed_url).with_body(body).with_timeout(self.options.timeout_ms)
+  let req = req.with_body(body).with_timeout(self.options.timeout_ms)
   self.redirect_count = 0
   self.do_request(req)
 }

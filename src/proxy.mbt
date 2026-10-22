@@ -22,27 +22,6 @@ fn proxy_hex_value(byte : Byte) -> Int {
   -1
 }
 
-fn proxy_percent_decode_bytes(value : String) -> Bytes {
-  let data = @utf8.encode(value)
-  let output = Buffer(size_hint=data.length())
-  let mut index = 0
-  while index < data.length() {
-    let byte = data[index]
-    if byte == b'%' && index + 2 < data.length() {
-      let high = proxy_hex_value(data[index + 1])
-      let low = proxy_hex_value(data[index + 2])
-      if high >= 0 && low >= 0 {
-        output.write_byte(((high << 4) | low).to_byte())
-        index = index + 3
-        continue
-      }
-    }
-    output.write_byte(byte)
-    index = index + 1
-  }
-  output.to_bytes()
-}
-
 fn proxy_userinfo(url : String) -> String? {
   let scheme_end = match url.find("://") {
     Some(index) => index
@@ -69,9 +48,9 @@ fn proxy_basic_authorization(userinfo : String) -> String {
     None => (userinfo, "")
   }
   let credentials = Buffer(size_hint=user.length() + password.length() + 1)
-  credentials.write_bytes(proxy_percent_decode_bytes(user))
+  credentials.write_bytes(percent_decode_bytes(user))
   credentials.write_byte(b':')
-  credentials.write_bytes(proxy_percent_decode_bytes(password))
+  credentials.write_bytes(percent_decode_bytes(password))
   @base64.encode(credentials.to_bytes())
 }
 

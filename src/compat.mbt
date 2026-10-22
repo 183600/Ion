@@ -54,6 +54,42 @@ fn is_hex_char(ch : Char) -> Bool {
   (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')
 }
 
+fn hex_char_value(ch : Char) -> Int {
+  if ch >= '0' && ch <= '9' {
+    return ch.to_int() - '0'.to_int()
+  }
+  if ch >= 'a' && ch <= 'f' {
+    return ch.to_int() - 'a'.to_int() + 10
+  }
+  if ch >= 'A' && ch <= 'F' {
+    return ch.to_int() - 'A'.to_int() + 10
+  }
+  -1
+}
+
+/// Decode `%HH` escapes, leaving malformed escapes untouched. Callers validate
+/// the input first, so this only has to handle well-formed escapes.
+fn percent_decode_bytes(value : String) -> Bytes {
+  let data = @utf8.encode(value)
+  let output = Buffer(size_hint=data.length())
+  let mut index = 0
+  while index < data.length() {
+    let byte = data[index]
+    if byte == b'%' && index + 2 < data.length() {
+      let high = hex_char_value(Char::from_int(data[index + 1].to_int()))
+      let low = hex_char_value(Char::from_int(data[index + 2].to_int()))
+      if high >= 0 && low >= 0 {
+        output.write_byte(((high << 4) | low).to_byte())
+        index = index + 3
+        continue
+      }
+    }
+    output.write_byte(byte)
+    index = index + 1
+  }
+  output.to_bytes()
+}
+
 fn is_ipv4_literal(value : String) -> Bool {
   let parts = value.split(".").collect()
   if parts.length() != 4 {

@@ -196,11 +196,12 @@ fn run_request(method : HttpMethod, url : String, body : String) -> Bool {
       }
     }
   } else {
-    match Url::parse(url) {
-      Ok(parsed_url) => {
-        let mut request = Request::new(method, parsed_url)
-        if body.length() > 0 {
-          request = request.with_body(@utf8.encode(body))
+    match Request::from_url(method, url) {
+      Ok(request) => {
+        let request = if body.length() > 0 {
+          request.with_body(@utf8.encode(body))
+        } else {
+          request
         }
         match client.request(request) {
           Ok(response) => print_response(response)
