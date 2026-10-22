@@ -1820,6 +1820,14 @@ fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
     TransferEncodingAbsent => false
     _ => true
   }
+  // RFC 9112 §6.1: Transfer-Encoding was introduced in HTTP/1.1. A recipient
+  // that receives an HTTP/1.0 message containing it MUST treat the framing as
+  // faulty, even when a Content-Length is also present, and close the
+  // connection after processing the message. In particular, a peer that sent
+  // `Connection: keep-alive` must not make this response poolable.
+  if self.version == "HTTP/1.0" && has_transfer_encoding {
+    self.close_after_body = true
+  }
   if has_transfer_encoding && self.headers.contains("Content-Length") {
     self.close_after_body = true
   }
