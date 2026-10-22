@@ -21,6 +21,10 @@ pub fn get(String) -> Result[Response, HttpError]
 
 pub fn gunzip(Bytes, Int32) -> Result[Bytes, HttpError]
 
+pub fn hpack_encode(Array[(String, String)]) -> Bytes
+
+pub fn hpack_encode_header(@buffer.Buffer, String, String) -> Unit
+
 pub fn inflate(Bytes, Int32) -> Result[Bytes, HttpError]
 
 pub fn post(String, Bytes) -> Result[Response, HttpError]
@@ -161,6 +165,16 @@ pub fn Headers::length(Self) -> Int32
 pub fn Headers::new() -> Self
 pub fn Headers::remove(Self, String) -> Self
 pub fn Headers::set(Self, String, String) -> Self
+
+pub struct HpackDecoder {
+  mut dynamic : Array[(String, String)]
+  mut size : Int32
+  mut max_size : Int32
+  allowed_max_size : Int32
+}
+pub fn HpackDecoder::decode(Self, Bytes) -> Result[Array[(String, String)], HttpError]
+pub fn HpackDecoder::new() -> Self
+pub fn HpackDecoder::with_max_size(Int32) -> Self
 
 pub enum HttpError {
   NetworkError(NetError)
