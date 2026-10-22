@@ -1380,10 +1380,12 @@ fn Connector::connect_impl(
     None => ()
   }
 
-  // Dial the proxy when one is configured, otherwise dial the origin.
+  // Dial the proxy when one is configured, otherwise dial the origin. Keep
+  // the bracketed form for IPvFuture literals so a custom dialer can tell them
+  // apart from the DNS name with the same text.
   let (dial_host, dial_port) = match proxy {
-    Some(proxy) => (proxy.url.host, proxy.url.port)
-    None => (host, port)
+    Some(proxy) => (tls_server_name_for_url(proxy.url), proxy.url.port)
+    None => (tls_host, port)
   }
   // The dialer may have been constructed with a different timeout (for
   // example before `UnifiedClient::with_timeout` was called), so apply the

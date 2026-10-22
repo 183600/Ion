@@ -61,3 +61,12 @@ test "prefix stream with empty prefix delegates directly" {
   assert_eq(stream.read(buf).unwrap(), 4)
   assert_eq(@utf8.decode_lossy(buf.to_bytes()[:]), "BODY")
 }
+
+test "connector preserves bracketed IPvFuture literals when dialing" {
+  let stream = regression_mock_stream("", 0, 0)
+  let dialer = RegressionProxyDialer::{ stream, host: "", port: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let _ = connector.connect(Url::parse("http://[v1.foo]/").unwrap()).unwrap()
+  assert_eq(dialer.host, "[v1.foo]")
+  assert_eq(dialer.port, 80)
+}
