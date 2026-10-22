@@ -59,14 +59,26 @@ fn h2_send_window_update(
   stream : &Stream,
   stream_id : Int,
   increment : Int,
+  flush? : Bool,
 ) -> Result[Unit, HttpError] {
-  h2_write_frame(
+  match h2_write_frame(
     stream,
     H2_FRAME_WINDOW_UPDATE,
     0,
     stream_id,
     h2_window_update_payload(increment),
-  )
+  ) {
+    Ok(_) =>
+      if flush.unwrap_or(false) {
+        match stream.flush() {
+          Ok(_) => Ok(())
+          Err(err) => Err(http_error_from_net(err))
+        }
+      } else {
+        Ok(())
+      }
+    Err(err) => Err(err)
+  }
 }
 
 struct H2ResponseState {
@@ -584,7 +596,7 @@ fn H2ResponseState::handle_frame(
       // The connection-level receive window is replenished as bytes arrive,
       // including DATA for an already closed stream.
       if frame.stream_id <= self.stream_id && frame.payload.length() > 0 {
-        match h2_send_window_update(stream, 0, frame.payload.length()) {
+        match h2_send_window_update(stream, 0, frame.payload.length(), flush=true) {
           Ok(_) => ()
           Err(err) => return Err(err)
         }
@@ -595,7 +607,7 @@ fn H2ResponseState::handle_frame(
       // client waits for more body bytes.
       if frame.stream_id == self.stream_id && !self.ended &&
         frame.payload.length() > 0 {
-        match h2_send_window_update(stream, self.stream_id, frame.payload.length()) {
+        match h2_send_window_update(stream, self.stream_id, frame.payload.length(), flush=true) {
           Ok(_) => ()
           Err(err) => return Err(err)
         }
@@ -1880,7 +1892,7 @@ fn H2ClientConnection::drain_buffered_connection_frames(
         // The stream has already ended (or was reset); discard its payload
         // but keep the connection-level receive window open.
         if frame.payload.length() > 0 {
-          match h2_send_window_update(self.stream, 0, frame.payload.length()) {
+          match h2_send_window_update(self.stream, 0, frame.payload.length(), flush=true) {
             Ok(_) => ()
             Err(_) => {
               self.closed = true
