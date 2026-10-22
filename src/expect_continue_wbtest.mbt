@@ -125,3 +125,23 @@ test "client sends an expect body after 100 and keeps the exchange usable" {
   assert_true(wire.has_suffix("client-body"))
   assert_eq(wire.find("client-body"), wire.rev_find("client-body"))
 }
+
+///|
+test "a final response without 100 never reuses the connection" {
+  let url = Url::parse("http://example.com/upload").unwrap()
+  let stream = regression_mock_stream(
+    "HTTP/1.1 417 Expectation Failed\r\nContent-Length: 0\r\n\r\n",
+    0,
+    0,
+  )
+  let codec = H1Codec::new(stream)
+  let request = Request::new(POST, url)
+    .with_expect_continue()
+    .with_body(@utf8.encode("deferred"))
+  assert_true(codec.encode_request(request) is Ok(_))
+  let response = codec.decode_response().unwrap()
+  assert_eq(response.read_body().unwrap(), b"")
+  // Dropping the body leaves the request framing incomplete, so the socket
+  // must be closed instead of being returned to a keep-alive pool.
+  assert_false(stream.is_open)
+}

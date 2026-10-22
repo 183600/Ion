@@ -975,6 +975,13 @@ pub fn H1Codec::decode_response(
       response_stream.body_mode = BodyUntilEof
       response_stream.close_after_body = true
       response_stream.prepared = true
+    } else if deferred_pending && !deferred_body_sent {
+      // The peer answered before accepting the deferred request content. The
+      // request body was never written, so its framing is incomplete; even a
+      // response that looks reusable must not put this connection back in the
+      // pool, where the remaining request-body bytes would corrupt the next
+      // exchange.
+      response_stream.close_after_body = true
     }
     if self.on_complete is Some(_) {
       // Bodyless and zero-length responses can be completed before the caller
