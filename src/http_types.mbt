@@ -479,7 +479,7 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
   if bracketed && !is_ip_literal(host) {
     return Err(InvalidUrl("Invalid IPv6 host"))
   }
-  if host.contains("@") || !valid_url_host_chars(host) {
+  if host.contains("@") || (!bracketed && !valid_url_host_chars(host)) {
     return Err(InvalidUrl("Invalid host"))
   }
   if !bracketed && (host.contains(":") || host.contains("[") || host.contains("]")) {
