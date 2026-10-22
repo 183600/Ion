@@ -1211,6 +1211,10 @@ struct H2LiveBodyStream {
   mut pending_offset : Int
   mut is_open : Bool
   mut completed : Bool
+  // Set when the completed body handed its connection back to the pool. At
+  // that point the stream must not retimeout or query the pooled transport,
+  // just like a released HTTP/1.1 response stream.
+  mut released_to_pool : Bool
   mut error : HttpError?
   on_complete : ((Bool) -> Unit)?
 }
@@ -1234,6 +1238,7 @@ fn H2LiveBodyStream::finish(self : H2LiveBodyStream, reusable : Bool) -> Unit {
     }
   }
   self.completed = true
+  self.released_to_pool = keep && self.on_complete is Some(_)
   if self.state.ended {
     self.trailers.val = self.state.trailers
     // A graceful GOAWAY after this stream was accepted still forbids opening
@@ -1363,7 +1368,7 @@ pub impl Stream for H2LiveBodyStream with fn set_body_limit(
 pub impl Stream for H2LiveBodyStream with fn read_ready(
   self : H2LiveBodyStream,
 ) -> Bool {
-  if !self.is_open {
+  if !self.is_open || self.released_to_pool {
     return false
   }
   self.pending_offset < self.pending.length() ||
@@ -1416,6 +1421,9 @@ pub impl Stream for H2LiveBodyStream with fn set_timeout(
   if !self.is_open {
     return Err(NetError::Closed)
   }
+  if self.released_to_pool {
+    return Ok(())
+  }
   self.connection.stream.set_timeout(timeout_ms)
 }
 
@@ -1425,6 +1433,9 @@ pub impl Stream for H2LiveBodyStream with fn peer_addr(
   if !self.is_open {
     return Err(NetError::Closed)
   }
+  if self.released_to_pool {
+    return Err(NetError::Closed)
+  }
   self.connection.stream.peer_addr()
 }
 
@@ -1432,6 +1443,9 @@ pub impl Stream for H2LiveBodyStream with fn local_addr(
   self : H2LiveBodyStream,
 ) -> Result[String, NetError] {
   if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  if self.released_to_pool {
     return Err(NetError::Closed)
   }
   self.connection.stream.local_addr()
@@ -2285,6 +2299,7 @@ fn H2ClientConnection::request_streaming_with_callback(
     pending_offset: 0,
     is_open: true,
     completed: false,
+    released_to_pool: false,
     error: None,
     on_complete: completion,
   }

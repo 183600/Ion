@@ -429,3 +429,36 @@ test "live CONNECT tunnel rejects overlapping exchanges" {
   assert_eq(tunnel.read_body().unwrap(), b"tunnel")
   assert_false(connection.is_open())
 }
+
+///|
+test "released HTTP/2 streaming bodies do not retimeout the pooled session" {
+  let headers = hpack_encode([(":status", "200"), ("content-length", "2")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, headers),
+    h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, b"ok"),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let client = UnifiedClient::with_transport(
+    dialer,
+    provider,
+    ClientOptions::new()
+      .with_http2_streaming(true)
+      .with_follow_redirects(false),
+  )
+  let response = client.get("https://example.com/stream").unwrap()
+  assert_eq(response.text().unwrap(), "ok")
+  assert_eq(client.idle_connection_count(), 1)
+  // The body's lease has been returned to the pool. Looking up addresses or
+  // changing the timeout through the finished body must not touch the idle
+  // connection, which the next request may already be using.
+  let before = stream.timeout_calls
+  assert_true(response.body.set_timeout(1234) is Ok(_))
+  assert_eq(stream.timeout_calls, before)
+  assert_true(response.body.peer_addr() is Err(Closed))
+  assert_true(response.body.local_addr() is Err(Closed))
+  assert_false(response.body.read_ready())
+  let _ = client.close_all()
+}

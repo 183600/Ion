@@ -5,6 +5,7 @@ struct H2FrameMockStream {
   output : Buffer
   max_read : Int32
   mut is_open : Bool
+  mut timeout_calls : Int
 }
 
 ///|
@@ -15,6 +16,7 @@ fn h2_frame_mock_stream(input : Bytes, max_read : Int32) -> H2FrameMockStream {
     output: Buffer(size_hint=1024),
     max_read,
     is_open: true,
+    timeout_calls: 0,
   }
 }
 
@@ -83,6 +85,7 @@ pub impl Stream for H2FrameMockStream with fn set_timeout(
   if !self.is_open {
     return Err(NetError::Closed)
   }
+  self.timeout_calls = self.timeout_calls + 1
   Ok(())
 }
 
