@@ -849,6 +849,8 @@ test "same-origin redirect changes POST to GET and drops body" {
     .with_header("Digest", "sha-256=old")
     .with_header("Content-MD5", "old")
     .with_header("Content-Range", "bytes 0-6/7")
+    .with_header("Content-Disposition", "attachment; filename=old.txt")
+    .with_header("Content-ID", "<old>")
     .with_body(@utf8.encode("payload"))
   let response = client.request(request).unwrap()
   assert_eq(response.status, 200)
@@ -866,6 +868,8 @@ test "same-origin redirect changes POST to GET and drops body" {
   assert_true(!second_request.contains("Digest"))
   assert_true(!second_request.contains("Content-MD5"))
   assert_true(!second_request.contains("Content-Range"))
+  assert_true(!second_request.contains("Content-Disposition"))
+  assert_true(!second_request.contains("Content-ID"))
   assert_true(!second_request.contains("payload"))
 }
 

@@ -403,6 +403,21 @@ fn redirect_method(status : Int, method : HttpMethod) -> (HttpMethod, Bool) {
   }
 }
 
+/// Drop fields that describe a request body when a redirect changes the
+/// method/body semantics and the payload is no longer sent.
+fn without_request_content(headers : Headers) -> Headers {
+  let mut result = headers
+  for header in headers.iter() {
+    let name = header.name.to_lower()
+    if name.has_prefix("content-") || name == "transfer-encoding" ||
+      name == "digest" || name == "repr-digest" || name == "expect" ||
+      name == "trailer" {
+      result = result.remove(header.name)
+    }
+  }
+  result
+}
+
 fn drain_response(response : Response) -> Result[Unit, HttpError] {
   while true {
     let buf = Buffer(size_hint=4096)
@@ -654,20 +669,7 @@ fn UnifiedClient::do_request_once(
       next_headers = next_headers.remove("Cookie")
     }
     if !keep_body {
-      next_headers = next_headers
-        .remove("Content-Length")
-        .remove("Transfer-Encoding")
-        .remove("Content-Type")
-        .remove("Content-Encoding")
-        .remove("Content-Language")
-        .remove("Content-Location")
-        .remove("Content-Range")
-        .remove("Content-MD5")
-        .remove("Content-Digest")
-        .remove("Repr-Digest")
-        .remove("Digest")
-        .remove("Expect")
-        .remove("Trailer")
+      next_headers = without_request_content(next_headers)
     }
     if parsed_url.scheme.to_lower() != request.url.scheme.to_lower() ||
       parsed_url.host.to_lower() != request.url.host.to_lower() ||
