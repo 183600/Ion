@@ -541,6 +541,24 @@ test "an empty Domain attribute leaves the cookie host-only" {
   )
 }
 
+test "an empty Domain attribute does not discard an earlier valid Domain" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  // RFC 6265 §5.2.3: an empty Domain attribute is ignored entirely. It must
+  // not override the earlier valid Domain attribute in the same header.
+  jar.store_at(url, "sid=1; Domain=example.com; Domain=; Path=/", 1000)
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://api.example.com/"), 1000),
+    Some("sid=1"),
+  )
+  let jar = CookieJar::new()
+  jar.store_at(url, "sid=1; Domain=example.com; Domain=.; Path=/", 1000)
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://api.example.com/"), 1000),
+    Some("sid=1"),
+  )
+}
+
 test "the last Domain attribute decides the cookie scope" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")

@@ -588,8 +588,12 @@ fn cookie_from_set_cookie(
         candidate = candidate[1:].to_owned()
       }
       // The storage algorithm uses the last Domain attribute in the list;
-      // earlier values do not get a chance to reject the cookie.
-      domain_attribute = Some(candidate)
+      // earlier values do not get a chance to reject the cookie. An empty
+      // value (including a lone leading dot) is ignored entirely, so it must
+      // not discard an earlier valid Domain attribute.
+      if candidate.length() > 0 {
+        domain_attribute = Some(candidate)
+      }
     } else if attribute == "path" {
       // RFC 6265 §5.2.4: an empty Path or one that does not begin with "/"
       // resolves to the default-path. The last Path attribute wins.
