@@ -157,3 +157,22 @@ test "hpack sizes dynamic entries by UTF-8 octets" {
   assert_eq(indexed.length(), 1)
   assert_eq(indexed[0], ("x", "é"))
 }
+
+test "hpack accepts strings and header counts within the advertised list size" {
+  let large = "a".repeat(70000)
+  let large_decoded = HpackDecoder::new().decode(
+    hpack_encode([("x-large", large)]),
+  ).unwrap()
+  assert_eq(large_decoded.length(), 1)
+  assert_eq(large_decoded[0].0, "x-large")
+  assert_eq(large_decoded[0].1.length(), 70000)
+
+  let fields : Array[(String, String)] = []
+  let mut index = 0
+  while index < 1001 {
+    fields.push(("x-" + index.to_string(), "v"))
+    index = index + 1
+  }
+  let decoded = HpackDecoder::new().decode(hpack_encode(fields)).unwrap()
+  assert_eq(decoded.length(), 1001)
+}

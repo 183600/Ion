@@ -7,9 +7,11 @@
 
 const HPACK_STATIC_SIZE : Int = 61
 const HPACK_DEFAULT_TABLE_SIZE : Int = 4096
-const HPACK_MAX_STRING_BYTES : Int = 65536
+const HPACK_MAX_STRING_BYTES : Int = 1048576
 const HPACK_MAX_HEADER_LIST_BYTES : Int = 1048576
-const HPACK_MAX_HEADERS : Int = 1000
+// The list-size accounting already bounds the field count (every entry costs
+// at least 32 octets), so this is only a defensive upper bound.
+const HPACK_MAX_HEADERS : Int = 65536
 const HPACK_MAX_INTEGER : Int = 2147483647
 
 let hpack_static : Array[(String, String)] = [
