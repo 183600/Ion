@@ -805,12 +805,19 @@ fn proxy_bypass_matches(pattern : String, host : String, port : Int) -> Bool {
     None => ()
   }
   // A `network/prefix` entry is a CIDR block, not a host followed by a path.
-  // Test it before the generic path stripping below.
-  if bypass_cidr_matches(candidate, host) {
-    return true
-  }
+  // If the text before the slash is an IP literal, the entry is unambiguously
+  // a CIDR block: a malformed prefix must not fall through to the generic
+  // path stripping below and match the bare base address as a plain host.
   match candidate.find("/") {
-    Some(index) => candidate = candidate[0:index].to_owned()
+    Some(index) => {
+      let base = candidate[0:index].to_owned()
+      let looks_like_cidr = bypass_ipv4_value(base) is Some(_) ||
+        bypass_ipv6_bytes(base) is Some(_)
+      if looks_like_cidr {
+        return bypass_cidr_matches(candidate, host)
+      }
+      candidate = base
+    }
     None => ()
   }
   let (raw_pattern_host, pattern_port) = match parse_bypass_authority(candidate) {
