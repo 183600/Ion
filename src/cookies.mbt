@@ -547,6 +547,7 @@ fn cookie_from_set_cookie(
   let mut expires_at_ms : UInt64? = None
   let mut max_age_seen = false
   let mut domain_attribute_seen = false
+  let mut domain_attribute : String? = None
   let mut path_attribute_seen = false
   let mut index = 1
   while index < parts.length() {
@@ -562,44 +563,18 @@ fn cookie_from_set_cookie(
       if candidate.has_prefix(".") {
         candidate = candidate[1:].to_owned()
       }
-      if candidate.length() == 0 {
-        // RFC 6265 §5.2.3: an empty Domain attribute causes the cookie to be
-        // ignored rather than falling back to a host-only cookie.
-        return None
-      }
-      if candidate.has_suffix(".") {
-        // RFC 6265 §5.2.3: a Domain attribute ending in "." must invalidate
-        // the cookie instead of creating a domain-scoped or host-only cookie.
-        return None
-      }
-      let single_label = !candidate.contains(".")
-      if single_label && candidate != host {
-        // A single-label Domain such as "com" is a public suffix, not a
-        // domain the request host can control. Reject it so a site cannot
-        // set a supercookie for every host under that label. A single-label
-        // request host itself (for example "localhost") remains usable, but
-        // must still become a host-only cookie.
-        return None
-      }
-      let numeric_host = is_ipv4_literal(host) || is_ipv6_literal_with_zone(host)
-      if valid_url_host_chars(candidate) &&
-        (host == candidate ||
-          (!numeric_host && host.has_suffix("." + candidate))) {
-        domain = candidate
-        // RFC 6265bis: a Domain attribute for an IP address host, or for a
-        // public-suffix label identical to the request host, is ignored,
-        // leaving the cookie host-only instead of domain-scoped.
-        host_only = numeric_host || single_label
-      } else {
-        // A Domain attribute that does not cover the request host must not be
-        // stored, otherwise a response could set cookies for other sites.
-        return None
-      }
+      // The storage algorithm uses the last Domain attribute in the list;
+      // earlier values do not get a chance to reject the cookie.
+      domain_attribute = Some(candidate)
     } else if attribute == "path" {
-      if attribute_value.has_prefix("/") {
-        path = attribute_value
-        path_attribute_seen = true
+      // RFC 6265 §5.2.4: an empty Path or one that does not begin with "/"
+      // resolves to the default-path. The last Path attribute wins.
+      path = if attribute_value.has_prefix("/") {
+        attribute_value
+      } else {
+        cookie_default_path(url)
       }
+      path_attribute_seen = true
     } else if attribute == "secure" {
       secure = true
     } else if attribute == "max-age" {
@@ -629,6 +604,42 @@ fn cookie_from_set_cookie(
       }
     }
     index = index + 1
+  }
+  // Apply the last Domain attribute. RFC 6265 §5.2.3/§5.3: an empty Domain
+  // is ignored, leaving the cookie host-only.
+  match domain_attribute {
+    Some(candidate) =>
+      if candidate.length() > 0 {
+        if candidate.has_suffix(".") {
+          // A trailing root dot cannot domain-match the canonical request
+          // host, so the whole cookie is ignored.
+          return None
+        }
+        let single_label = !candidate.contains(".")
+        if single_label && candidate != host {
+          // A single-label Domain such as "com" is a public suffix, not a
+          // domain the request host can control. Reject it so a site cannot
+          // set a supercookie for every host under that label. A single-label
+          // request host itself (for example "localhost") remains usable, but
+          // must still become a host-only cookie.
+          return None
+        }
+        let numeric_host = is_ipv4_literal(host) || is_ipv6_literal_with_zone(host)
+        if valid_url_host_chars(candidate) &&
+          (host == candidate ||
+            (!numeric_host && host.has_suffix("." + candidate))) {
+          domain = candidate
+          // RFC 6265bis: a Domain attribute for an IP address host, or for a
+          // public-suffix label identical to the request host, is ignored,
+          // leaving the cookie host-only instead of domain-scoped.
+          host_only = numeric_host || single_label
+        } else {
+          // A Domain attribute that does not cover the request host must not
+          // be stored, otherwise a response could set cookies for other sites.
+          return None
+        }
+      }
+    None => ()
   }
   // RFC 6265 §5.3: a non-secure origin must not be able to set a Secure
   // cookie, even though the jar would never send it over plain HTTP.

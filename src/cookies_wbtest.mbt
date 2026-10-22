@@ -498,11 +498,49 @@ test "cookie values must use RFC 6265 cookie-octets" {
   )
 }
 
-test "an empty Domain attribute invalidates the cookie" {
+test "an empty Domain attribute leaves the cookie host-only" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
   jar.store_at(url, "sid=1; Domain=; Path=/", 1000)
-  assert_eq(jar.cookie_header_at(url, 1000), None)
+  assert_eq(jar.cookie_header_at(url, 1000), Some("sid=1"))
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://sub.example.com/"), 1000),
+    None,
+  )
+}
+
+test "the last Domain attribute decides the cookie scope" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  jar.store_at(
+    url,
+    "bad=1; Domain=bad.example; Domain=example.com; Path=/",
+    1000,
+  )
+  assert_eq(jar.length(), 1)
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://api.example.com/"), 1000),
+    Some("bad=1"),
+  )
+  let invalid_last = CookieJar::new()
+  invalid_last.store_at(
+    url,
+    "drop=1; Domain=example.com; Domain=bad.example; Path=/",
+    1000,
+  )
+  assert_eq(invalid_last.length(), 0)
+}
+
+test "the last Path attribute decides the cookie path" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/a/b")
+  jar.store_at(url, "p=1; Path=/other; Path=invalid", 1000)
+  assert_eq(jar.cookie_header_at(url, 1000), Some("p=1"))
+  jar.store_at(url, "q=1; Path=/other; Path=/a", 1000)
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://example.com/a/c"), 1000),
+    Some("p=1; q=1"),
+  )
 }
 
 test "a single-label Domain attribute cannot target a public suffix" {
@@ -759,8 +797,10 @@ test "cookie jar enforces __Host- prefix" {
   // Missing Path is not allowed even when the default path is "/".
   jar.store_at(secure, "__Host-id=5; Secure", 1000)
   assert_eq(jar.length(), 1)
-  // An invalid Path attribute falls back to the default and is not allowed.
-  jar.store_at(secure, "__Host-id=6; Secure; Path=account", 1000)
+  // An invalid Path attribute falls back to the default path. Here the
+  // request URL is nested, so the default path is not "/" and is rejected.
+  let nested = cookie_test_url("https://example.com/account/profile")
+  jar.store_at(nested, "__Host-id=6; Secure; Path=account", 1000)
   assert_eq(jar.length(), 1)
   assert_eq(
     jar.cookie_header_at(cookie_test_url("https://example.com/x"), 1000),
