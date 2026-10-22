@@ -244,7 +244,17 @@ fn h2_apply_settings(
       if (value_high & 0x80) != 0 || value > H2_MAX_WINDOW_SIZE {
         return Err(ProtocolError("Invalid HTTP/2 initial window size"))
       }
-      flow.stream_send_window = flow.stream_send_window + (value - flow.peer_initial_window)
+      let delta = value - flow.peer_initial_window
+      if delta > 0 {
+        if flow.stream_send_window > H2_MAX_WINDOW_SIZE - delta {
+          return Err(ProtocolError("HTTP/2 stream window overflow"))
+        }
+      } else if delta < 0 {
+        if flow.stream_send_window < -H2_MAX_WINDOW_SIZE - delta {
+          return Err(ProtocolError("HTTP/2 stream window overflow"))
+        }
+      }
+      flow.stream_send_window = flow.stream_send_window + delta
       flow.peer_initial_window = value
     } else if identifier == H2_SETTINGS_MAX_FRAME_SIZE {
       if value < H2_MAX_FRAME_SIZE || value > H2_MAX_FRAME_SIZE_LIMIT {

@@ -209,6 +209,21 @@ test "http2 rejects an out-of-range initial window setting" {
   }
   let valid = h2_settings_payload([(H2_SETTINGS_MAX_FRAME_SIZE, H2_MAX_FRAME_SIZE)])
   h2_apply_settings(valid, flow).unwrap()
+
+  let overflow = H2FlowState::new()
+  let zero = h2_settings_payload([(H2_SETTINGS_INITIAL_WINDOW_SIZE, 0)])
+  h2_apply_settings(zero, overflow).unwrap()
+  assert_eq(overflow.stream_send_window, 0)
+  overflow.stream_send_window = H2_MAX_WINDOW_SIZE
+  let maximum_again = h2_settings_payload([
+    (H2_SETTINGS_INITIAL_WINDOW_SIZE, H2_MAX_WINDOW_SIZE),
+  ])
+  match h2_apply_settings(maximum_again, overflow) {
+    Err(err) => assert_eq(err, ProtocolError("HTTP/2 stream window overflow"))
+    Ok(_) => fail("HTTP/2 stream window overflow was accepted")
+  }
+  assert_eq(overflow.stream_send_window, H2_MAX_WINDOW_SIZE)
+  assert_eq(overflow.peer_initial_window, 0)
 }
 
 test "http2 propagates stream reset and GOAWAY errors" {
