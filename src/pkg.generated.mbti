@@ -417,6 +417,7 @@ pub struct UnifiedClient {
   options : ClientOptions
   mut redirect_count : Int32
 }
+pub fn UnifiedClient::client_options(Self) -> ClientOptions
 pub fn UnifiedClient::close(Self) -> Result[Unit, HttpError]
 pub fn UnifiedClient::close_all(Self) -> Result[Unit, HttpError]
 pub fn UnifiedClient::cookie_jar(Self) -> CookieJar
@@ -432,15 +433,21 @@ pub fn UnifiedClient::post_multipart(Self, String, Array[(String, String)], Arra
 pub fn UnifiedClient::put(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::with_cookie_jar(Self, CookieJar) -> Self
 pub fn UnifiedClient::with_cookies(Self) -> Self
+pub fn UnifiedClient::with_follow_redirects(Self, Bool) -> Self
+pub fn UnifiedClient::with_http2(Self, Bool) -> Self
 pub fn UnifiedClient::with_idle_timeout(Self, Int32) -> Self
 pub fn UnifiedClient::with_max_connections_per_host(Self, Int32) -> Self
 pub fn UnifiedClient::with_max_idle_per_host(Self, Int32) -> Self
+pub fn UnifiedClient::with_max_redirects(Self, Int32) -> Self
+pub fn UnifiedClient::with_max_response_body_bytes(Self, Int32) -> Self
 pub fn UnifiedClient::with_options(ClientOptions) -> Self
 pub fn UnifiedClient::with_proxy(Self, Proxy) -> Self
 pub fn UnifiedClient::with_proxy_bypass(Self, Array[String]) -> Self
 pub fn UnifiedClient::with_proxy_url(Self, String) -> Result[Self, HttpError]
+pub fn UnifiedClient::with_timeout(Self, Int32) -> Self
 pub fn UnifiedClient::with_tls_config(Self, TlsConfig) -> Self
 pub fn UnifiedClient::with_transport(&Dialer, &TlsProvider, ClientOptions) -> Self
+pub fn UnifiedClient::with_user_agent(Self, String) -> Self
 pub impl HttpClient for UnifiedClient
 
 pub struct Url {
