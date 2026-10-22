@@ -1497,6 +1497,8 @@ fn is_forbidden_trailer_field(name : String) -> Bool {
     | "proxy-authorization"
     | "www-authenticate"
     | "proxy-authenticate"
+    | "authentication-info"
+    | "proxy-authentication-info"
     | "cookie"
     | "set-cookie"
     | "cache-control"
