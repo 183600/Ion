@@ -1150,3 +1150,23 @@ test "http2 bounds informational responses" {
       assert_eq(err, ProtocolError("Too many informational HTTP/2 responses"))
   }
 }
+
+test "http2 rejects non-SETTINGS frames in the server preface" {
+  let response_headers = hpack_encode([(":status", "200")])
+  let input = h2_test_concat([
+    h2_test_frame(H2_FRAME_PING, 0, 0, b"\x01\x02\x03\x04\x05\x06\x07\x08"),
+    h2_test_settings(),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
+  ])
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match h2_request(h2_frame_mock_stream(input, 0), request) {
+    Ok(_) => fail("non-SETTINGS frame was accepted as the server preface")
+    Err(err) =>
+      assert_eq(err, ProtocolError("HTTP/2 server did not start with SETTINGS"))
+  }
+}

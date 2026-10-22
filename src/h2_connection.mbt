@@ -980,23 +980,6 @@ fn H2ClientConnection::read_initial_settings(
         self.settings_received = true
         return Ok(())
       }
-      H2_FRAME_PING =>
-        if (frame.flags & H2_FLAG_ACK) == 0 {
-          match h2_write_frame(self.stream, H2_FRAME_PING, H2_FLAG_ACK, 0, frame.payload) {
-            Ok(_) => ()
-            Err(err) => {
-              self.closed = true
-              return Err(err)
-            }
-          }
-          match self.stream.flush() {
-            Ok(_) => ()
-            Err(err) => {
-              self.closed = true
-              return Err(http_error_from_net(err))
-            }
-          }
-        }
       _ => {
         self.closed = true
         return Err(ProtocolError("HTTP/2 server did not start with SETTINGS"))
