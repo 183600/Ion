@@ -840,3 +840,24 @@ test "cookie jar accessors expose the live jar" {
   assert_eq(client.cookie_jar().length(), 1)
   assert_eq(client.cookie_jar().cookie_header(url), Some("sid=live"))
 }
+
+test "host-only and domain cookies with the same name coexist" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  jar.store_at(url, "a=host; Path=/", 1000)
+  jar.store_at(url, "a=domain; Domain=example.com; Path=/", 1000)
+  assert_eq(jar.length(), 2)
+  assert_eq(
+    jar.cookie_header_at(url, 1000),
+    Some("a=host; a=domain"),
+  )
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://sub.example.com/"), 1000),
+    Some("a=domain"),
+  )
+  jar.store_at(url, "a=host2; Path=/", 1000)
+  assert_eq(
+    jar.cookie_header_at(url, 1000),
+    Some("a=host2; a=domain"),
+  )
+}

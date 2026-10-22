@@ -163,7 +163,12 @@ fn cookie_default_path(url : Url) -> String {
 
 ///|
 fn cookie_same_identity(a : Cookie, b : Cookie) -> Bool {
-  a.name == b.name && a.domain == b.domain && a.path == b.path
+  // RFC 6265bis §5.7 includes the host-only flag in cookie identity, so a
+  // host-only cookie and a domain cookie can coexist under the same name.
+  a.name == b.name &&
+  a.domain == b.domain &&
+  a.path == b.path &&
+  a.host_only == b.host_only
 }
 
 ///|
