@@ -72,6 +72,43 @@ test "UnifiedClient uses HTTP/2 after ALPN negotiation" {
   )
 }
 
+test "UnifiedClient applies its response body limit to HTTP/2" {
+  let response_headers = hpack_encode([(":status", "200")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, response_headers),
+    h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, @utf8.encode("hello")),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let client = UnifiedClient::with_transport(
+    dialer,
+    provider,
+    ClientOptions::new()
+      .with_follow_redirects(false)
+      .with_max_response_body_bytes(4),
+  )
+  match client.get("https://example.com/h2") {
+    Ok(_) => fail("HTTP/2 response body limit was not applied")
+    Err(err) => assert_eq(err, ProtocolError("HTTP/2 response body too large"))
+  }
+  assert_true(!stream.is_open)
+
+  let accepted = h2_frame_mock_stream(input, 0)
+  let accepted_dialer = RegressionMockDialer::{ stream: accepted, count: 0 }
+  let accepted_provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let accepted_client = UnifiedClient::with_transport(
+    accepted_dialer,
+    accepted_provider,
+    ClientOptions::new()
+      .with_follow_redirects(false)
+      .with_max_response_body_bytes(5),
+  )
+  let response = accepted_client.get("https://example.com/h2").unwrap()
+  assert_eq(response.read_body().unwrap(), @utf8.encode("hello"))
+}
+
 test "UnifiedClient rejects an unsupported negotiated ALPN protocol" {
   let stream = h2_frame_mock_stream(b"", 0)
   let dialer = RegressionMockDialer::{ stream, count: 0 }

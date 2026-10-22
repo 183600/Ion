@@ -399,7 +399,7 @@ fn UnifiedClient::do_request_once(
   }
   let is_http2 = negotiated_protocol == Some("h2")
   let response_result = if is_http2 {
-    h2_request(stream, request)
+    h2_request_with_limit(stream, request, self.options.max_response_body_bytes)
   } else {
     let codec = H1Codec::new_with_limit_and_completion(
       stream,
