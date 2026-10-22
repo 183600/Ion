@@ -40,6 +40,22 @@ test "connector connect dials fresh instead of reusing a negotiated HTTP/2 sessi
   assert_false(second.is_open)
 }
 
+test "connector checkout initializes a negotiated HTTP/2 stream cached by connect" {
+  let stream = h2_frame_mock_stream(b"", 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(
+    dialer,
+    H2NegotiatingTlsProvider::{ protocol: Some("h2") },
+  ).with_http2(true)
+  let url = Url::parse("https://example.com/").unwrap()
+  let _ = connector.connect(url).unwrap()
+  let (_, lease) = connector.checkout(url).unwrap()
+  assert_eq(lease.negotiated_protocol(), Some("h2"))
+  assert_eq(dialer.count, 1)
+  lease.release(false)
+  assert_false(stream.is_open)
+}
+
 test "connector connect rejects an unsupported negotiated protocol" {
   let stream = h2_frame_mock_stream(b"", 0)
   let connector = Connector::new(
