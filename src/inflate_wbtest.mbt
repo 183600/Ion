@@ -756,6 +756,34 @@ test "zlib streams requiring a preset dictionary are rejected" {
   assert_true(rejected)
 }
 
+test "zlib size failures do not fall back to raw DEFLATE" {
+  // The leading zlib header is also a valid raw DEFLATE stored block, so the
+  // raw fallback would decode one unrelated byte. The zlib body itself is an
+  // oversized stored block, which must fail the requested output limit.
+  let data = @buffer.new(size_hint=65541)
+  data.write_byte(0x78)
+  data.write_byte(0x01)
+  data.write_byte(0x00) // non-final stored block
+  data.write_byte(0xFE)
+  data.write_byte(0xFF) // LEN = 0xFFFE
+  data.write_byte(0x01)
+  data.write_byte(0x00) // NLEN = 0x0001
+  let raw_tail = [0x00, 0x00, 0xFF, 0xFF, 0x01, 0x00, 0x00, 0xFF, 0xFF]
+  for byte in raw_tail {
+    data.write_byte(byte.to_byte())
+  }
+  let mut remaining = 65534 - raw_tail.length()
+  while remaining > 0 {
+    data.write_byte(0x00)
+    remaining = remaining - 1
+  }
+  match inflate(data.to_bytes(), 10) {
+    Err(ProtocolError(message)) => assert_true(message.contains("output too large"))
+    Ok(_) => fail("oversized zlib input was accepted through raw fallback")
+    Err(err) => fail("unexpected error: " + @debug.to_string(err))
+  }
+}
+
 test "inflate rejects incomplete dynamic Huffman trees" {
   // A literal/length tree with two two-bit codes is incomplete: the remaining
   // two-bit patterns cannot be decoded.
