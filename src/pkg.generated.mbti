@@ -213,6 +213,7 @@ pub struct H2ClientConnection {
   mut next_stream_id : Int32
   mut closed : Bool
   mut settings_received : Bool
+  mut streaming_busy : Bool
 }
 pub fn H2ClientConnection::close(Self) -> Unit
 pub fn H2ClientConnection::new(&Stream) -> Result[Self, HttpError]
