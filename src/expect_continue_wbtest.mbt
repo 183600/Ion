@@ -179,9 +179,9 @@ pub impl Stream for ExpectEarlyHintsStream with fn read(
   }
   if !self.sent_final && expect_wire(self.inner).contains("early-body") {
     self.sent_final = true
-    let final = @utf8.encode("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
-    buf.write_bytes(final)
-    return Ok(final.length())
+    let response = @utf8.encode("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+    buf.write_bytes(response)
+    return Ok(response.length())
   }
   if self.sent_final {
     return Ok(0)
