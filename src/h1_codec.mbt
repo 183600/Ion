@@ -1846,7 +1846,8 @@ fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
   if self.head || self.status == 204 || self.status == 205 || self.status == 304 ||
     (self.status >= 100 && self.status < 200) {
     let reusable = !(self.status == 101 || self.close_after_body) &&
-      self.reader.val.pending_offset >= self.reader.val.pending.length()
+      self.reader.val.pending_offset >= self.reader.val.pending.length() &&
+      !self.reader.val.stream.has_buffered_input()
     if !reusable {
       let _ = self.reader.val.stream.close()
     }
@@ -1902,7 +1903,8 @@ fn ResponseStream::complete_if_empty(
 
 fn ResponseStream::finish(self : ResponseStream) -> Unit {
   let reusable = !self.close_after_body &&
-    self.reader.val.pending_offset >= self.reader.val.pending.length()
+    self.reader.val.pending_offset >= self.reader.val.pending.length() &&
+    !self.reader.val.stream.has_buffered_input()
   if !reusable {
     let _ = self.reader.val.stream.close()
     self.complete(false)

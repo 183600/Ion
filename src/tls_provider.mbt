@@ -83,6 +83,15 @@ pub impl Stream for TlsStream with fn read_ready(self : TlsStream) -> Bool {
   self.underlying.read_ready()
 }
 
+pub impl Stream for TlsStream with fn has_buffered_input(
+  self : TlsStream,
+) -> Bool {
+  if !self.is_open {
+    return false
+  }
+  self.underlying.has_buffered_input()
+}
+
 pub impl Stream for TlsStream with fn wait_readable(
   self : TlsStream,
   timeout_ms : Int,

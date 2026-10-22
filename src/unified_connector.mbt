@@ -97,6 +97,15 @@ pub impl Stream for PrefixStream with fn local_addr(self : PrefixStream) -> Resu
   self.underlying.local_addr()
 }
 
+pub impl Stream for PrefixStream with fn has_buffered_input(
+  self : PrefixStream,
+) -> Bool {
+  if !self.is_open {
+    return false
+  }
+  self.offset < self.prefix.length() || self.underlying.has_buffered_input()
+}
+
 struct ActiveConnection {
   id : Int
   key : String
@@ -406,7 +415,15 @@ fn take_idle_connection_at(
         } else {
           true
         }
-        let alive = if expired { false } else { entry.stream.is_alive() }
+        let alive = if expired {
+          false
+        } else if entry.h2 is Some(_) {
+          // Bytes waiting for an HTTP/2 session belong to that session, not
+          // to a stale HTTP/1 response, so only check the transport liveness.
+          entry.stream.is_alive()
+        } else {
+          entry.stream.is_alive() && !entry.stream.has_buffered_input()
+        }
         if expired || !alive || !usable_h2 {
           let _ = entry.stream.close()
           if rest.length() == 0 {

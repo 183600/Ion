@@ -44,6 +44,13 @@ pub trait Stream {
   // transports override it so body readers can return partial data promptly.
   fn read_ready(Self) -> Bool = _
 
+  // Optional: whether the transport already holds bytes that have not been
+  // consumed by the protocol reader. Such data makes a connection unsafe to
+  // return to the pool, because the next exchange would see the leftover
+  // bytes. In-memory streams report false so callers still drain their own
+  // buffers explicitly.
+  fn has_buffered_input(Self) -> Bool = _
+
   // Optional: wait until a read can make progress or the timeout expires.
   // Returns true when the stream is readable (including EOF) and false on a
   // clean timeout. The default preserves the historical behavior by only
@@ -62,6 +69,10 @@ impl Stream with fn set_body_limit(_self, _limit) {
 
 impl Stream with fn read_ready(_self) {
   true
+}
+
+impl Stream with fn has_buffered_input(_self) {
+  false
 }
 
 impl Stream with fn wait_readable(_self, _timeout_ms) {

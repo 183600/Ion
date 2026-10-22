@@ -139,6 +139,17 @@ pub impl Stream for NativeTcpStream with fn read_ready(
   feather_tcp_read_ready(self.fd) > 0
 }
 
+pub impl Stream for NativeTcpStream with fn has_buffered_input(
+  self : NativeTcpStream,
+) -> Bool {
+  if !self.is_open || self.fd < 0 {
+    return false
+  }
+  // Readability includes EOF and socket errors, both of which make the
+  // connection unusable for another exchange as well.
+  feather_tcp_read_ready(self.fd) > 0
+}
+
 pub impl Stream for NativeTcpStream with fn wait_readable(
   self : NativeTcpStream,
   timeout_ms : Int,

@@ -303,6 +303,22 @@ pub impl Stream for NativeTlsStream with fn read_ready(
   }
 }
 
+pub impl Stream for NativeTlsStream with fn has_buffered_input(
+  self : NativeTlsStream,
+) -> Bool {
+  if !self.is_open {
+    return false
+  }
+  // `drain_available` feeds only already-readable transport bytes into
+  // OpenSSL; it returns true when decoded application data (or EOF/error) is
+  // now pending. Post-handshake records alone are consumed and do not make
+  // the connection unsafe to reuse.
+  match self.drain_available() {
+    Ok(ready) => ready
+    Err(_) => true
+  }
+}
+
 pub impl Stream for NativeTlsStream with fn wait_readable(
   self : NativeTlsStream,
   timeout_ms : Int,
