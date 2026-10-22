@@ -1375,6 +1375,10 @@ pub fn Response::copy_body_to(
           let _ = self.body.close()
           return Err(NetworkError(ReadError("stream returned no data")))
         }
+        if bytes.length() > self.max_body_bytes - total {
+          let _ = self.body.close()
+          return Err(NetworkError(ReadError("response body too large")))
+        }
         match write_all(sink, bytes) {
           Ok(_) => ()
           Err(err) => {
