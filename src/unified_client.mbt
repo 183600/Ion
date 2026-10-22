@@ -586,10 +586,10 @@ fn UnifiedClient::do_request_once(
     )
     match codec.encode_request(request, absolute_form~) {
       Ok(_) => codec.decode_response(head=request.method == HEAD)
-      Err(err) => {
-        lease.release(request_error_is_local(err))
-        Err(normalize_http_error(err))
-      }
+      // Leave lease handling to the common error path below. A write can fail
+      // on a stale keep-alive connection before the peer processes anything,
+      // so an idempotent request is safe to retry exactly like a failed read.
+      Err(err) => Err(normalize_http_error(err))
     }
   }
 
