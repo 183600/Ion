@@ -10,6 +10,7 @@ const HPACK_DEFAULT_TABLE_SIZE : Int = 4096
 const HPACK_MAX_STRING_BYTES : Int = 65536
 const HPACK_MAX_HEADER_LIST_BYTES : Int = 1048576
 const HPACK_MAX_HEADERS : Int = 1000
+const HPACK_MAX_INTEGER : Int = 2147483647
 
 let hpack_static : Array[(String, String)] = [
   (":authority", ""),
@@ -242,7 +243,16 @@ fn hpack_read_integer(
     if shift > 28 {
       return Err(ProtocolError("HPACK integer too large"))
     }
-    value = value + ((byte & 0x7f) << shift)
+    let digit = byte & 0x7f
+    if shift == 28 {
+      // Avoid overflowing `digit << 28` before the comparison. The remaining
+      // value must fit in a signed 32-bit Int.
+      let remaining = HPACK_MAX_INTEGER - value
+      if remaining < 0 || digit > remaining >> 28 {
+        return Err(ProtocolError("HPACK integer too large"))
+      }
+    }
+    value = value + (digit << shift)
     if (byte & 0x80) == 0 {
       break
     }

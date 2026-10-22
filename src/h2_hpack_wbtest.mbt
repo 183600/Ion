@@ -128,6 +128,18 @@ test "hpack table size updates reset the dynamic table" {
   }
 }
 
+test "hpack integer decoding rejects values beyond 31 bits" {
+  let (value, next) = hpack_read_integer(hpack_test_hex("7f80ffffff07"), 0, 7).unwrap()
+  assert_eq(value, HPACK_MAX_INTEGER)
+  assert_eq(next, 6)
+  for encoded in ["7f80ffffff08", "7f80ffffff7f"] {
+    match hpack_read_integer(hpack_test_hex(encoded), 0, 7) {
+      Err(err) => assert_eq(err, ProtocolError("HPACK integer too large"))
+      Ok(_) => fail("overflowing HPACK integer was accepted")
+    }
+  }
+}
+
 test "hpack sizes dynamic entries by UTF-8 octets" {
   // x: é is 1 + 2 + 32 = 35 octets. A 34-byte table cannot hold it, but
   // UTF-16 code-unit accounting used to count only 34 and kept the entry.
