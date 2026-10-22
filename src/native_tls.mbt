@@ -265,13 +265,42 @@ pub impl Stream for NativeTlsStream with fn read(
   Err(NetError::ReadError("TLS read did not converge"))
 }
 
+/// Pull encrypted bytes that the transport already reports as readable into
+/// OpenSSL and ask whether application data is now available. Post-handshake
+/// records such as TLS 1.3 session tickets also make the raw socket readable;
+/// without this probe `read_ready` would claim progress and the following read
+/// would block waiting for actual application data.
+fn NativeTlsStream::drain_available(
+  self : NativeTlsStream,
+) -> Result[Bool, NetError] {
+  while true {
+    if feather_tls_pending(self.tls) > 0 {
+      return Ok(true)
+    }
+    if !self.underlying.read_ready() {
+      return Ok(false)
+    }
+    match native_tls_feed(self.tls, self.underlying) {
+      TlsIoData => continue
+      TlsIoClosed => return Ok(true)
+      TlsIoTimeout => return Ok(false)
+      TlsIoFailure(message) => return Err(NetError::ReadError(message))
+    }
+  }
+  Ok(false)
+}
+
 pub impl Stream for NativeTlsStream with fn read_ready(
   self : NativeTlsStream,
 ) -> Bool {
   if !self.is_open {
     return false
   }
-  feather_tls_pending(self.tls) > 0 || self.underlying.read_ready()
+  match self.drain_available() {
+    Ok(ready) => ready
+    // Let the caller's next read surface the underlying TLS error.
+    Err(_) => true
+  }
 }
 
 pub impl Stream for NativeTlsStream with fn wait_readable(
@@ -281,12 +310,20 @@ pub impl Stream for NativeTlsStream with fn wait_readable(
   if !self.is_open {
     return Err(NetError::Closed)
   }
-  // Decrypted bytes or a complete buffered TLS record can make progress
-  // without touching the socket. Otherwise the encrypted transport decides.
-  if feather_tls_pending(self.tls) > 0 {
-    return Ok(true)
+  match self.drain_available() {
+    Ok(true) => return Ok(true)
+    Err(err) => return Err(err)
+    Ok(false) => ()
   }
-  self.underlying.wait_readable(timeout_ms)
+  let timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
+  if timeout_ms == 0 {
+    return Ok(false)
+  }
+  match self.underlying.wait_readable(timeout_ms) {
+    Ok(false) => Ok(false)
+    Ok(true) => self.drain_available()
+    Err(err) => Err(err)
+  }
 }
 
 pub impl Stream for NativeTlsStream with fn write(

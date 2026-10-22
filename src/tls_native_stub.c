@@ -19,6 +19,11 @@ typedef struct {
   int ready;
   int last_error;
   int verify_error;
+  // State discovered while probing buffered records for readability. The
+  // probe may consume a close_notify or a fatal record, so remember the result
+  // for the later read instead of making it wait for another socket event.
+  int read_eof;
+  int read_failed;
   unsigned long library_error;
   int capture_keylog;
   char keylog[8192];
@@ -382,6 +387,12 @@ int32_t feather_tls_read(FeatherTls *tls, moonbit_bytes_t buffer, int32_t capaci
   if (capacity == 0) {
     return -3;
   }
+  if (tls->read_eof) {
+    return 0;
+  }
+  if (tls->read_failed) {
+    return -3;
+  }
   int result = SSL_read(tls->ssl, buffer, capacity);
   if (result > 0) {
     return result;
@@ -394,9 +405,11 @@ int32_t feather_tls_read(FeatherTls *tls, moonbit_bytes_t buffer, int32_t capaci
     return -2;
   }
   if (error == SSL_ERROR_ZERO_RETURN) {
+    tls->read_eof = 1;
     return 0;
   }
   if (error == SSL_ERROR_SYSCALL && result == 0 && ERR_peek_error() == 0) {
+    tls->read_eof = 1;
     return 0;
   }
   feather_tls_record_error(tls);
@@ -411,6 +424,9 @@ int32_t feather_tls_pending(FeatherTls *tls) {
   int pending = SSL_pending(tls->ssl);
   if (pending > 0) {
     return pending;
+  }
+  if (tls->read_eof || tls->read_failed) {
+    return 1;
   }
   // SSL_pending only counts application bytes already decoded. A previous
   // read may have drained the socket while feeding several complete TLS
@@ -429,10 +445,32 @@ int32_t feather_tls_pending(FeatherTls *tls) {
   const unsigned char *header = (const unsigned char *)data;
   long record_length =
     ((long)header[3] << 8) | (long)header[4];
-  if (available >= 5 + record_length) {
-    return (int32_t)available;
+  if (available < 5 + record_length) {
+    return 0;
   }
-  return 0;
+  // A complete record does not necessarily contain application data: TLS 1.3
+  // session tickets and KeyUpdate messages are carried in application-data
+  // records too. Probe with SSL_peek, which processes buffered records and
+  // reports whether readable application data (or EOF/error) is actually
+  // available without removing that data from OpenSSL's buffer.
+  ERR_clear_error();
+  unsigned char probe;
+  int result = SSL_peek(tls->ssl, &probe, 1);
+  if (result > 0) {
+    int decoded = SSL_pending(tls->ssl);
+    return decoded > 0 ? decoded : 1;
+  }
+  int error = SSL_get_error(tls->ssl, result);
+  if (error == SSL_ERROR_WANT_READ || error == SSL_ERROR_WANT_WRITE) {
+    return 0;
+  }
+  if (error == SSL_ERROR_ZERO_RETURN) {
+    tls->read_eof = 1;
+    return 1;
+  }
+  feather_tls_record_error(tls);
+  tls->read_failed = 1;
+  return 1;
 }
 
 MOONBIT_FFI_EXPORT
