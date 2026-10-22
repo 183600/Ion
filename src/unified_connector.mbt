@@ -466,8 +466,9 @@ pub fn Connector::with_proxy(self : Connector, proxy : Proxy) -> Connector {
 /// Route requests to matching hosts directly instead of through the proxy.
 /// Entries follow the common `NO_PROXY` syntax: a host name matches that host
 /// and its subdomains, a leading `.` or `*.` is allowed, `host:port` restricts
-/// the match to one port, IP literals match exactly, and `*` disables the
-/// proxy for every request. Matching is case-insensitive and ignores
+/// the match to one port, IP literals match exactly, IPv4 and IPv6 CIDR blocks
+/// (`10.0.0.0/8`, `2001:db8::/32`) match an address range, and `*` disables
+/// the proxy for every request. Matching is case-insensitive and ignores
 /// surrounding whitespace.
 ///
 /// Existing pooled connections may have been opened through the proxy, so they
