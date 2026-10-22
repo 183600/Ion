@@ -34,6 +34,20 @@ test "h1_request supports an explicit response limit and absolute-form" {
 }
 
 ///|
+test "h1_request honors absolute-form for an https target" {
+  let stream = regression_mock_stream(
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
+    0,
+    0,
+  )
+  let request = Request::from_url(GET, "https://example.com/proxied").unwrap()
+  let response = h1_request(stream, request, absolute_form=true).unwrap()
+  assert_eq(response.text().unwrap(), "ok")
+  let wire = @utf8.decode_lossy(stream.output.to_bytes()[:])
+  assert_true(wire.has_prefix("GET https://example.com/proxied HTTP/1.1\r\n"))
+}
+
+///|
 test "h1_request frames HEAD responses without a body" {
   let stream = regression_mock_stream(
     "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n",

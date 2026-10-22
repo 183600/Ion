@@ -559,8 +559,7 @@ pub fn H1Codec::encode_request(
   if is_connect && (req.url.path != "/" || req.url.query.length() > 0) {
     return Err(InvalidUrl("CONNECT requires an authority-form target"))
   }
-  let absolute = !is_connect && absolute_form.unwrap_or(false) &&
-    req.url.scheme.to_lower() == "http"
+  let absolute = !is_connect && absolute_form.unwrap_or(false)
   let asterisk_form = req.url.path == "*"
   if asterisk_form && req.method != OPTIONS {
     return Err(InvalidUrl("Asterisk-form is only valid for OPTIONS"))
