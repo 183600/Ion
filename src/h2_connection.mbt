@@ -1151,6 +1151,9 @@ pub struct H2ClientConnection {
   mut next_stream_id : Int
   mut closed : Bool
   mut settings_received : Bool
+  // A lazy response body owns the connection until it reaches END_STREAM or is
+  // closed. While true, starting another exchange would interleave frames.
+  mut streaming_busy : Bool
 }
 
 /// Create a connection and send the client preface and initial SETTINGS. The
@@ -1165,6 +1168,7 @@ pub fn H2ClientConnection::new(stream : &Stream) -> Result[H2ClientConnection, H
     next_stream_id: 1,
     closed: false,
     settings_received: false,
+    streaming_busy: false,
   }
   match connection.send_preface() {
     Ok(_) => Ok(connection)
@@ -1174,7 +1178,7 @@ pub fn H2ClientConnection::new(stream : &Stream) -> Result[H2ClientConnection, H
 
 /// Whether this connection can still be used for another request.
 fn H2ClientConnection::is_open(self : H2ClientConnection) -> Bool {
-  !self.closed && self.stream.peer_addr() is Ok(_)
+  !self.closed && !self.streaming_busy && self.stream.peer_addr() is Ok(_)
 }
 
 /// Close the underlying stream. Closing an already closed connection is a
@@ -2068,6 +2072,9 @@ fn H2ClientConnection::request_streaming_with_callback(
   max_body_bytes : Int,
   on_complete : ((Bool) -> Unit)?,
 ) -> Result[Response, HttpError] {
+  if self.streaming_busy {
+    return Err(ProtocolError("HTTP/2 connection has an outstanding streaming body"))
+  }
   if !self.is_open() {
     return Err(ConnectionClosed)
   }
@@ -2200,6 +2207,15 @@ fn H2ClientConnection::request_streaming_with_callback(
     return Err(ProtocolError("HTTP/2 response ended before a status"))
   }
   let trailers = @ref.Ref(state.trailers)
+  self.streaming_busy = true
+  let external_completion = on_complete
+  let completion : ((Bool) -> Unit)? = Some(fn(reusable) {
+    self.streaming_busy = false
+    match external_completion {
+      Some(callback) => callback(reusable)
+      None => ()
+    }
+  })
   let body = H2LiveBodyStream::{
     connection: self,
     state,
@@ -2210,7 +2226,7 @@ fn H2ClientConnection::request_streaming_with_callback(
     is_open: true,
     completed: false,
     error: None,
-    on_complete,
+    on_complete: completion,
   }
   let response = Response::new_with_version(
     "HTTP/2",
@@ -2234,6 +2250,9 @@ fn H2ClientConnection::request_with_limit_and_callback(
   max_body_bytes : Int,
   connect_completion : (() -> Unit)?,
 ) -> Result[Response, HttpError] {
+  if self.streaming_busy {
+    return Err(ProtocolError("HTTP/2 connection has an outstanding streaming body"))
+  }
   if !self.is_open() {
     return Err(ConnectionClosed)
   }

@@ -156,3 +156,33 @@ test "lazy HTTP/2 bodies return the session to the pool after END_STREAM" {
   let _ = client.close_all()
   assert_eq(client.connection_count(), 0)
 }
+
+///|
+test "a streaming HTTP/2 body prevents overlapping exchanges" {
+  let first = hpack_encode([(":status", "200"), ("content-length", "2")])
+  let second = hpack_encode([(":status", "201")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, first),
+    h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, b"ok"),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 3, second),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/one").unwrap())
+  let response = connection.request_streaming(request).unwrap()
+  assert_false(connection.is_open())
+  match connection.request_streaming(request) {
+    Ok(_) => fail("overlapping HTTP/2 streaming request was accepted")
+    Err(err) =>
+      assert_eq(
+        err,
+        ProtocolError("HTTP/2 connection has an outstanding streaming body"),
+      )
+  }
+  assert_eq(response.text().unwrap(), "ok")
+  assert_true(connection.is_open())
+  let next = connection.request_streaming(request).unwrap()
+  assert_eq(next.status, 201)
+  assert_eq(next.text().unwrap(), "")
+}
