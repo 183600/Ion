@@ -698,14 +698,24 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
     return Err(InvalidUrl("Invalid host"))
   }
   let connection_nominated = h2_connection_nominated_names(request.headers)
+  let content_length_nominated = h2_name_in_array(
+    connection_nominated,
+    "content-length",
+  )
   let body_length = match request.body {
     Some(body) => body.length()
     None => 0
   }
   let content_lengths = request.headers.get_all("Content-Length")
-  let content_length = match request_content_length(request.headers) {
-    Ok(value) => value
-    Err(_) => return Err(InvalidHeader("Content-Length"))
+  // A field nominated by Connection is removed before the request is sent, so
+  // it must not be validated as part of the HTTP/2 header list.
+  let content_length = if content_length_nominated {
+    None
+  } else {
+    match request_content_length(request.headers) {
+      Ok(value) => value
+      Err(_) => return Err(InvalidHeader("Content-Length"))
+    }
   }
   match content_length {
     Some(declared) => if declared != body_length {
@@ -720,8 +730,7 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
     (":path", request.url.request_target()),
   ]
   if (request.body is Some(_) || method_defines_body(request.method)) &&
-    content_lengths.length() == 0 &&
-    !h2_name_in_array(connection_nominated, "content-length") {
+    content_lengths.length() == 0 && !content_length_nominated {
     headers.push(("content-length", body_length.to_string()))
   }
   if request.trailers.length() > 0 && !request.headers.contains("Trailer") &&
@@ -982,6 +991,18 @@ fn H2ClientConnection::drain_buffered_connection_frames(
         continue
       }
       _ => {
+        // Unknown extension frame types must be ignored and discarded
+        // (RFC 9113 §4.1); they carry no stream state we need to preserve.
+        if frame_type > H2_FRAME_CONTINUATION {
+          match h2_read_frame(self.reader) {
+            Ok(_) => ()
+            Err(_) => {
+              self.closed = true
+              return
+            }
+          }
+          continue
+        }
         // A PUSH_PROMISE (push is disabled) or CONTINUATION here is always a
         // connection error. Frames for the just-finished stream are likewise
         // invalid. Keep frames for a not-yet-opened stream buffered: callers

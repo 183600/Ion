@@ -1250,3 +1250,45 @@ test "http2 only allows a zero Content-Length on 205" {
   assert_eq(response.status, 205)
   assert_eq(response.read_body().unwrap(), b"")
 }
+
+test "http2 ignores unknown extension frames buffered after a response" {
+  let first = hpack_encode([(":status", "200")])
+  let second = hpack_encode([(":status", "201"), ("x-request", "second")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      first,
+    ),
+    // Unknown frame types must be ignored and discarded (RFC 9113 §4.1).
+    h2_test_frame(250, 0, 0, b"extension"),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      3,
+      second,
+    ),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let url = Url::parse("https://example.com/").unwrap()
+  assert_eq(connection.request(Request::new(GET, url)).unwrap().status, 200)
+  assert_true(connection.is_open())
+  let response = connection.request(Request::new(GET, url)).unwrap()
+  assert_eq(response.status, 201)
+  assert_eq(response.headers.get("x-request"), Some("second"))
+  assert_true(connection.is_open())
+}
+
+test "http2 strips connection-nominated Content-Length without validating it" {
+  let request = Request::new(POST, Url::parse("https://example.com/").unwrap())
+    .with_body(b"hello")
+    .with_header("Connection", "Content-Length")
+    .with_header("Content-Length", "999")
+  let headers = h2_request_headers(request).unwrap()
+  assert_eq(h2_test_header_value(headers, "connection"), None)
+  assert_eq(h2_test_header_value(headers, "content-length"), None)
+  assert_eq(h2_test_header_value(headers, ":method"), Some("POST"))
+}
