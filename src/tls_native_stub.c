@@ -135,7 +135,10 @@ FeatherTls *feather_tls_new(
     SSL_CTX_set_default_verify_paths(tls->ctx);
   }
 
-  if (roots_length > 0) {
+  // A root store is only meaningful when certificate verification is enabled.
+  // Ignoring it under SkipVerification keeps an invalid test-only bundle from
+  // blocking a connection that deliberately does not validate certificates.
+  if (verify != 0 && roots_length > 0) {
     BIO *root_bio = BIO_new_mem_buf(roots, roots_length);
     if (root_bio == NULL) {
       feather_tls_record_error(tls);
