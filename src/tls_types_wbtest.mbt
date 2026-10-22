@@ -69,10 +69,20 @@ test "TLS validation rejects oversized server names" {
 }
 ///|
 test "TLS validation rejects malformed server names" {
-  for name in ["example.com:443", "bad name", "example.com/path", "[::1", "[::1]extra"] {
+  for name in [
+    "example.com:443",
+    "bad name",
+    "example.com/path",
+    "[::1",
+    "[::1]extra",
+    ".",
+    "..",
+    ".example.com",
+    "example..com",
+  ] {
     assert_true(TlsConfig::new(name).validate() is Err(InvalidConfig(_)))
   }
-  for name in ["127.0.0.1", "::1", "[::1]", "[2001:db8::1]"] {
+  for name in ["127.0.0.1", "::1", "[::1]", "[2001:db8::1]", "example.com."] {
     assert_true(TlsConfig::new(name).validate() is Ok(_))
   }
 }

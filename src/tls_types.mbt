@@ -100,6 +100,24 @@ pub fn TlsConfig::with_key_log(self : TlsConfig, key_log : &KeyLogSink) -> TlsCo
   TlsConfig::{ ..self, key_log: Some(key_log) }
 }
 
+fn valid_dns_server_name(value : String) -> Bool {
+  // A single trailing dot denotes the DNS root and is allowed.
+  let name = if value.length() > 1 && value.has_suffix(".") {
+    value[0:value.length() - 1].to_owned()
+  } else {
+    value
+  }
+  if name.length() == 0 {
+    return false
+  }
+  for label in name.split(".") {
+    if label.length() == 0 {
+      return false
+    }
+  }
+  true
+}
+
 fn valid_server_name(value : String) -> Bool {
   if value.length() == 0 || @utf8.encode(value).length() > 255 {
     return false
@@ -113,7 +131,7 @@ fn valid_server_name(value : String) -> Bool {
   if value.contains(":") {
     return is_ipv6_literal_with_zone(value)
   }
-  valid_url_host_chars(value)
+  valid_url_host_chars(value) && valid_dns_server_name(value)
 }
 
 fn valid_alpn_protocol(value : String) -> Bool {
