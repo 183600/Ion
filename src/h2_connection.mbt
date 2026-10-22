@@ -2221,6 +2221,11 @@ fn H2ClientConnection::request_streaming_with_callback(
       None => ()
     }
   })
+  // A bodyless response (HEAD, 204, or an empty END_STREAM after the final
+  // headers) has nothing left to read. Complete it immediately so the
+  // session is not left marked streaming until the caller happens to read or
+  // close the empty body; the returned stream still reads as EOF.
+  let bodyless = state.ended && state.body.length() == 0
   let body = H2LiveBodyStream::{
     connection: self,
     state,
@@ -2232,6 +2237,9 @@ fn H2ClientConnection::request_streaming_with_callback(
     completed: false,
     error: None,
     on_complete: completion,
+  }
+  if bodyless {
+    body.finish(true)
   }
   let response = Response::new_with_version(
     "HTTP/2",

@@ -227,3 +227,47 @@ test "h2_request_streaming provides a one-shot lazy exchange" {
   assert_eq(response.text().unwrap(), "ok")
   assert_false(stream.is_open)
 }
+
+///|
+test "bodyless streaming responses release the session without being read" {
+  let head_headers = hpack_encode([
+    (":status", "200"),
+    ("content-length", "9"),
+  ])
+  let next_headers = hpack_encode([(":status", "204")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      head_headers,
+    ),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      3,
+      next_headers,
+    ),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let head = connection
+    .request_streaming(
+      Request::new(HEAD, Url::parse("https://example.com/head").unwrap()),
+    )
+    .unwrap()
+  assert_eq(head.status, 200)
+  // The empty HEAD body is complete even though the caller never read it, so
+  // the session can immediately carry the next stream.
+  let next = connection
+    .request_streaming(
+      Request::new(GET, Url::parse("https://example.com/next").unwrap()),
+    )
+    .unwrap()
+  assert_eq(next.status, 204)
+  assert_eq(next.text().unwrap(), "")
+  assert_eq(head.text().unwrap(), "")
+  assert_true(connection.is_open())
+  let _ = connection.close()
+}
