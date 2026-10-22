@@ -743,6 +743,9 @@ fn bypass_prefix_bytes_match(first : Bytes, second : Bytes, bits : Int) -> Bool 
 /// a well-formed CIDR block, leaving ordinary host and path patterns to the
 /// existing matcher.
 fn bypass_cidr_matches(candidate : String, host : String) -> Bool {
+  // A trailing root dot is part of the DNS presentation, not the address.
+  // Normalize it so a numeric host such as `10.0.0.1.` still matches a CIDR.
+  let host = normalize_bypass_host(host)
   let slash = match candidate.find("/") {
     Some(index) => index
     None => return false

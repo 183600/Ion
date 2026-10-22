@@ -30,4 +30,5 @@ test "malformed CIDR bypass entries do not fall back to the base host" {
 
   let valid = bypass_cidr_test_connector(["10.0.0.0/8"])
   assert_true(valid.proxy_for_url(Url::parse("http://10.0.0.0/").unwrap()) is None)
+  assert_true(valid.proxy_for_url(Url::parse("http://10.0.0.1./").unwrap()) is None)
 }
