@@ -526,17 +526,20 @@ fn cookie_parse_date(value : String) -> UInt64? {
   let mut year : Int32? = None
   let mut clock : (Int32, Int32, Int32)? = None
   for token in tokens {
-    // RFC 6265 §5.1.1 consumes every time token in the date, even when a
-    // previous token already supplied the time. Falling through would let a
-    // second time such as `08:49:37` be misread as a day-of-month. A token
-    // that matches the time grammar but has an out-of-range field invalidates
-    // the whole cookie-date instead of being reinterpreted as a day.
+    // A time token that matches the grammar but has an out-of-range field is
+    // fatal while no clock has been found yet: reinterpreting it as a
+    // day-of-month would silently accept a malformed date. Once a valid clock
+    // exists, however, a later malformed time-shaped token must not discard
+    // the otherwise complete date. Valid repeated time tokens retain the
+    // historical last-one-wins behavior.
     if cookie_is_time_token(token) {
-      let value = match cookie_parse_clock(token) {
-        Some(value) => value
-        None => return None
+      match cookie_parse_clock(token) {
+        Some(value) => clock = Some(value)
+        None =>
+          if clock is None {
+            return None
+          }
       }
-      clock = Some(value)
       continue
     }
     if day is None {

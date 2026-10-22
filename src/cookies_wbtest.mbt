@@ -1164,3 +1164,16 @@ test "numeric dotted hosts never receive domain-suffix cookies" {
   jar.store_at(malformed, "same=1; Domain=1.2.3.999; Path=/", 1000)
   assert_eq(jar.cookie_header_at(malformed, 1000), Some("same=1"))
 }
+
+test "later time-shaped tokens do not invalidate an already parsed date" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("https://example.com/")
+  jar.store_at(
+    url,
+    "x=1; Expires=Oct 21 2030 08:49:37 07:60:00 GMT; Path=/",
+    0,
+  )
+  let expiry : UInt64 = 1918802977000L.to_uint64()
+  assert_eq(jar.cookie_header_at(url, expiry - 1), Some("x=1"))
+  assert_eq(jar.cookie_header_at(url, expiry), None)
+}
