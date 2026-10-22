@@ -195,7 +195,12 @@ fn valid_encoded_url_chars(value : String) -> Bool {
   while index < value.length() {
     let ch = match value.get_char(index) {
       Some(ch) => ch
-      None => return false
+      None => {
+        // Low surrogate of an astral scalar. It is not a reserved ASCII
+        // delimiter, so skip it while keeping the scalar in the component.
+        index = index + 1
+        continue
+      }
     }
     if ch <= ' ' || ch == '\u{7f}' || ch == '\\' || ch == '"' || ch == '<' ||
       ch == '>' || ch == '^' || ch == '\u{60}' || ch == '{' || ch == '|' ||

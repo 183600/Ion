@@ -5,7 +5,7 @@ fn fuzz_next(seed : UInt64) -> UInt64 {
 
 ///|
 test "fuzz: random response and URL inputs never panic" {
-  let alphabet = "GET / HTTP/1.1\r\n:;=,abc%0123456789[]@?#.-_ \t\"<>\\"
+  let alphabet = "GET / HTTP/1.1\r\n:;=,abc%0123456789[]@?#.-_ \t\"<>\\é中🙂".to_array()
   let mut seed = 0x12345678UL
   for _ in 0..<4000 {
     seed = fuzz_next(seed)
@@ -14,7 +14,7 @@ test "fuzz: random response and URL inputs never panic" {
     for _ in 0..<length {
       seed = fuzz_next(seed)
       let index = (seed % (alphabet.length()).to_uint64()).to_int()
-      builder.write_byte(alphabet.get_char(index).unwrap().to_uint().to_byte())
+      builder.write_byte(alphabet[index].to_uint().to_byte())
     }
     let raw = @utf8.decode_lossy(builder.to_bytes()[:])
     let _ = Url::parse(raw)
@@ -29,7 +29,7 @@ test "fuzz: random response and URL inputs never panic" {
 ///|
 test "fuzz: mutated valid responses never panic" {
   let base = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nTransfer-Encoding: chunked\r\nSet-Cookie: a=b; Path=/; Domain=example.com; Max-Age=10\r\nConnection: keep-alive\r\n\r\n5\r\nhello\r\n0\r\n\r\n"
-  let mutation_chars = "\r\n:;=,abc%0123456789[]@?#.-_ "
+  let mutation_chars = "\r\n:;=,abc%0123456789[]@?#.-_ é中🙂".to_array()
   let mut seed = 0xabcdef01UL
   let url = Url::parse("http://example.com/").unwrap()
   for _ in 0..<2000 {
@@ -46,11 +46,11 @@ test "fuzz: mutated valid responses never panic" {
       } else if mode == 1 {
         seed = fuzz_next(seed)
         let index = (seed % (mutation_chars.length()).to_uint64()).to_int()
-        let _ = chars.insert(position, mutation_chars.get_char(index).unwrap())
+        let _ = chars.insert(position, mutation_chars[index])
       } else if position < chars.length() {
         seed = fuzz_next(seed)
         let index = (seed % (mutation_chars.length()).to_uint64()).to_int()
-        chars[position] = mutation_chars.get_char(index).unwrap()
+        chars[position] = mutation_chars[index]
       }
     }
     for ch in chars {

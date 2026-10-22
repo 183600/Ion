@@ -431,8 +431,7 @@ fn parse_bypass_authority(value : String) -> (String, Int?)? {
 fn is_numeric_dotted_host(value : String) -> Bool {
   let mut saw_digit = false
   let mut saw_dot = false
-  for index = 0; index < value.length(); index = index + 1 {
-    let ch = value.get_char(index).unwrap()
+  for ch in value {
     if ch == '.' {
       saw_dot = true
     } else if ch >= '0' && ch <= '9' {

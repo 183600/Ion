@@ -318,7 +318,15 @@ fn split_header_list(value : String) -> Array[String] {
   let mut quoted = false
   let mut escaped = false
   while index < value.length() {
-    let ch = value.get_char(index).unwrap()
+    let ch = match value.get_char(index) {
+      Some(ch) => ch
+      None => {
+        // Low surrogate of an astral character: skip it and keep the scalar
+        // in the current token. All delimiters handled here are BMP ASCII.
+        index = index + 1
+        continue
+      }
+    }
     if escaped {
       escaped = false
     } else if quoted {
@@ -862,7 +870,10 @@ fn valid_chunk_extensions(value : String) -> Bool {
     index = skip_chunk_ext_ows(value, index + 1)
     let name_start = index
     while index < length {
-      let ch = value.get_char(index).unwrap()
+      let ch = match value.get_char(index) {
+        Some(ch) => ch
+        None => break
+      }
       if !is_header_token_char(ch) {
         break
       }
@@ -885,7 +896,13 @@ fn valid_chunk_extensions(value : String) -> Bool {
         index = index + 1
         let mut closed = false
         while index < length {
-          let ch = value.get_char(index).unwrap()
+          let ch = match value.get_char(index) {
+            Some(ch) => ch
+            None => {
+              index = index + 1
+              continue
+            }
+          }
           if ch == '"' {
             index = index + 1
             closed = true
@@ -893,7 +910,14 @@ fn valid_chunk_extensions(value : String) -> Bool {
           }
           if ch == '\\' {
             index = index + 1
-            if index >= length || !is_chunk_quoted_pair_char(value.get_char(index).unwrap()) {
+            if index >= length {
+              return false
+            }
+            let escaped = match value.get_char(index) {
+              Some(ch) => ch
+              None => return false
+            }
+            if !is_chunk_quoted_pair_char(escaped) {
               return false
             }
           } else if !is_chunk_quoted_text_char(ch) {
@@ -907,7 +931,10 @@ fn valid_chunk_extensions(value : String) -> Bool {
       } else {
         let token_start = index
         while index < length {
-          let ch = value.get_char(index).unwrap()
+          let ch = match value.get_char(index) {
+            Some(ch) => ch
+            None => break
+          }
           if !is_header_token_char(ch) {
             break
           }
@@ -1056,7 +1083,10 @@ fn valid_transfer_coding(value : String) -> Bool {
   let mut index = skip_chunk_ext_ows(value, 0)
   let name_start = index
   while index < length {
-    let ch = value.get_char(index).unwrap()
+    let ch = match value.get_char(index) {
+      Some(ch) => ch
+      None => break
+    }
     if !is_header_token_char(ch) {
       break
     }
@@ -1073,7 +1103,10 @@ fn valid_transfer_coding(value : String) -> Bool {
     index = skip_chunk_ext_ows(value, index + 1)
     let parameter_start = index
     while index < length {
-      let ch = value.get_char(index).unwrap()
+      let ch = match value.get_char(index) {
+        Some(ch) => ch
+        None => break
+      }
       if !is_header_token_char(ch) {
         break
       }
@@ -1094,7 +1127,13 @@ fn valid_transfer_coding(value : String) -> Bool {
       index = index + 1
       let mut closed = false
       while index < length {
-        let ch = value.get_char(index).unwrap()
+        let ch = match value.get_char(index) {
+          Some(ch) => ch
+          None => {
+            index = index + 1
+            continue
+          }
+        }
         if ch == '"' {
           index = index + 1
           closed = true
@@ -1102,7 +1141,14 @@ fn valid_transfer_coding(value : String) -> Bool {
         }
         if ch == '\\' {
           index = index + 1
-          if index >= length || !is_chunk_quoted_pair_char(value.get_char(index).unwrap()) {
+          if index >= length {
+            return false
+          }
+          let escaped = match value.get_char(index) {
+            Some(ch) => ch
+            None => return false
+          }
+          if !is_chunk_quoted_pair_char(escaped) {
             return false
           }
         } else if !is_chunk_quoted_text_char(ch) {
@@ -1116,7 +1162,10 @@ fn valid_transfer_coding(value : String) -> Bool {
     } else {
       let token_start = index
       while index < length {
-        let ch = value.get_char(index).unwrap()
+        let ch = match value.get_char(index) {
+          Some(ch) => ch
+          None => break
+        }
         if !is_header_token_char(ch) {
           break
         }
