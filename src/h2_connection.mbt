@@ -1401,7 +1401,9 @@ pub impl Stream for H2LiveBodyStream with fn read_ready(
   self.error is Some(_) ||
   self.pending_offset < self.pending.length() ||
   self.state.ended ||
-  self.connection.reader.pending_offset < self.connection.reader.pending.length() ||
+  // A partial frame in the shared reader is not enough for a read to make
+  // progress; the frame header and payload must both be buffered.
+  h2_frame_is_buffered(self.connection.reader) ||
   self.connection.stream.read_ready()
 }
 
@@ -1628,7 +1630,8 @@ pub impl Stream for H2TunnelBody with fn read_ready(
   }
   self.state.body.length() > 0 ||
   self.state.ended ||
-  self.connection.reader.pending_offset < self.connection.reader.pending.length() ||
+  // Wait for a complete frame; consuming a partial one would block.
+  h2_frame_is_buffered(self.connection.reader) ||
   self.connection.stream.read_ready()
 }
 

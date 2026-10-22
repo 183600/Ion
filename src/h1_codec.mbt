@@ -1500,6 +1500,8 @@ fn is_forbidden_trailer_field(name : String) -> Bool {
     | "cookie"
     | "set-cookie"
     | "cache-control"
+    | "pragma"
+    | "realm"
     | "expect"
     | "max-forwards"
     | "range"
@@ -1952,6 +1954,11 @@ pub impl Stream for ResponseStream with fn read_ready(
   if !self.is_open {
     return false
   }
+  if self.is_released_to_pool() {
+    // The connection may already be in use by another exchange. Readiness of
+    // the retired body stream must not inspect or wait on that session.
+    return false
+  }
   if self.error is Some(_) || self.completed {
     // A read must observe the stored failure or EOF immediately.
     return true
@@ -1982,6 +1989,9 @@ pub impl Stream for ResponseStream with fn wait_readable(
   timeout_ms : Int,
 ) -> Result[Bool, NetError] {
   if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  if self.is_released_to_pool() {
     return Err(NetError::Closed)
   }
   if self.read_ready() {
