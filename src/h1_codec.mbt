@@ -1946,6 +1946,50 @@ pub impl Stream for ResponseStream with fn set_body_limit(
   }
 }
 
+pub impl Stream for ResponseStream with fn read_ready(
+  self : ResponseStream,
+) -> Bool {
+  if !self.is_open {
+    return false
+  }
+  if self.error is Some(_) || self.completed {
+    // A read must observe the stored failure or EOF immediately.
+    return true
+  }
+  if !self.prepared {
+    // Preparing only parses the already-decoded head; it never waits for the
+    // body. A framing failure is also immediately observable by a read.
+    match self.prepare() {
+      Ok(_) => ()
+      Err(_) => return true
+    }
+  }
+  if self.error is Some(_) || self.completed {
+    return true
+  }
+  if self.reader.val.pending_offset < self.reader.val.pending.length() {
+    return true
+  }
+  match self.body_mode {
+    BodyNone | BodyUnknown => true
+    BodyFixed => self.remaining == 0 || self.reader.val.stream.read_ready()
+    BodyChunked | BodyUntilEof => self.reader.val.stream.read_ready()
+  }
+}
+
+pub impl Stream for ResponseStream with fn wait_readable(
+  self : ResponseStream,
+  timeout_ms : Int,
+) -> Result[Bool, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  if self.read_ready() {
+    return Ok(true)
+  }
+  self.reader.val.stream.wait_readable(timeout_ms)
+}
+
 pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buffer) -> Result[Int, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)

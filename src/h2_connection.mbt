@@ -1046,6 +1046,24 @@ pub impl Stream for H2BodyStream with fn read(self : H2BodyStream, buf : Buffer)
   Ok(take)
 }
 
+pub impl Stream for H2BodyStream with fn read_ready(
+  self : H2BodyStream,
+) -> Bool {
+  // Buffered bodies never block: an exhausted stream reads as EOF.
+  self.is_open
+}
+
+pub impl Stream for H2BodyStream with fn wait_readable(
+  self : H2BodyStream,
+  timeout_ms : Int,
+) -> Result[Bool, NetError] {
+  let _ = timeout_ms
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  Ok(true)
+}
+
 pub impl Stream for H2BodyStream with fn write(self : H2BodyStream, buf : Buffer) -> Result[Int, NetError] {
   let _ = buf
   if !self.is_open {
@@ -1378,10 +1396,24 @@ pub impl Stream for H2LiveBodyStream with fn read_ready(
   if !self.is_open || self.released_to_pool {
     return false
   }
+  self.error is Some(_) ||
   self.pending_offset < self.pending.length() ||
   self.state.ended ||
   self.connection.reader.pending_offset < self.connection.reader.pending.length() ||
   self.connection.stream.read_ready()
+}
+
+pub impl Stream for H2LiveBodyStream with fn wait_readable(
+  self : H2LiveBodyStream,
+  timeout_ms : Int,
+) -> Result[Bool, NetError] {
+  if !self.is_open || self.released_to_pool {
+    return Err(NetError::Closed)
+  }
+  if self.read_ready() {
+    return Ok(true)
+  }
+  self.connection.stream.wait_readable(timeout_ms)
 }
 
 pub impl Stream for H2LiveBodyStream with fn write(
@@ -1584,6 +1616,31 @@ pub impl Stream for H2TunnelBody with fn read(
     }
   }
   Err(NetError::ReadError("HTTP/2 tunnel read did not converge"))
+}
+
+pub impl Stream for H2TunnelBody with fn read_ready(
+  self : H2TunnelBody,
+) -> Bool {
+  if !self.is_open {
+    return false
+  }
+  self.state.body.length() > 0 ||
+  self.state.ended ||
+  self.connection.reader.pending_offset < self.connection.reader.pending.length() ||
+  self.connection.stream.read_ready()
+}
+
+pub impl Stream for H2TunnelBody with fn wait_readable(
+  self : H2TunnelBody,
+  timeout_ms : Int,
+) -> Result[Bool, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  if self.read_ready() {
+    return Ok(true)
+  }
+  self.connection.stream.wait_readable(timeout_ms)
 }
 
 pub impl Stream for H2TunnelBody with fn write(

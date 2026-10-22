@@ -1180,6 +1180,24 @@ pub impl Stream for BufferedStream with fn read(self : BufferedStream, buf : Buf
   Ok(take)
 }
 
+pub impl Stream for BufferedStream with fn read_ready(
+  self : BufferedStream,
+) -> Bool {
+  // The complete payload is already in memory, including its EOF.
+  self.is_open
+}
+
+pub impl Stream for BufferedStream with fn wait_readable(
+  self : BufferedStream,
+  timeout_ms : Int,
+) -> Result[Bool, NetError] {
+  let _ = timeout_ms
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  Ok(true)
+}
+
 pub impl Stream for BufferedStream with fn write(self : BufferedStream, buf : Buffer) -> Result[Int, NetError] {
   let _ = buf
   if !self.is_open {
