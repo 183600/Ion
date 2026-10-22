@@ -531,7 +531,10 @@ fn UnifiedClient::do_request_once(
     Ok(_) => ()
     Err(err) => {
       lease.release(false)
-      if allow_retry && lease.reused && request_can_be_retried(req.method) {
+      // No request bytes have been written yet, so retrying is safe for every
+      // method, including non-idempotent ones. A stale reused connection is the
+      // usual reason this fails.
+      if allow_retry && lease.reused {
         return self.do_request_once(req, false)
       }
       return Err(http_error_from_net(err))
