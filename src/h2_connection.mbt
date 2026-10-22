@@ -276,10 +276,14 @@ fn h2_apply_settings(
       (payload[offset + 4].to_int() << 8) |
       payload[offset + 5].to_int()
     if identifier == H2_SETTINGS_ENABLE_PUSH {
-      // SETTINGS_ENABLE_PUSH is a client-to-server setting. A server that
-      // sends it (or a client that considers itself a server for this
-      // connection) is violating RFC 9113 section 6.5.2.
-      return Err(ProtocolError("HTTP/2 server sent ENABLE_PUSH"))
+      // A server must not ask the client to enable push. The setting is still
+      // legal when it explicitly disables push with value 0.
+      if value == 1 {
+        return Err(ProtocolError("HTTP/2 server sent ENABLE_PUSH"))
+      }
+      if value > 1 {
+        return Err(ProtocolError("Invalid HTTP/2 ENABLE_PUSH"))
+      }
     } else if identifier == H2_SETTINGS_INITIAL_WINDOW_SIZE {
       // SETTINGS values are unsigned 32-bit. A high bit set exceeds the
       // largest legal flow-control window (2^31-1).

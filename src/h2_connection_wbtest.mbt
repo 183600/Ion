@@ -538,11 +538,20 @@ test "http2 strips headers nominated by Connection" {
   assert_eq(h2_test_header_value(fields, "x-keep"), Some("keep me"))
 }
 
-test "http2 rejects a server ENABLE_PUSH setting" {
-  let payload = h2_settings_payload([(H2_SETTINGS_ENABLE_PUSH, 0)])
+test "http2 accepts ENABLE_PUSH=0 and rejects enabling server push" {
+  let disabled = h2_settings_payload([(H2_SETTINGS_ENABLE_PUSH, 0)])
+  h2_apply_settings(disabled, H2FlowState::new()).unwrap()
+
+  let payload = h2_settings_payload([(H2_SETTINGS_ENABLE_PUSH, 1)])
   match h2_apply_settings(payload, H2FlowState::new()) {
-    Ok(_) => fail("server SETTINGS_ENABLE_PUSH was accepted")
+    Ok(_) => fail("server SETTINGS_ENABLE_PUSH=1 was accepted")
     Err(err) => assert_eq(err, ProtocolError("HTTP/2 server sent ENABLE_PUSH"))
+  }
+
+  let invalid = h2_settings_payload([(H2_SETTINGS_ENABLE_PUSH, 2)])
+  match h2_apply_settings(invalid, H2FlowState::new()) {
+    Ok(_) => fail("invalid SETTINGS_ENABLE_PUSH value was accepted")
+    Err(err) => assert_eq(err, ProtocolError("Invalid HTTP/2 ENABLE_PUSH"))
   }
 
   let input = h2_test_concat([
