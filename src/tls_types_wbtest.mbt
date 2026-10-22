@@ -79,10 +79,19 @@ test "TLS validation rejects malformed server names" {
     "..",
     ".example.com",
     "example..com",
+    "*.example.com",
+    "bad!host.example",
+    "exa%2Fmple.com",
+    "-leading.example",
+    "trailing-.example",
+    ("a".repeat(64)) + ".example",
   ] {
     assert_true(TlsConfig::new(name).validate() is Err(InvalidConfig(_)))
   }
-  for name in ["127.0.0.1", "::1", "[::1]", "[2001:db8::1]", "example.com."] {
+  for name in [
+    "127.0.0.1", "::1", "[::1]", "[2001:db8::1]", "example.com.",
+    "under_score.example", "xn--bcher-kva.example",
+  ] {
     assert_true(TlsConfig::new(name).validate() is Ok(_))
   }
 }

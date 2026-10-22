@@ -100,6 +100,30 @@ pub fn TlsConfig::with_key_log(self : TlsConfig, key_log : &KeyLogSink) -> TlsCo
   TlsConfig::{ ..self, key_log: Some(key_log) }
 }
 
+/// Validate one DNS label used as a TLS server name. Host names in
+/// certificates and SNI use the LDH form; underscores are tolerated because
+/// they are common in private deployments, but wildcards, percent escapes,
+/// empty labels and leading/trailing hyphens are not valid here.
+fn valid_dns_label(value : String) -> Bool {
+  let bytes = @utf8.encode(value)
+  if bytes.length() == 0 || bytes.length() > 63 {
+    return false
+  }
+  if bytes[0] == b'-' || bytes[bytes.length() - 1] == b'-' {
+    return false
+  }
+  for byte in bytes {
+    if !((byte >= b'a' && byte <= b'z') ||
+      (byte >= b'A' && byte <= b'Z') ||
+      (byte >= b'0' && byte <= b'9') ||
+      byte == b'-' ||
+      byte == b'_') {
+      return false
+    }
+  }
+  true
+}
+
 fn valid_dns_server_name(value : String) -> Bool {
   // A single trailing dot denotes the DNS root and is allowed.
   let name = if value.length() > 1 && value.has_suffix(".") {
@@ -107,11 +131,11 @@ fn valid_dns_server_name(value : String) -> Bool {
   } else {
     value
   }
-  if name.length() == 0 {
+  if name.length() == 0 || @utf8.encode(name).length() > 253 {
     return false
   }
   for label in name.split(".") {
-    if label.length() == 0 {
+    if !valid_dns_label(label.to_owned()) {
       return false
     }
   }
@@ -131,7 +155,7 @@ fn valid_server_name(value : String) -> Bool {
   if value.contains(":") {
     return is_ipv6_literal_with_zone(value)
   }
-  valid_url_host_chars(value) && valid_dns_server_name(value)
+  valid_dns_server_name(value)
 }
 
 fn valid_alpn_protocol(value : String) -> Bool {
