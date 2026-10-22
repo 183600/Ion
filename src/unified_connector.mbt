@@ -818,6 +818,9 @@ fn proxy_bypass_matches(
     Some(index) => candidate = candidate[index + 3:].to_owned()
     None => ()
   }
+  if candidate == "*" {
+    return true
+  }
   // A `network/prefix` entry is a CIDR block, not a host followed by a path.
   // If the text before the slash is an IP literal (or a numeric dotted
   // address that is malformed as IPv4), the entry is unambiguously a CIDR

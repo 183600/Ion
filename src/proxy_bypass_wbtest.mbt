@@ -225,3 +225,16 @@ test "bracketed bypass literals stay distinct from DNS names" {
     malformed.proxy_for_url(Url::parse("http://example.com/").unwrap()) is Some(_),
   )
 }
+
+test "an explicitly schemed wildcard bypass matches every host" {
+  let stream = regression_mock_stream("", 0, 0)
+  let connector = bypass_test_connector(RegressionMockDialer::{ stream, count: 0 }, [
+    "http://*",
+  ])
+  assert_true(
+    connector.proxy_for_url(Url::parse("http://example.com/").unwrap()) is None,
+  )
+  assert_true(
+    connector.proxy_for_url(Url::parse("https://other.example/").unwrap()) is None,
+  )
+}
