@@ -1023,11 +1023,15 @@ pub fn Connector::cookies_enabled(self : Connector) -> Bool {
   self.cookies_enabled
 }
 
-/// Replace the cookie jar and enable cookie handling.
+/// Replace the cookie jar and enable cookie handling. The derived connector
+/// gets its own jar reference so it cannot replace a jar shared with another
+/// connector.
 pub fn Connector::with_cookie_jar(self : Connector, jar : CookieJar) -> Connector {
-  self.cookie_jar.val = jar
-  self.cookies_enabled = true
-  self
+  Connector::{
+    ..self,
+    cookies_enabled: true,
+    cookie_jar: @ref.Ref(jar),
+  }
 }
 
 /// The connector's cookie jar.

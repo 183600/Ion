@@ -1093,3 +1093,14 @@ test "SameSite=None cookies require the Secure attribute" {
   jar.store_at(secure_url, "d=1; SameSite=None; SameSite=unknown; Path=/", 1000)
   assert_eq(jar.cookie_header_at(secure_url, 1000), Some("c=1; d=1"))
 }
+
+///|
+test "replacing a connector cookie jar does not mutate shared jars" {
+  let source = Connector::new(TcpDialer::new(), MockTlsProvider::new("test"))
+  let url = cookie_test_url("http://example.com/")
+  source.cookie_jar().store(url, "a=1; Path=/")
+  let derived = source.with_cookie_jar(CookieJar::new())
+  assert_eq(source.cookie_jar().cookie_header(url), Some("a=1"))
+  assert_eq(derived.cookie_jar().cookie_header(url), None)
+  assert_true(derived.cookies_enabled())
+}
