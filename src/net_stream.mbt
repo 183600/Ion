@@ -34,10 +34,19 @@ pub trait Stream {
 
   // Optional: authorize reading more body bytes for an explicit caller limit.
   fn set_body_limit(Self, Int) -> Unit = _
+
+  // Optional: whether another read can make progress without blocking. The
+  // default keeps in-memory streams aggregating small reads as before; socket
+  // transports override it so body readers can return partial data promptly.
+  fn read_ready(Self) -> Bool = _
 }
 
 impl Stream with fn set_body_limit(_self, _limit) {
   ()
+}
+
+impl Stream with fn read_ready(_self) {
+  true
 }
 
 /// Placeholder TCP stream kept for API compatibility and tests. It validates

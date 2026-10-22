@@ -394,6 +394,14 @@ int32_t feather_tls_read(FeatherTls *tls, moonbit_bytes_t buffer, int32_t capaci
 }
 
 MOONBIT_FFI_EXPORT
+int32_t feather_tls_pending(FeatherTls *tls) {
+  if (tls == NULL || tls->ssl == NULL) {
+    return 0;
+  }
+  return SSL_pending(tls->ssl);
+}
+
+MOONBIT_FFI_EXPORT
 int32_t feather_tls_write(
   FeatherTls *tls,
   moonbit_bytes_t buffer,

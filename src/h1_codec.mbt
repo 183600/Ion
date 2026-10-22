@@ -12,6 +12,9 @@ pub struct H1Codec {
 }
 
 const DEFAULT_MAX_BODY_BYTES : Int = 67108864
+// CONNECT tunnels carry an opaque byte stream rather than a response
+// representation, so the normal response-body cap does not apply to them.
+const TUNNEL_BODY_LIMIT : Int = 2147483647
 
 pub fn H1Codec::new(stream : &Stream) -> H1Codec {
   H1Codec::new_with_limit(stream, DEFAULT_MAX_BODY_BYTES)
@@ -602,7 +605,8 @@ pub fn H1Codec::encode_request(
   // CONNECT establishes a tunnel rather than transferring request content.
   // Rejecting framed bodies avoids sending a body the peer would interpret as
   // the first bytes of the tunnelled protocol.
-  if is_connect && (body_length > 0 || req.trailers.length() > 0 || chunked) {
+  if is_connect && (body_length > 0 || req.trailers.length() > 0 || chunked ||
+    content_length is Some(_)) {
     return Err(InvalidHeader("CONNECT request content is not allowed"))
   }
   match content_length {
@@ -939,7 +943,11 @@ pub fn H1Codec::decode_response(
         response_head.status,
         response_head.headers,
         response_stream,
-      ).with_trailers(trailers).with_max_body_bytes(self.max_body_bytes),
+      )
+        .with_trailers(trailers)
+        .with_max_body_bytes(
+          if connect_tunnel { TUNNEL_BODY_LIMIT } else { self.max_body_bytes },
+        ),
     )
   }
   Err(ProtocolError("Invalid response"))
@@ -1003,6 +1011,14 @@ fn ResponseStream::complete(self : ResponseStream, reusable : Bool) -> Unit {
 
 fn ResponseStream::is_released_to_pool(self : ResponseStream) -> Bool {
   self.completed && self.released_to_pool
+}
+
+/// Whether another read can proceed without blocking. Returning partial body
+/// data as soon as the transport has none ready keeps streaming responses and
+/// CONNECT tunnels responsive instead of waiting for a full 8 KiB buffer.
+fn ResponseStream::has_more_input(self : ResponseStream) -> Bool {
+  self.reader.val.pending_offset < self.reader.val.pending.length() ||
+  self.reader.val.stream.read_ready()
 }
 
 fn skip_chunk_ext_ows(value : String, start : Int) -> Int {
@@ -1672,6 +1688,9 @@ pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buf
           self.finish()
           break
         }
+        if !self.has_more_input() {
+          break
+        }
       }
       BodyUntilEof => {
         let count = match self.reader.val.read_some(buf, limit - produced) {
@@ -1683,11 +1702,14 @@ pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buf
           self.complete(false)
           break
         }
-        if self.total_read > self.max_body_bytes - count {
+        if !self.tunnel && self.total_read > self.max_body_bytes - count {
           return Err(self.fail(NetError::ReadError("response body too large")))
         }
         self.total_read = self.total_read + count
         produced = produced + count
+        if !self.has_more_input() {
+          break
+        }
       }
       BodyChunked => {
         match self.chunk_state {
@@ -1739,6 +1761,9 @@ pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buf
             self.remaining = self.remaining - count
             self.total_read = self.total_read + count
             produced = produced + count
+            if !self.has_more_input() {
+              break
+            }
           }
         }
       }

@@ -11,6 +11,8 @@ struct H2FlowState {
   mut peer_max_frame_size : Int
   mut peer_max_header_list_size : Int
   mut peer_max_concurrent_streams : Int
+  // WINDOW_UPDATE received for the next stream before its HEADERS were sent.
+  mut pending_stream_window : Int
 }
 
 fn H2FlowState::new() -> H2FlowState {
@@ -21,6 +23,7 @@ fn H2FlowState::new() -> H2FlowState {
     peer_max_frame_size: H2_MAX_FRAME_SIZE,
     peer_max_header_list_size: H2_MAX_WINDOW_SIZE,
     peer_max_concurrent_streams: H2_MAX_WINDOW_SIZE,
+    pending_stream_window: 0,
   }
 }
 
@@ -232,6 +235,10 @@ fn h2_trailer_names(trailers : Headers) -> String {
     names.write_bytes(@utf8.encode(trailer.name.to_lower()))
   }
   @utf8.decode_lossy(names.to_bytes()[:])
+}
+
+fn H2ResponseState::is_tunnel(self : H2ResponseState) -> Bool {
+  self.connect && self.status_seen && self.status >= 200 && self.status < 300
 }
 
 fn H2ResponseState::apply_header_block(
@@ -488,7 +495,8 @@ fn H2ResponseState::handle_frame(
             return Err(ProtocolError("HTTP/2 response must not include a body"))
           }
         } else {
-          if payload.length() > self.max_body_bytes - self.body.length() {
+          if !self.is_tunnel() &&
+            payload.length() > self.max_body_bytes - self.body.length() {
             return Err(ProtocolError("HTTP/2 response body too large"))
           }
           if self.content_length is Some(length) &&
@@ -804,6 +812,9 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
       return Err(InvalidHeader("Content-Length"))
     }
     None => ()
+  }
+  if is_connect && content_length is Some(_) {
+    return Err(InvalidHeader("CONNECT request content is not allowed"))
   }
   // CONNECT uses authority-form and has no :scheme or :path (RFC 9113 §8.5).
   let headers : Array[(String, String)] = if is_connect {
@@ -1280,7 +1291,7 @@ fn h2_make_tunnel_response(
     state.status,
     state.headers,
     stream,
-  ).with_trailers(trailers).with_max_body_bytes(state.max_body_bytes)
+  ).with_trailers(trailers).with_max_body_bytes(TUNNEL_BODY_LIMIT)
 }
 
 /// Consume connection-level frames that were already buffered when the
@@ -1495,16 +1506,6 @@ fn H2ClientConnection::drain_buffered_settings(
   while h2_frame_is_buffered(self.reader) {
     let offset = self.reader.pending_offset
     let frame_type = self.reader.pending[offset + 3].to_int()
-    let frame_stream_id = ((self.reader.pending[offset + 5].to_int() & 0x7f) << 24) |
-      (self.reader.pending[offset + 6].to_int() << 16) |
-      (self.reader.pending[offset + 7].to_int() << 8) |
-      self.reader.pending[offset + 8].to_int()
-    if frame_type == H2_FRAME_WINDOW_UPDATE &&
-      frame_stream_id == self.next_stream_id {
-      // This update belongs to the stream that is about to be opened. Leave
-      // it buffered for the body loop, which resets the stream window first.
-      return Ok(())
-    }
     // A received GOAWAY forbids opening any further stream on this connection
     // (RFC 9113 §6.8), regardless of the last-stream-id it advertises. Let the
     // frame be consumed below so the request fails and can be retried on a
@@ -1574,16 +1575,23 @@ fn H2ClientConnection::drain_buffered_settings(
             return Err(err)
           }
         }
-        // Only the connection window can still matter before the next stream
-        // is opened. Updates for already-closed streams are harmless, but an
-        // update for a stream that has never been opened is a protocol error.
+        // A connection update applies immediately. An update for the stream
+        // that is about to be opened must be remembered until its window is
+        // initialized; other idle-stream updates are protocol errors. Updates
+        // for already-closed streams are harmless.
         if frame.stream_id == 0 {
           if flow.connection_send_window > H2_MAX_WINDOW_SIZE - increment {
             self.closed = true
             return Err(ProtocolError("HTTP/2 connection window overflow"))
           }
           flow.connection_send_window = flow.connection_send_window + increment
-        } else if frame.stream_id >= self.next_stream_id {
+        } else if frame.stream_id == self.next_stream_id {
+          if flow.pending_stream_window > H2_MAX_WINDOW_SIZE - increment {
+            self.closed = true
+            return Err(ProtocolError("HTTP/2 stream window overflow"))
+          }
+          flow.pending_stream_window = flow.pending_stream_window + increment
+        } else if frame.stream_id > self.next_stream_id {
           self.closed = true
           return Err(ProtocolError("HTTP/2 WINDOW_UPDATE on idle stream"))
         }
@@ -1681,8 +1689,16 @@ fn H2ClientConnection::request_with_limit_and_callback(
   // A request with trailers must leave the stream open until the trailing
   // HEADERS frame is written, even when the body itself is empty.
   let end_stream = body.length() == 0 && !has_trailers
-  // A new stream starts with the peer's current initial window.
-  self.flow.stream_send_window = self.flow.peer_initial_window
+  // A new stream starts with the peer's current initial window plus any
+  // WINDOW_UPDATE that arrived before the stream was opened.
+  if self.flow.peer_initial_window >
+    H2_MAX_WINDOW_SIZE - self.flow.pending_stream_window {
+    self.closed = true
+    return Err(ProtocolError("HTTP/2 stream window overflow"))
+  }
+  self.flow.stream_send_window = self.flow.peer_initial_window +
+    self.flow.pending_stream_window
+  self.flow.pending_stream_window = 0
   match h2_write_header_block(self.stream, stream_id, block, end_stream) {
     Ok(_) => ()
     Err(err) => {

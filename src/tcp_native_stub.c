@@ -411,6 +411,33 @@ int32_t feather_tcp_peer_addr(int32_t fd, moonbit_bytes_t output, int32_t capaci
 }
 
 MOONBIT_FFI_EXPORT
+int32_t feather_tcp_read_ready(int32_t fd) {
+  if (fd < 0) {
+    return -EBADF;
+  }
+  struct pollfd pfd;
+  pfd.fd = fd;
+  pfd.events = POLLIN;
+  pfd.revents = 0;
+  int ready;
+  do {
+    ready = poll(&pfd, 1, 0);
+  } while (ready < 0 && errno == EINTR);
+  if (ready < 0) {
+    return -errno;
+  }
+  if (ready == 0) {
+    return 0;
+  }
+  // Let a subsequent read observe EOF or the socket error instead of hiding
+  // it in a readiness check.
+  if ((pfd.revents & (POLLIN | POLLHUP | POLLERR | POLLNVAL)) != 0) {
+    return 1;
+  }
+  return 0;
+}
+
+MOONBIT_FFI_EXPORT
 int32_t feather_tcp_is_alive(int32_t fd) {
   if (fd < 0) {
     return -EBADF;

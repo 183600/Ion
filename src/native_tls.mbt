@@ -32,6 +32,9 @@ extern "C" fn feather_tls_handshake(tls : NativeTlsHandle) -> Int = "feather_tls
 #borrow(tls, buffer)
 extern "C" fn feather_tls_read(tls : NativeTlsHandle, buffer : Bytes, capacity : Int) -> Int = "feather_tls_read"
 
+#borrow(tls)
+extern "C" fn feather_tls_pending(tls : NativeTlsHandle) -> Int = "feather_tls_pending"
+
 #borrow(tls, buffer)
 extern "C" fn feather_tls_write(tls : NativeTlsHandle, buffer : Bytes, offset : Int, length : Int) -> Int = "feather_tls_write"
 
@@ -260,6 +263,15 @@ pub impl Stream for NativeTlsStream with fn read(
     return Err(NetError::ReadError(native_tls_error_message(self.tls)))
   }
   Err(NetError::ReadError("TLS read did not converge"))
+}
+
+pub impl Stream for NativeTlsStream with fn read_ready(
+  self : NativeTlsStream,
+) -> Bool {
+  if !self.is_open {
+    return false
+  }
+  feather_tls_pending(self.tls) > 0 || self.underlying.read_ready()
 }
 
 pub impl Stream for NativeTlsStream with fn write(

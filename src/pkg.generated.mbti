@@ -552,6 +552,7 @@ pub trait Stream {
   fn peer_addr(Self) -> Result[String, NetError]
   fn local_addr(Self) -> Result[String, NetError]
   fn set_body_limit(Self, Int32) -> Unit
+  fn read_ready(Self) -> Bool
 }
 
 pub trait TlsClientCtx {
