@@ -369,3 +369,37 @@ test "UnifiedClient retries a refused POST because no bytes were processed" {
   assert_false(refused.is_open)
   let _ = client.close_all()
 }
+
+test "UnifiedClient retries a POST the server excluded with GOAWAY" {
+  let goaway_input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_GOAWAY, 0, 0, b"\x00\x00\x00\x00\x00\x00\x00\x00"),
+  ])
+  let response_headers = hpack_encode([(":status", "200"), ("x-retry", "goaway")])
+  let fresh_input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+  ])
+  let first = h2_frame_mock_stream(goaway_input, 0)
+  let fresh = h2_frame_mock_stream(fresh_input, 0)
+  let first_stream : &Stream = first
+  let fresh_stream : &Stream = fresh
+  let dialer = H2SequenceDialer::{
+    streams: [first_stream, fresh_stream],
+    index: 0,
+    count: 0,
+  }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let connector = Connector::new(dialer, provider).with_http2(true)
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new().with_follow_redirects(false),
+    redirect_count: 0,
+  }
+  let response = client.post("https://example.com/goaway", b"payload").unwrap()
+  assert_eq(dialer.count, 2)
+  assert_eq(response.status, 200)
+  assert_eq(response.headers.get("x-retry"), Some("goaway"))
+  assert_false(first.is_open)
+  let _ = client.close_all()
+}

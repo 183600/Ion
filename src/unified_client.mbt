@@ -428,6 +428,17 @@ fn request_error_is_refused(err : HttpError) -> Bool {
   }
 }
 
+/// A GOAWAY whose last-stream id is below the stream we opened means the
+/// server explicitly did not process that stream. Retrying is safe even for
+/// methods with side effects and even on a freshly opened connection.
+fn request_error_is_unprocessed_goaway(err : HttpError) -> Bool {
+  match err {
+    ProtocolError(message) =>
+      message == "HTTP/2 connection closed by GOAWAY"
+    _ => false
+  }
+}
+
 fn request_can_be_retried(method : HttpMethod) -> Bool {
   match method {
     GET => true
@@ -549,13 +560,15 @@ fn UnifiedClient::do_request_once(
         lease.release(true)
         return Err(normalize_http_error(err))
       }
-      let refused = request_error_is_refused(err)
+      let unprocessed = request_error_is_refused(err) ||
+        request_error_is_unprocessed_goaway(err)
       lease.release(false)
-      // REFUSED_STREAM guarantees the request was not processed, so it is
-      // safe to retry regardless of method. Reusing a stale connection is only
-      // safe for idempotent requests.
+      // REFUSED_STREAM and a GOAWAY below our stream id guarantee that the
+      // request was not processed, so they are safe to retry regardless of
+      // method. Reusing a stale connection is only safe for idempotent
+      // requests.
       if allow_retry &&
-        (refused || (lease.reused && request_can_be_retried(request.method))) {
+        (unprocessed || (lease.reused && request_can_be_retried(request.method))) {
         return self.do_request_once(req, false)
       }
       return Err(normalize_http_error(err))
