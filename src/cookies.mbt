@@ -162,6 +162,15 @@ fn cookie_default_path(url : Url) -> String {
   }
 }
 
+/// Whether bracketing distinguishes this cookie's authority. IPv4 and IPv6
+/// literals have canonical textual forms, so their bracketed and unbracketed
+/// spellings denote the same authority. Bracketed IPvFuture text, however,
+/// looks like a DNS name and must stay distinct from that name.
+fn cookie_bracket_identity(bracketed : Bool, domain : String) -> Bool {
+  bracketed && !is_ipv4_literal(domain) &&
+  !is_ipv6_literal_with_zone(domain)
+}
+
 ///|
 fn cookie_same_identity(a : Cookie, b : Cookie) -> Bool {
   // RFC 6265bis §5.7 includes the host-only flag in cookie identity, so a
@@ -170,7 +179,8 @@ fn cookie_same_identity(a : Cookie, b : Cookie) -> Bool {
   a.domain == b.domain &&
   a.path == b.path &&
   a.host_only == b.host_only &&
-  a.bracketed == b.bracketed
+  cookie_bracket_identity(a.bracketed, a.domain) ==
+  cookie_bracket_identity(b.bracketed, b.domain)
 }
 
 /// Whether `host` falls inside the scope of `cookie`'s domain. This is the
@@ -194,7 +204,8 @@ fn cookie_domain_scope_matches(
 fn cookie_overlays_secure(existing : Cookie, candidate : Cookie) -> Bool {
   candidate.name == existing.name &&
   existing.secure &&
-  existing.bracketed == candidate.bracketed &&
+  cookie_bracket_identity(existing.bracketed, existing.domain) ==
+  cookie_bracket_identity(candidate.bracketed, candidate.domain) &&
   (cookie_domain_scope_matches(existing, candidate.domain, candidate.bracketed) ||
     cookie_domain_scope_matches(candidate, existing.domain, existing.bracketed)) &&
   cookie_path_matches(existing.path, candidate.path)
@@ -401,9 +412,9 @@ fn cookie_parse_year(value : String) -> Int32? {
   } else {
     year
   }
-  if normalized < 1601 || normalized > 9999 {
-    return None
-  }
+  // A token matching the year grammar but outside 1601..9999 makes the whole
+  // cookie-date invalid (RFC 6265 §5.1.1 step 5); it is not an unrecognized
+  // token that may simply be skipped in favor of a later year.
   Some(normalized)
 }
 
@@ -570,6 +581,9 @@ fn cookie_parse_date(value : String) -> UInt64? {
     if year is None {
       match cookie_parse_year(token) {
         Some(value) => {
+          if value < 1601 || value > 9999 {
+            return None
+          }
           year = Some(value)
           continue
         }

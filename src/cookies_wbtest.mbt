@@ -446,6 +446,22 @@ test "expiry years longer than four digits are ignored" {
   }
 }
 
+test "an out-of-range four-digit expiry year invalidates the date" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  // "1000" matches the year production but is outside 1601..9999, so the
+  // parser must not skip it and accept the later "2026" token.
+  jar.store_at(
+    url,
+    "x=1; Expires=Wed, 21 Oct 1000 2026 07:28:00 GMT; Path=/",
+    0,
+  )
+  match jar.cookies().head() {
+    Some(cookie) => assert_eq(cookie.expires_at_ms, None)
+    None => fail("invalid expiry should leave a session cookie")
+  }
+}
+
 test "cookie expiry dates accept RFC date delimiters and token order" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
@@ -813,6 +829,27 @@ test "host-only cookies do not leak between DNS names and bracketed literals" {
   assert_eq(jar.length(), 2)
   assert_eq(jar.cookie_header_at(dns, 1000), Some("c=dns"))
   assert_eq(jar.cookie_header_at(literal, 1000), Some("c=literal"))
+}
+
+///|
+test "bracketed and unbracketed IPv6 spellings share cookie identity" {
+  // Url::new can produce an IPv6 host without brackets, which denotes the
+  // same authority as the normal bracketed spelling.
+  let unbracketed = Url::new("https", "::1", 443)
+  let insecure = cookie_test_url("http://[::1]/")
+  let jar = CookieJar::new()
+  jar.store_at(unbracketed, "sid=secret; Secure; Path=/", 1000)
+  jar.store_at(insecure, "sid=evil; Path=/", 1000)
+  assert_eq(jar.length(), 1)
+  assert_eq(jar.cookie_header_at(unbracketed, 1000), Some("sid=secret"))
+  assert_eq(jar.cookie_header_at(insecure, 1000), None)
+
+  // Replacing the cookie through the equivalent bracketed spelling must
+  // update it instead of creating a second host-only cookie.
+  let secure = cookie_test_url("https://[::1]/")
+  jar.store_at(secure, "sid=new; Secure; Path=/", 1000)
+  assert_eq(jar.length(), 1)
+  assert_eq(jar.cookie_header_at(secure, 1000), Some("sid=new"))
 }
 
 ///|
