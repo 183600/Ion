@@ -1298,7 +1298,7 @@ fn establish_tunnel(
 /// `checkout`, which returns a lease that recycles the stream when the
 /// exchange finishes.
 pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpError] {
-  match self.connect_impl(url, true, false) {
+  match self.connect_impl(url, true, false, self.timeout_ms) {
     Ok((stream, _, _, _)) => Ok(stream)
     Err(err) => Err(err)
   }
@@ -1309,6 +1309,7 @@ fn Connector::connect_impl(
   url : Url,
   cache_new : Bool,
   accept_h2_pool : Bool,
+  timeout_ms : Int,
 ) -> Result[(&Stream, Bool, String?, H2ClientConnection?), HttpError] {
   // Expire idle sockets for every origin, not just the one being requested.
   self.pool.val.sweep_expired(@env.now())
@@ -1393,15 +1394,15 @@ fn Connector::connect_impl(
   }
   // The dialer may have been constructed with a different timeout (for
   // example before `UnifiedClient::with_timeout` was called), so apply the
-  // connector's current policy before it opens the socket.
-  self.dialer.set_timeout(self.timeout_ms)
+  // effective policy for this checkout before it opens the socket.
+  self.dialer.set_timeout(timeout_ms)
   let raw_stream = match self.dialer.dial_tcp(dial_host, dial_port) {
     Ok(stream) => stream
     Err(err) => return Err(NetworkError(err))
   }
 
-  // Bound both plain HTTP I/O and the TLS handshake using the connector timeout.
-  match raw_stream.set_timeout(self.timeout_ms) {
+  // Bound both plain HTTP I/O and the TLS handshake using the same timeout.
+  match raw_stream.set_timeout(timeout_ms) {
     Ok(_) => ()
     Err(err) => {
       let _ = raw_stream.close()
@@ -1512,12 +1513,15 @@ fn Connector::connect_impl(
 pub fn Connector::checkout(
   self : Connector,
   url : Url,
+  timeout_ms? : Int,
 ) -> Result[(&Stream, ConnectionLease), HttpError] {
+  let timeout_ms = timeout_ms.unwrap_or(self.timeout_ms)
   let conn_key = self.connection_key(url)
   let (stream, reused, negotiated_protocol, h2) = match self.connect_impl(
     url,
     false,
     true,
+    timeout_ms,
   ) {
     Ok(connection) => connection
     Err(err) => return Err(err)

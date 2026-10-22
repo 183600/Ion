@@ -499,18 +499,25 @@ fn UnifiedClient::do_request_once(
   req : Request,
   allow_retry : Bool,
 ) -> Result[Response, HttpError] {
-  // Connect to the server
-  let (stream, lease) = match self.connector.checkout(req.url) {
-    Ok(stream) => stream
-    Err(err) => return Err(normalize_http_error(err))
-  }
-
-  // Set timeout, falling back to the client default when the request uses it.
+  // Resolve the effective timeout before connecting: an explicit per-request
+  // timeout bounds dialing and the TLS handshake too, not only the subsequent
+  // HTTP exchange.
   let timeout_ms = if req.timeout_explicit {
     req.timeout_ms
   } else {
     self.options.timeout_ms
   }
+  // Connect to the server
+  let (stream, lease) = match self.connector.checkout(
+    req.url,
+    timeout_ms=timeout_ms,
+  ) {
+    Ok(stream) => stream
+    Err(err) => return Err(normalize_http_error(err))
+  }
+
+  // Apply the same timeout to the checked-out connection before any bytes are
+  // written.
   match stream.set_timeout(timeout_ms) {
     Ok(_) => ()
     Err(err) => {

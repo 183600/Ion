@@ -86,7 +86,7 @@ pub struct Connector {
   cookie_jar : @ref.Ref[CookieJar]
   pool : @ref.Ref[ConnectionPoolState]
 }
-pub fn Connector::checkout(Self, Url) -> Result[(&Stream, ConnectionLease), HttpError]
+pub fn Connector::checkout(Self, Url, timeout_ms? : Int32) -> Result[(&Stream, ConnectionLease), HttpError]
 pub fn Connector::close(Self, Url) -> Result[Unit, HttpError]
 pub fn Connector::close_all(Self) -> Result[Unit, HttpError]
 pub fn Connector::connect(Self, Url) -> Result[&Stream, HttpError]
