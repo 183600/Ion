@@ -719,7 +719,11 @@ pub fn Url::join(self : Url, reference : String) -> Result[Url, HttpError] {
   } else if reference.has_prefix("//") {
     self.scheme + ":" + reference
   } else if reference.has_prefix("#") {
-    self.origin() + self.request_target() + reference
+    // The fragment is client-side state of the same document. Use the
+    // serialized representation of the base target so the special
+    // asterisk-form path serializes as "/*" rather than corrupting the
+    // authority with a bare "*".
+    self.origin() + self.origin_form_target() + reference
   } else if reference.has_prefix("/") {
     self.origin() + normalize_url_path(reference)
   } else if reference.has_prefix("?") {
