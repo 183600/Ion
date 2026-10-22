@@ -408,7 +408,31 @@ int32_t feather_tls_pending(FeatherTls *tls) {
   if (tls == NULL || tls->ssl == NULL) {
     return 0;
   }
-  return SSL_pending(tls->ssl);
+  int pending = SSL_pending(tls->ssl);
+  if (pending > 0) {
+    return pending;
+  }
+  // SSL_pending only counts application bytes already decoded. A previous
+  // read may have drained the socket while feeding several complete TLS
+  // records into the memory BIO, so readiness must also consider records that
+  // are buffered there. Require a complete record (header plus declared
+  // length) to avoid claiming progress for a partial record.
+  BIO *read_bio = SSL_get_rbio(tls->ssl);
+  if (read_bio == NULL) {
+    return 0;
+  }
+  char *data = NULL;
+  long available = BIO_get_mem_data(read_bio, &data);
+  if (available < 5 || data == NULL) {
+    return 0;
+  }
+  const unsigned char *header = (const unsigned char *)data;
+  long record_length =
+    ((long)header[3] << 8) | (long)header[4];
+  if (available >= 5 + record_length) {
+    return (int32_t)available;
+  }
+  return 0;
 }
 
 MOONBIT_FFI_EXPORT
