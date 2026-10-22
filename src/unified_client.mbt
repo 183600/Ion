@@ -466,8 +466,11 @@ fn UnifiedClient::do_request_once(
       }
       let refused = request_error_is_refused(err)
       lease.release(false)
-      if allow_retry && request_can_be_retried(request.method) &&
-        (lease.reused || refused) {
+      // REFUSED_STREAM guarantees the request was not processed, so it is
+      // safe to retry regardless of method. Reusing a stale connection is only
+      // safe for idempotent requests.
+      if allow_retry &&
+        (refused || (lease.reused && request_can_be_retried(request.method))) {
         return self.do_request_once(req, false)
       }
       return Err(normalize_http_error(err))
@@ -500,8 +503,13 @@ fn UnifiedClient::do_request_once(
     }
 
     // A fragment-only change (or a Location naming the same target) is not a
-    // new request. Returning the redirect response avoids an infinite loop.
-    if same_request_target(parsed_url, request.url) {
+    // new request. Returning the redirect response avoids an infinite loop,
+    // but only when following it would not change the method or body: a 303
+    // or a POST 301/302 pointing at the same path must still issue its GET.
+    let (next_method, keep_body) = redirect_method(response.status, request.method)
+    if same_request_target(parsed_url, request.url) &&
+      next_method == request.method &&
+      (keep_body || request.body is None) {
       return Ok(response)
     }
 
@@ -520,7 +528,6 @@ fn UnifiedClient::do_request_once(
 
     self.redirect_count += 1
 
-    let (next_method, keep_body) = redirect_method(response.status, request.method)
     let mut next_headers = request.headers.remove("Host")
     // With the jar enabled, let the next hop rebuild `Cookie` for its own
     // origin instead of replaying a header that may have been for this one.
@@ -540,6 +547,7 @@ fn UnifiedClient::do_request_once(
     }
     if parsed_url.scheme.to_lower() != request.url.scheme.to_lower() ||
       parsed_url.host.to_lower() != request.url.host.to_lower() ||
+      parsed_url.bracketed != request.url.bracketed ||
       parsed_url.port != request.url.port {
       next_headers = next_headers
         .remove("Authorization")

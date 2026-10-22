@@ -69,3 +69,52 @@ test "redirects to the identical target are returned without looping" {
   assert_eq(response.status, 307)
   assert_eq(dialer.count, 1)
 }
+
+test "a same-target 303 still rewrites POST to GET" {
+  let raw = "HTTP/1.1 303 See Other\r\nLocation: /form\r\nContent-Length: 0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+  let stream = regression_mock_stream(raw, 1, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new(),
+    redirect_count: 0,
+  }
+  let url = Url::parse("http://example.com/form").unwrap()
+  let response = client
+    .request(Request::new(POST, url).with_body(b"payload"))
+    .unwrap()
+  assert_eq(response.status, 200)
+  assert_eq(response.text().unwrap(), "ok")
+  let wire = @utf8.decode(stream.output.to_bytes()[:])
+  assert_true(wire.contains("POST /form HTTP/1.1\r\n"))
+  let second = wire.substring(start=wire.find("GET /form HTTP/1.1").unwrap())
+  assert_true(second.contains("GET /form HTTP/1.1\r\n"))
+  assert_true(!second.contains("payload"))
+}
+
+test "cross-origin redirects distinguish bracketed IP literals" {
+  let first = regression_mock_stream(
+    "HTTP/1.1 302 Found\r\nLocation: http://v1.foo/next\r\nContent-Length: 0\r\n\r\n",
+    1,
+    0,
+  )
+  let second = regression_mock_stream(
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
+    0,
+    0,
+  )
+  let dialer = RegressionQueueDialer::{ streams: [first, second], index: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new(),
+    redirect_count: 0,
+  }
+  let url = Url::parse("http://[v1.foo]/start").unwrap()
+  let request = Request::new(GET, url).with_header("Authorization", "Bearer secret")
+  let response = client.request(request).unwrap()
+  assert_eq(response.status, 200)
+  let wire = @utf8.decode(second.output.to_bytes()[:])
+  assert_true(!wire.contains("Authorization"))
+}
