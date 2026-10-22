@@ -931,6 +931,13 @@ test "read_body_decoded_with_limit bounds identity and unencoded bodies" {
   assert_true(response.read_body_decoded_with_limit(4) is Err(_))
 }
 
+test "unencoded body limits stop reading at the limit" {
+  let mock = InflateMockStream::{ input: @utf8.encode("0123456789abcdef"), offset: 0 }
+  let response = Response::new(200, Headers::new(), mock)
+  assert_true(response.read_body_decoded_with_limit(4) is Err(_))
+  assert_eq(mock.offset, 5)
+}
+
 test "empty encoded response bodies decode to empty" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: 25\r\n\r\n"
   let stream : &Stream = InflateMockStream::{ input: @utf8.encode(raw), offset: 0 }

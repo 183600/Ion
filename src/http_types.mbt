@@ -1118,29 +1118,37 @@ pub fn Response::read_body_decoded_with_limit(
   max_bytes : Int,
 ) -> Result[Bytes, HttpError] {
   let limit = if max_bytes < 0 { 0 } else { max_bytes }
-  let raw = match self.read_body() {
-    Ok(body) => body
-    Err(err) => return Err(err)
-  }
-  if raw.length() == 0 {
-    return Ok(raw)
-  }
   // Repeated Content-Encoding header lines are equivalent to a single
   // comma-separated value listing the codings in the order they were applied
   // (RFC 7230 §3.2.2), so combine every line before decoding.
   let values = self.get_header_all("Content-Encoding")
-  if values.length() == 0 {
-    if raw.length() > limit {
-      return Err(NetworkError(ReadError("response body too large")))
-    }
-    return Ok(raw)
-  }
   let mut combined = ""
   for value in values.iter() {
     if combined.length() > 0 {
       combined = combined + ", "
     }
     combined = combined + value
+  }
+  let mut has_encoding = false
+  for token in combined.split(",") {
+    let token = token.trim().to_owned()
+    if token.length() > 0 && token.to_lower() != "identity" {
+      has_encoding = true
+    }
+  }
+  let raw = if has_encoding {
+    match self.read_body() {
+      Ok(body) => body
+      Err(err) => return Err(err)
+    }
+  } else {
+    match self.read_body_with_limit(limit) {
+      Ok(body) => body
+      Err(err) => return Err(err)
+    }
+  }
+  if raw.length() == 0 || !has_encoding {
+    return Ok(raw)
   }
   let decoded = match decode_encodings(combined, raw, limit) {
     Ok(decoded) => decoded
