@@ -261,6 +261,27 @@ test "SOCKS5 encodes IPv6 targets as binary addresses" {
   assert_eq(stream.output.to_bytes(), expected)
 }
 
+test "SOCKS5 builder normalizes bracketed IPv6 proxy and target hosts" {
+  let proxy = Proxy::new_socks5_with_auth(
+    "[2001:db8::1]",
+    1080,
+    "user",
+    "pass",
+  ).unwrap()
+  assert_eq(proxy.url.host, "2001:db8::1")
+  assert_true(proxy.url.bracketed)
+  assert_eq(proxy.authority(), "[2001:db8::1]:1080")
+  let output = Buffer(size_hint=20)
+  socks5_append_target(output, proxy.url.host, 443, proxy.url.bracketed).unwrap()
+  assert_eq(
+    output.to_bytes(),
+    socks5_test_bytes([
+      4, 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+      0x01, 0xbb,
+    ]),
+  )
+}
+
 test "SOCKS5 credentials are used by the client without adding proxy headers" {
   let server = Buffer(size_hint=128)
   server.write_bytes(socks5_test_bytes([5, 2]))

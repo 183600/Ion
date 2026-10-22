@@ -163,7 +163,19 @@ pub struct Url {
 } derive(Eq, Debug)
 
 pub fn Url::new(scheme : String, host : String, port : Int) -> Url {
-  Url::{ scheme, host, port, path: "/", query: "", fragment: "", bracketed: false }
+  // Constructors accept the same bracketed IP-literal spelling as parsed
+  // URLs. Normalize it to the stored representation so every consumer (SOCKS
+  // target encoding, certificate verification, cookie scoping, and pool keys)
+  // sees the same authority form as `Url::parse`.
+  let bracketed = host.length() >= 2 && host.has_prefix("[") &&
+    host.has_suffix("]") &&
+    is_ip_literal(host[1:host.length() - 1].to_owned())
+  let host = if bracketed {
+    host[1:host.length() - 1].to_owned()
+  } else {
+    host
+  }
+  Url::{ scheme, host, port, path: "/", query: "", fragment: "", bracketed }
 }
 
 fn find_char(str : String, target : Char) -> Int? {
