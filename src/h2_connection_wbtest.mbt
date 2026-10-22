@@ -693,3 +693,22 @@ test "http2 resets the request stream after an early response" {
     None => fail("unfinished HTTP/2 request stream was not reset")
   }
 }
+
+test "http2 closes a connection after a failed exchange" {
+  let reset = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_RST_STREAM, 0, 1, b"\x00\x00\x00\x08"),
+  ])
+  let stream = h2_frame_mock_stream(reset, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match connection.request(request) {
+    Ok(_) => fail("HTTP/2 reset exchange was accepted")
+    Err(err) => assert_eq(err, ProtocolError("HTTP/2 stream reset by server"))
+  }
+  assert_false(connection.is_open())
+  match connection.request(request) {
+    Ok(_) => fail("failed HTTP/2 connection was reused")
+    Err(err) => assert_eq(err, ConnectionClosed)
+  }
+}

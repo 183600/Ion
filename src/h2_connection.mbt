@@ -738,6 +738,7 @@ pub fn H2ClientConnection::request_with_limit(
   }
   let stream_id = self.next_stream_id
   if stream_id < 1 || stream_id > H2_MAX_WINDOW_SIZE {
+    self.closed = true
     return Err(ProtocolError("HTTP/2 stream id exhausted"))
   }
   let block = hpack_encode(headers)
@@ -750,12 +751,21 @@ pub fn H2ClientConnection::request_with_limit(
   self.flow.stream_send_window = self.flow.peer_initial_window
   match h2_write_header_block(self.stream, stream_id, block, end_stream) {
     Ok(_) => ()
-    Err(err) => return Err(err)
+    Err(err) => {
+      self.closed = true
+      return Err(err)
+    }
   }
+  // Stream ids are never reused. Advancing here also prevents a failed
+  // exchange from sending another HEADERS frame on the same stream.
+  self.next_stream_id = stream_id + 2
   // Make the request visible to the peer before blocking on the response.
   match self.stream.flush() {
     Ok(_) => ()
-    Err(err) => return Err(http_error_from_net(err))
+    Err(err) => {
+      self.closed = true
+      return Err(http_error_from_net(err))
+    }
   }
 
   let state = H2ResponseState::new(
@@ -775,14 +785,15 @@ pub fn H2ClientConnection::request_with_limit(
     if available <= 0 {
       let frame = match h2_read_frame(self.reader) {
         Ok(frame) => frame
-        Err(err) => return Err(err)
+        Err(err) => {
+          self.closed = true
+          return Err(err)
+        }
       }
       match state.handle_frame(frame, flow, self.stream) {
         Ok(_) => ()
         Err(err) => {
-          if state.goaway_last_stream_id is Some(_) {
-            self.closed = true
-          }
+          self.closed = true
           return Err(err)
         }
       }
@@ -801,13 +812,19 @@ pub fn H2ClientConnection::request_with_limit(
       body.exact_view(start=sent, end=sent + take).to_owned(),
     ) {
       Ok(_) => ()
-      Err(err) => return Err(err)
+      Err(err) => {
+        self.closed = true
+        return Err(err)
+      }
     }
     // Flush each body frame before the loop may block waiting for a window
     // update or a response frame.
     match self.stream.flush() {
       Ok(_) => ()
-      Err(err) => return Err(http_error_from_net(err))
+      Err(err) => {
+        self.closed = true
+        return Err(http_error_from_net(err))
+      }
     }
     sent = sent + take
     flow.connection_send_window = flow.connection_send_window - take
@@ -817,14 +834,15 @@ pub fn H2ClientConnection::request_with_limit(
   while !state.ended {
     let frame = match h2_read_frame(self.reader) {
       Ok(frame) => frame
-      Err(err) => return Err(err)
+      Err(err) => {
+        self.closed = true
+        return Err(err)
+      }
     }
     match state.handle_frame(frame, flow, self.stream) {
       Ok(_) => ()
       Err(err) => {
-        if state.goaway_last_stream_id is Some(_) {
-          self.closed = true
-        }
+        self.closed = true
         return Err(err)
       }
     }
@@ -846,13 +864,15 @@ pub fn H2ClientConnection::request_with_limit(
   }
   match self.stream.flush() {
     Ok(_) => ()
-    Err(err) => return Err(http_error_from_net(err))
+    Err(err) => {
+      self.closed = true
+      return Err(http_error_from_net(err))
+    }
   }
   if state.goaway_last_stream_id is Some(_) {
     // The peer will not accept another stream on this connection.
     self.closed = true
   }
-  self.next_stream_id = stream_id + 2
   Ok(h2_make_response(state))
 }
 
