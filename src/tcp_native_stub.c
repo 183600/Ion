@@ -39,29 +39,39 @@ int32_t feather_read_file(moonbit_bytes_t path, moonbit_bytes_t output, int32_t 
   if (file == NULL) {
     return -errno;
   }
-  if (fseek(file, 0, SEEK_END) != 0) {
-    int error = errno;
-    fclose(file);
-    return -error;
+  // Read until EOF instead of seeking: CA bundles and keys can come from
+  // FIFOs, process substitution, or /dev/stdin, which are not seekable.
+  size_t total = 0;
+  while (total < (size_t)capacity) {
+    size_t wanted = (size_t)capacity - total;
+    size_t got = fread(output + total, 1, wanted, file);
+    total += got;
+    if (got < wanted) {
+      if (ferror(file)) {
+        fclose(file);
+        return -EIO;
+      }
+      if (feof(file)) {
+        fclose(file);
+        return (int32_t)total;
+      }
+      if (got == 0) {
+        fclose(file);
+        return -EIO;
+      }
+    }
   }
-  long size = ftell(file);
-  if (size < 0) {
-    int error = errno;
-    fclose(file);
-    return -error;
-  }
-  if (size > capacity) {
+  int extra = fgetc(file);
+  if (extra != EOF) {
     fclose(file);
     return -ENOSPC;
   }
-  rewind(file);
-  size_t read = fread(output, 1, (size_t)size, file);
-  int error = ferror(file);
-  fclose(file);
-  if (error) {
+  if (ferror(file)) {
+    fclose(file);
     return -EIO;
   }
-  return (int32_t)read;
+  fclose(file);
+  return (int32_t)total;
 }
 
 static int feather_set_timeout(int fd, int32_t timeout_ms) {
