@@ -136,6 +136,26 @@ test "non-secure origins cannot overwrite Secure cookies" {
 }
 
 ///|
+test "host-only changes cannot bypass Secure cookie protection" {
+  let jar = CookieJar::new()
+  let secure = cookie_test_url("https://example.com/")
+  let plain = cookie_test_url("http://example.com/")
+  // A domain-scoped Secure cookie...
+  jar.store_at(secure, "token=secret; Secure; Domain=example.com; Path=/", 1000)
+  // ...must still block a non-secure host-only cookie in the same slot.
+  jar.store_at(plain, "token=attacker; Path=/", 1000)
+  assert_eq(jar.cookie_header_at(secure, 1000), Some("token=secret"))
+  assert_eq(jar.length(), 1)
+
+  let jar = CookieJar::new()
+  // The reverse direction: a host-only Secure cookie blocks a domain cookie.
+  jar.store_at(secure, "token=secret; Secure; Path=/", 1000)
+  jar.store_at(plain, "token=attacker; Domain=example.com; Path=/", 1000)
+  assert_eq(jar.cookie_header_at(secure, 1000), Some("token=secret"))
+  assert_eq(jar.length(), 1)
+}
+
+///|
 test "expired Secure cookies can be replaced from non-secure origins" {
   let jar = CookieJar::new()
   let secure = cookie_test_url("https://example.com/")

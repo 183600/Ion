@@ -171,6 +171,14 @@ fn cookie_same_identity(a : Cookie, b : Cookie) -> Bool {
   a.host_only == b.host_only
 }
 
+/// Whether two cookies occupy the same name/domain/path slot. The secure
+/// overwrite rule intentionally ignores the host-only flag: a non-secure
+/// origin must not be able to shadow a Secure cookie by flipping how it was
+/// scoped.
+fn cookie_same_scope(a : Cookie, b : Cookie) -> Bool {
+  a.name == b.name && a.domain == b.domain && a.path == b.path
+}
+
 ///|
 fn cookie_expired(cookie : Cookie, now_ms : UInt64) -> Bool {
   match cookie.expires_at_ms {
@@ -771,7 +779,7 @@ fn CookieJar::store_parsed(
   if !from_secure {
     for existing in self.cookies {
       if existing.secure && !cookie_expired(existing, now_ms) &&
-        cookie_same_identity(existing, cookie) {
+        cookie_same_scope(existing, cookie) {
         return
       }
     }
