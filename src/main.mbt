@@ -65,13 +65,25 @@ pub impl KeyLogSink for PrintKeyLogSink with fn log(
 /// Read a whole file as bytes, returning None when it cannot be read.
 #cfg(target="native")
 fn read_file(path : String) -> Bytes? {
-  let capacity = 4 * 1024 * 1024
-  let output = Bytes::new(capacity)
-  let length = feather_read_file(@utf8.encode(path), output, capacity)
-  if length < 0 {
-    return None
+  let initial_capacity = 4 * 1024 * 1024
+  let max_capacity = 64 * 1024 * 1024
+  // ENOSPC is 28 on both Linux and macOS. Grow the buffer instead of
+  // rejecting a valid CA bundle or client key solely because it is large.
+  let enospc = -28
+  let mut capacity = initial_capacity
+  while true {
+    let output = Bytes::new(capacity)
+    let length = feather_read_file(@utf8.encode(path), output, capacity)
+    if length >= 0 {
+      return Some(output.exact_view(start=0, end=length).to_owned())
+    }
+    if length != enospc || capacity >= max_capacity {
+      return None
+    }
+    let doubled = capacity * 2
+    capacity = if doubled > max_capacity { max_capacity } else { doubled }
   }
-  Some(output.exact_view(start=0, end=length).to_owned())
+  None
 }
 
 #cfg(not(target="native"))
