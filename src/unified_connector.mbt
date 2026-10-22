@@ -462,8 +462,8 @@ pub fn Connector::with_tls_config(self : Connector, config : TlsConfig) -> Conne
   }
 }
 
-/// Route every request through an HTTP proxy. Existing pooled connections were
-/// made directly, so they are closed and cannot be reused.
+/// Route every request through an HTTP(S) or SOCKS5 proxy. Existing pooled
+/// connections were made directly, so they are closed and cannot be reused.
 pub fn Connector::with_proxy(self : Connector, proxy : Proxy) -> Connector {
   let pool = @ref.Ref(self.pool.val.empty_with_settings())
   let _ = self.close_all()

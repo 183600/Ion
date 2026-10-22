@@ -37,7 +37,7 @@ fn print_usage() -> Unit {
   println("Usage: feather <url>                          send a GET request")
   println("       feather <method> <url> [body]          send a request with the given method")
   println("       FEATHER_URL=<url> feather              send a GET request to FEATHER_URL")
-  println("       FEATHER_PROXY=<url> feather            route requests through an HTTP proxy")
+  println("       FEATHER_PROXY=<url> feather            route through an HTTP(S) or SOCKS5 proxy")
   println("       FEATHER_NO_PROXY=<list> feather        comma-separated hosts to reach directly")
   println("       HTTPS_PROXY/http_proxy/NO_PROXY        standard proxy variables used when FEATHER_PROXY is unset")
   println("       FEATHER_CA=<pem file> feather          trust an extra CA certificate bundle")

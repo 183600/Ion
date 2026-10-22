@@ -240,3 +240,48 @@ test "SOCKS5 routes HTTPS through the tunnel before TLS" {
   assert_true(wire.contains("GET /secure HTTP/1.1\r\n"))
   assert_false(wire.contains("CONNECT "))
 }
+
+test "SOCKS5 encodes IPv6 targets as binary addresses" {
+  let server = Buffer(size_hint=24)
+  server.write_bytes(socks5_test_bytes([5, 0, 5, 0, 0, 4]))
+  let mut index = 0
+  while index < 18 {
+    server.write_byte(0)
+    index = index + 1
+  }
+  let stream = socks5_test_stream(server.to_bytes(), 0)
+  let _ = socks5_connect(stream, "2001:db8::1", 443, true, None).unwrap()
+  let expected = socks5_test_bytes([
+    5, 1, 0,
+    5, 1, 0, 4,
+    0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    0x01, 0xbb,
+  ])
+  assert_eq(stream.output.to_bytes(), expected)
+}
+
+test "SOCKS5 credentials are used by the client without adding proxy headers" {
+  let server = Buffer(size_hint=128)
+  server.write_bytes(socks5_test_bytes([5, 2]))
+  server.write_bytes(socks5_test_bytes([1, 0]))
+  server.write_bytes(socks5_test_bytes([5, 0, 0, 1, 127, 0, 0, 1, 0, 80]))
+  server.write_bytes(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+  let stream = socks5_test_stream(server.to_bytes(), 0)
+  let dialer = RegressionProxyDialer::{ stream, host: "", port: 0 }
+  let proxy = Proxy::new_socks5("socks5://user:pass@proxy.example:1080").unwrap()
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+    .with_proxy(proxy)
+    .with_http2(false)
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new().with_follow_redirects(false),
+    redirect_count: 0,
+  }
+  let response = client.get("http://origin.example/").unwrap()
+  assert_eq(response.read_body().unwrap(), b"ok")
+  let wire = @utf8.decode_lossy(stream.output.to_bytes())
+  assert_true(wire.contains("user"))
+  assert_true(wire.contains("pass"))
+  assert_false(wire.contains("Proxy-Authorization"))
+  assert_true(wire.contains("GET / HTTP/1.1\r\n"))
+}

@@ -311,9 +311,9 @@ pub fn UnifiedClient::with_tls_config(
 }
 
 /// Route HTTP requests through a forward proxy and tunnel HTTPS requests with
-/// `CONNECT`. Connections made directly under the previous routing cannot be
-/// reused, so the derived client gets a fresh pool; the source client's pool
-/// is left untouched.
+/// `CONNECT` (or route both schemes through a SOCKS5 proxy). Connections made
+/// under the previous routing cannot be reused, so the derived client gets a
+/// fresh pool; the source client's pool is left untouched.
 pub fn UnifiedClient::with_proxy(self : UnifiedClient, proxy : Proxy) -> UnifiedClient {
   UnifiedClient::{
     connector: self.connector.detached().with_proxy(proxy),
