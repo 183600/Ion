@@ -42,13 +42,16 @@ fn inflate_error(message : String) -> HttpError {
 }
 
 struct BitReader {
-  data : Bytes
+  // A view avoids copying the remaining gzip payload once per member. This is
+  // important for concatenated members: materializing `data[cursor:]` for each
+  // one would make decoding quadratic in the input size.
+  data : BytesView
   mut pos : Int
   mut bit_buf : Int
   mut bit_count : Int
 }
 
-fn BitReader::new(data : Bytes) -> BitReader {
+fn BitReader::new(data : BytesView) -> BitReader {
   BitReader::{ data, pos: 0, bit_buf: 0, bit_count: 0 }
 }
 
@@ -424,12 +427,12 @@ fn inflate_stored(
 /// Inflate a raw DEFLATE stream (no zlib/gzip wrapper) and report how many
 /// input bytes were consumed. Decoding stops at the end of the final block, so
 /// trailing bytes (e.g. the next gzip member) are left untouched.
-fn inflate_raw_consume(data : Bytes, max_bytes : Int) -> Result[(Bytes, Int), HttpError] {
+fn inflate_raw_consume(data : BytesView, max_bytes : Int) -> Result[(Bytes, Int), HttpError] {
   inflate_raw_consume_with_window(data, max_bytes, 32768)
 }
 
 fn inflate_raw_consume_with_window(
-  data : Bytes,
+  data : BytesView,
   max_bytes : Int,
   max_distance : Int,
 ) -> Result[(Bytes, Int), HttpError] {
@@ -483,7 +486,7 @@ fn inflate_raw_consume_with_window(
 }
 
 /// Inflate a raw DEFLATE stream (no zlib/gzip wrapper).
-fn inflate_raw(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
+fn inflate_raw(data : BytesView, max_bytes : Int) -> Result[Bytes, HttpError] {
   match inflate_raw_consume(data, max_bytes) {
     Ok((bytes, _)) => Ok(bytes)
     Err(err) => Err(err)
@@ -531,7 +534,7 @@ fn read_le32(data : Bytes, offset : Int) -> Int {
   b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
 }
 
-fn read_be32(data : Bytes, offset : Int) -> Int {
+fn read_be32(data : BytesView, offset : Int) -> Int {
   let b0 = data[offset].to_int()
   let b1 = data[offset + 1].to_int()
   let b2 = data[offset + 2].to_int()
@@ -570,7 +573,7 @@ fn inflate_zlib_body(data : Bytes, max_bytes : Int) -> Result[(Bytes, Int), Http
   if (flg & 0x20) != 0 {
     return Err(inflate_error("preset dictionary is not supported"))
   }
-  let body = data[2:].to_bytes()
+  let body = data.exact_view(start=2)
   // The DEFLATE stream does not declare its length, so decode it and use the
   // number of consumed bytes to locate the 4-byte Adler-32 trailer. Reading it
   // from the end of the input would be wrong whenever trailing bytes follow the
@@ -584,7 +587,7 @@ fn verify_zlib_trailer(
   inflated : Bytes,
   consumed : Int,
 ) -> Result[Unit, HttpError] {
-  let body = data[2:].to_bytes()
+  let body = data.exact_view(start=2)
   let expected = adler32(inflated)
   if consumed + 4 > body.length() {
     return Err(inflate_error("missing zlib checksum"))
@@ -676,10 +679,12 @@ fn inflate_gzip(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
       return Err(inflate_error("truncated gzip body"))
     }
     // The DEFLATE stream does not declare its length, so decode it and use the
-    // number of consumed bytes to locate this member's trailer.
+    // number of consumed bytes to locate this member's trailer. Pass only the
+    // remaining output budget so a multi-member compression bomb cannot decode
+    // (and allocate) another full `max_bytes` before the cumulative check.
     let (inflated, consumed) = match inflate_raw_consume(
-      data[cursor:data.length()].to_bytes(),
-      max_bytes,
+      data.exact_view(start=cursor),
+      max_bytes - output.length(),
     ) {
       Ok(result) => result
       Err(err) => return Err(err)
