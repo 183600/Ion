@@ -147,6 +147,8 @@ pub fn H1Codec::new_with_completion(&Stream, (Bool) -> Unit) -> Self
 pub fn H1Codec::new_with_limit(&Stream, Int32) -> Self
 pub fn H1Codec::new_with_limit_and_completion(&Stream, Int32, (Bool) -> Unit) -> Self
 
+type H2Frame
+
 pub struct Header {
   name : String
   value : String
