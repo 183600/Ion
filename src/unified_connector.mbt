@@ -27,6 +27,15 @@ pub impl Stream for PrefixStream with fn read(self : PrefixStream, buf : Buffer)
   self.underlying.read(buf)
 }
 
+pub impl Stream for PrefixStream with fn set_body_limit(
+  self : PrefixStream,
+  limit : Int,
+) -> Unit {
+  if self.is_open {
+    self.underlying.set_body_limit(limit)
+  }
+}
+
 pub impl Stream for PrefixStream with fn read_ready(self : PrefixStream) -> Bool {
   if !self.is_open {
     return false

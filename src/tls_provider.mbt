@@ -76,6 +76,15 @@ pub impl Stream for TlsStream with fn read(self : TlsStream, buf : Buffer) -> Re
   self.underlying.read(buf)
 }
 
+pub impl Stream for TlsStream with fn set_body_limit(
+  self : TlsStream,
+  limit : Int,
+) -> Unit {
+  if self.is_open {
+    self.underlying.set_body_limit(limit)
+  }
+}
+
 pub impl Stream for TlsStream with fn read_ready(self : TlsStream) -> Bool {
   if !self.is_open {
     return false
