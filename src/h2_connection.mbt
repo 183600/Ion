@@ -732,6 +732,9 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
   if asterisk_form && request.method != OPTIONS {
     return Err(InvalidUrl("Asterisk-form is only valid for OPTIONS"))
   }
+  if asterisk_form && request.url.query.length() > 0 {
+    return Err(InvalidUrl("Asterisk-form cannot include a query"))
+  }
   let request_target = if asterisk_form {
     "*"
   } else {

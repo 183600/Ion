@@ -518,6 +518,9 @@ pub fn H1Codec::encode_request(
   if asterisk_form && req.method != OPTIONS {
     return Err(InvalidUrl("Asterisk-form is only valid for OPTIONS"))
   }
+  if asterisk_form && req.url.query.length() > 0 {
+    return Err(InvalidUrl("Asterisk-form cannot include a query"))
+  }
   let target = if asterisk_form {
     "*"
   } else if absolute {

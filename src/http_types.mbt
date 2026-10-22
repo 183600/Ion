@@ -582,11 +582,7 @@ pub fn Url::is_secure(self : Url) -> Bool {
 }
 
 /// Origin-form request target: an absolute path plus an optional query.
-/// The special path `*` denotes the asterisk-form used by `OPTIONS *`.
-pub fn Url::request_target(self : Url) -> String {
-  if self.path == "*" {
-    return "*"
-  }
+fn Url::origin_form_target(self : Url) -> String {
   let path = if self.path.length() == 0 {
     "/"
   } else if self.path.has_prefix("/") {
@@ -599,6 +595,16 @@ pub fn Url::request_target(self : Url) -> String {
   } else {
     path
   }
+}
+
+/// Request target: origin-form, or the special `*` asterisk-form used by
+/// `OPTIONS *`. The asterisk-form is not a URL path, so `to_string` still
+/// serializes the represented path as `/*`.
+pub fn Url::request_target(self : Url) -> String {
+  if self.path == "*" {
+    return "*"
+  }
+  self.origin_form_target()
 }
 
 /// Remove dot segments from a path and preserve its query/fragment suffix.
@@ -738,7 +744,7 @@ pub fn Url::with_fragment(self : Url, fragment : String) -> Url {
 }
 
 pub fn Url::to_string(self : Url) -> String {
-  let base = self.origin() + self.request_target()
+  let base = self.origin() + self.origin_form_target()
   if self.fragment.length() > 0 {
     base + "#" + self.fragment
   } else {
