@@ -564,16 +564,43 @@ int32_t feather_tcp_resolve(moonbit_bytes_t host, moonbit_bytes_t output, int32_
   char *buffer = (char *)output;
   int32_t offset = 0;
   for (struct addrinfo *entry = result; entry != NULL; entry = entry->ai_next) {
-    char text[INET6_ADDRSTRLEN];
+    char text[INET6_ADDRSTRLEN + 32];
     const void *address = NULL;
+    unsigned int scope_id = 0;
     if (entry->ai_family == AF_INET) {
       address = &((struct sockaddr_in *)entry->ai_addr)->sin_addr;
     } else if (entry->ai_family == AF_INET6) {
-      address = &((struct sockaddr_in6 *)entry->ai_addr)->sin6_addr;
+      struct sockaddr_in6 *inet6 = (struct sockaddr_in6 *)entry->ai_addr;
+      address = &inet6->sin6_addr;
+      scope_id = inet6->sin6_scope_id;
     } else {
       continue;
     }
     if (inet_ntop(entry->ai_family, address, text, sizeof(text)) == NULL) {
+      continue;
+    }
+    // Keep the numeric scope id with link-local addresses, matching the
+    // peer/local address formatting. A resolved address without its zone
+    // cannot be fed back to a dialer on the right interface.
+    if (scope_id != 0) {
+      char scoped[INET6_ADDRSTRLEN + 32];
+      int written = snprintf(
+        scoped,
+        sizeof(scoped),
+        "%s%%%u",
+        text,
+        scope_id
+      );
+      if (written < 0 || written >= (int)sizeof(scoped)) {
+        freeaddrinfo(result);
+        return -EIO;
+      }
+      int next = feather_append_address(buffer, capacity, offset, scoped);
+      if (next < 0) {
+        freeaddrinfo(result);
+        return next;
+      }
+      offset = next;
       continue;
     }
     int next = feather_append_address(buffer, capacity, offset, text);

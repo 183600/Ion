@@ -17,6 +17,17 @@ test "native dialer resolves local hostnames" {
 
 ///|
 #cfg(target="native")
+test "native resolver retains IPv6 scope ids" {
+  let dialer = NativeTcpDialer::new()
+  let addresses = dialer.resolve("fe80::1%1").unwrap()
+  assert_true(addresses.length() > 0)
+  let first = addresses.nth(0).unwrap()
+  assert_true(first == "fe80::1%1" || first.has_prefix("fe80::1%"))
+  assert_true(first.contains("%1"))
+}
+
+///|
+#cfg(target="native")
 test "native streams reject invalid targets without dialing" {
   let invalid_host = NativeTcpStream::new("bad host", 80)
   assert_true(invalid_host.open() is Err(InvalidAddress(_)))
