@@ -577,12 +577,16 @@ pub fn Url::origin(self : Url) -> String {
   self.scheme.to_lower() + "://" + self.authority()
 }
 
-/// Origin-form request target: an absolute path plus an optional query.
 pub fn Url::is_secure(self : Url) -> Bool {
   self.scheme.to_lower() == "https"
 }
 
+/// Origin-form request target: an absolute path plus an optional query.
+/// The special path `*` denotes the asterisk-form used by `OPTIONS *`.
 pub fn Url::request_target(self : Url) -> String {
+  if self.path == "*" {
+    return "*"
+  }
   let path = if self.path.length() == 0 {
     "/"
   } else if self.path.has_prefix("/") {

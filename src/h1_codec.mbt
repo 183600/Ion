@@ -514,7 +514,13 @@ pub fn H1Codec::encode_request(
     return Err(InvalidUrl("Invalid request target"))
   }
   let absolute = absolute_form.unwrap_or(false) && req.url.scheme.to_lower() == "http"
-  let target = if absolute {
+  let asterisk_form = req.url.path == "*"
+  if asterisk_form && req.method != OPTIONS {
+    return Err(InvalidUrl("Asterisk-form is only valid for OPTIONS"))
+  }
+  let target = if asterisk_form {
+    "*"
+  } else if absolute {
     req.url.origin() + req.url.request_target()
   } else {
     req.url.request_target()

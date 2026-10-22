@@ -714,6 +714,15 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
   if !valid_host(request.url.authority()) {
     return Err(InvalidUrl("Invalid host"))
   }
+  let asterisk_form = request.url.path == "*"
+  if asterisk_form && request.method != OPTIONS {
+    return Err(InvalidUrl("Asterisk-form is only valid for OPTIONS"))
+  }
+  let request_target = if asterisk_form {
+    "*"
+  } else {
+    request.url.request_target()
+  }
   let connection_nominated = h2_connection_nominated_names(request.headers)
   let content_length_nominated = h2_name_in_array(
     connection_nominated,
@@ -744,7 +753,7 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
     (":method", request.method.to_string()),
     (":scheme", request.url.scheme.to_lower()),
     (":authority", request.url.authority()),
-    (":path", request.url.request_target()),
+    (":path", request_target),
   ]
   if (request.body is Some(_) || method_defines_body(request.method)) &&
     content_lengths.length() == 0 && !content_length_nominated {
