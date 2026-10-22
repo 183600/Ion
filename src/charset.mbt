@@ -3,25 +3,122 @@
 /// permissive behaviour clients need when talking to misconfigured servers.
 
 fn charset_parameter(value : String) -> String? {
-  for part in value.split(";") {
-    let part = part.trim()
-    let equals = match part.find("=") {
-      Some(index) => index
-      None => continue
+  let length = value.length()
+  let mut index = 0
+  while index < length {
+    // Skip separators and optional whitespace before the next parameter.
+    while index < length {
+      match value.get_char(index) {
+        Some(ch) => if ch == ';' || ch == ' ' || ch == '\t' {
+          index = index + 1
+        } else {
+          break
+        }
+        None => return None
+      }
     }
-    let name = part[0:equals].trim().to_lower()
-    if name != "charset" {
+    if index >= length {
+      break
+    }
+    let name_start = index
+    while index < length {
+      match value.get_char(index) {
+        Some(ch) => if ch == '=' || ch == ';' {
+          break
+        } else {
+          index = index + 1
+        }
+        None => return None
+      }
+    }
+    if index >= length {
+      break
+    }
+    let name = value[name_start:index].trim().to_lower()
+    if value.get_char(index) == Some(';') {
+      // A parameter without a value supplies nothing for `charset`.
       continue
     }
-    let value = part[equals + 1:].trim()
-    if value.length() == 0 {
-      return None
+    // Consume `=` and the optional whitespace after it.
+    index = index + 1
+    while index < length {
+      match value.get_char(index) {
+        Some(ch) => if ch == ' ' || ch == '\t' {
+          index = index + 1
+        } else {
+          break
+        }
+        None => return None
+      }
     }
-    if value.length() >= 2 && value.get_char(0) == Some('"') &&
-      value.get_char(value.length() - 1) == Some('"') {
-      return Some(value[1:value.length() - 1].to_owned())
+    let mut parsed = ""
+    let mut malformed = false
+    if index < length && value.get_char(index) == Some('"') {
+      // Quoted values may contain semicolons; only the closing quote ends the
+      // value. Honor quoted-pair escapes so an escaped quote cannot terminate
+      // the string early.
+      index = index + 1
+      let output = Buffer(size_hint=length - index)
+      let mut closed = false
+      while index < length {
+        let ch = match value.get_char(index) {
+          Some(ch) => ch
+          None => return None
+        }
+        if ch == '"' {
+          index = index + 1
+          closed = true
+          break
+        }
+        if ch == '\\' {
+          index = index + 1
+          if index >= length {
+            break
+          }
+          let escaped = match value.get_char(index) {
+            Some(ch) => ch
+            None => return None
+          }
+          output.write_char_utf8(escaped)
+          index = index + 1
+        } else {
+          output.write_char_utf8(ch)
+          index = index + 1
+        }
+      }
+      if closed {
+        parsed = @utf8.decode_lossy(output.to_bytes()[:])
+      } else {
+        malformed = true
+      }
+    } else {
+      let value_start = index
+      while index < length {
+        match value.get_char(index) {
+          Some(ch) => if ch == ';' {
+            break
+          } else {
+            index = index + 1
+          }
+          None => return None
+        }
+      }
+      parsed = value[value_start:index].trim().to_owned()
     }
-    return Some(value.to_owned())
+    if name == "charset" {
+      if malformed || parsed.length() == 0 {
+        return None
+      }
+      return Some(parsed)
+    }
+    if malformed {
+      break
+    }
+    // A quoted value may be followed by more text (normally only OWS) before
+    // the next semicolon; skip it rather than parsing it as a new attribute.
+    while index < length && value.get_char(index) != Some(';') {
+      index = index + 1
+    }
   }
   None
 }

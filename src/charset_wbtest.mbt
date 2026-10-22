@@ -124,3 +124,21 @@ test "charset parsing ignores other parameters and empty values" {
   )
   assert_eq(no_header.charset(), None)
 }
+
+test "charset parameter ignores charset text inside quoted parameters" {
+  let response = charset_text_response(
+    "text/plain; boundary=\"x;charset=utf-8\"; charset=iso-8859-1",
+    charset_test_bytes([0x68, 0xE9, 0x6C, 0x6C, 0x6F]),
+  )
+  assert_eq(response.charset(), Some("iso-8859-1"))
+  assert_eq(response.text().unwrap(), "h\u{e9}llo")
+}
+
+test "quoted charset values honor quoted-pair escapes" {
+  let response = charset_text_response(
+    "text/plain; charset=\"iso\\-8859-1\"",
+    charset_test_bytes([0x68, 0xE9, 0x6C, 0x6C, 0x6F]),
+  )
+  assert_eq(response.charset(), Some("iso-8859-1"))
+  assert_eq(response.text().unwrap(), "h\u{e9}llo")
+}
