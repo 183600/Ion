@@ -14,7 +14,8 @@ fn charset_parameter(value : String) -> String? {
         } else {
           break
         }
-        None => return None
+        // Low surrogate of an astral scalar; it is not a delimiter.
+        None => index = index + 1
       }
     }
     if index >= length {
@@ -28,7 +29,7 @@ fn charset_parameter(value : String) -> String? {
         } else {
           index = index + 1
         }
-        None => return None
+        None => index = index + 1
       }
     }
     if index >= length {
@@ -48,7 +49,7 @@ fn charset_parameter(value : String) -> String? {
         } else {
           break
         }
-        None => return None
+        None => index = index + 1
       }
     }
     let mut parsed = ""
@@ -56,34 +57,41 @@ fn charset_parameter(value : String) -> String? {
     if index < length && value.get_char(index) == Some('"') {
       // Quoted values may contain semicolons; only the closing quote ends the
       // value. Honor quoted-pair escapes so an escaped quote cannot terminate
-      // the string early.
+      // the string early. Copy unescaped runs as slices so astral scalars are
+      // preserved even though `get_char` reports their low surrogate as None.
       index = index + 1
       let output = Buffer(size_hint=length - index)
+      let mut segment_start = index
       let mut closed = false
       while index < length {
-        let ch = match value.get_char(index) {
-          Some(ch) => ch
-          None => return None
-        }
-        if ch == '"' {
-          index = index + 1
-          closed = true
-          break
-        }
-        if ch == '\\' {
-          index = index + 1
-          if index >= length {
+        match value.get_char(index) {
+          Some('"') => {
+            output.write_bytes(@utf8.encode(value[segment_start:index]))
+            index = index + 1
+            closed = true
             break
           }
-          let escaped = match value.get_char(index) {
-            Some(ch) => ch
-            None => return None
+          Some('\\') => {
+            output.write_bytes(@utf8.encode(value[segment_start:index]))
+            index = index + 1
+            if index >= length {
+              break
+            }
+            match value.get_char(index) {
+              Some(ch) => {
+                output.write_char_utf8(ch)
+                index = index + 1
+                // An astral scalar occupies two UTF-16 code units; the low
+                // surrogate was already written with the scalar.
+                if index < length && value.get_char(index) == None {
+                  index = index + 1
+                }
+              }
+              None => index = index + 1
+            }
+            segment_start = index
           }
-          output.write_char_utf8(escaped)
-          index = index + 1
-        } else {
-          output.write_char_utf8(ch)
-          index = index + 1
+          _ => index = index + 1
         }
       }
       if closed {
@@ -100,7 +108,7 @@ fn charset_parameter(value : String) -> String? {
           } else {
             index = index + 1
           }
-          None => return None
+          None => index = index + 1
         }
       }
       parsed = value[value_start:index].trim().to_owned()

@@ -142,3 +142,12 @@ test "quoted charset values honor quoted-pair escapes" {
   assert_eq(response.charset(), Some("iso-8859-1"))
   assert_eq(response.text().unwrap(), "h\u{e9}llo")
 }
+
+test "astral text in an earlier quoted parameter does not hide charset" {
+  let response = charset_text_response(
+    "text/plain; boundary=\"\u{1f642};charset=utf-8\"; charset=iso-8859-1",
+    charset_test_bytes([0x68, 0xE9, 0x6C, 0x6C, 0x6F]),
+  )
+  assert_eq(response.charset(), Some("iso-8859-1"))
+  assert_eq(response.text().unwrap(), "h\u{e9}llo")
+}
