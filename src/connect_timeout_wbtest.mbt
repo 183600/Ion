@@ -74,3 +74,114 @@ test "connector reapplies the request timeout when reusing a pooled stream" {
   assert_eq(stream.last_timeout, 9000)
   let _ = connector.close_all()
 }
+
+struct FailingTimeoutStream {
+  mut is_open : Bool
+  fail_timeout : Int
+}
+
+impl Stream for FailingTimeoutStream with fn read(
+  self : FailingTimeoutStream,
+  buf : Buffer,
+) -> Result[Int, NetError] {
+  let _ = self
+  let _ = buf
+  Ok(0)
+}
+
+impl Stream for FailingTimeoutStream with fn write(
+  self : FailingTimeoutStream,
+  buf : Buffer,
+) -> Result[Int, NetError] {
+  let _ = self
+  Ok(buf.length())
+}
+
+impl Stream for FailingTimeoutStream with fn flush(
+  self : FailingTimeoutStream,
+) -> Result[Unit, NetError] {
+  let _ = self
+  Ok(())
+}
+
+impl Stream for FailingTimeoutStream with fn close(
+  self : FailingTimeoutStream,
+) -> Result[Unit, NetError] {
+  self.is_open = false
+  Ok(())
+}
+
+impl Stream for FailingTimeoutStream with fn set_timeout(
+  self : FailingTimeoutStream,
+  timeout_ms : Int,
+) -> Result[Unit, NetError] {
+  if timeout_ms == self.fail_timeout {
+    Err(NetError::Timeout)
+  } else {
+    Ok(())
+  }
+}
+
+impl Stream for FailingTimeoutStream with fn peer_addr(
+  self : FailingTimeoutStream,
+) -> Result[String, NetError] {
+  if self.is_open {
+    Ok("mock:0")
+  } else {
+    Err(NetError::Closed)
+  }
+}
+
+impl Stream for FailingTimeoutStream with fn local_addr(
+  self : FailingTimeoutStream,
+) -> Result[String, NetError] {
+  if self.is_open {
+    Ok("mock:0")
+  } else {
+    Err(NetError::Closed)
+  }
+}
+
+struct FailingTimeoutDialer {
+  stream : FailingTimeoutStream
+  mut dials : Int
+}
+
+impl Dialer for FailingTimeoutDialer with fn dial_tcp(
+  self : FailingTimeoutDialer,
+  host : String,
+  port : Int,
+) -> Result[&Stream, NetError] {
+  let _ = host
+  let _ = port
+  self.dials = self.dials + 1
+  self.stream.is_open = true
+  Ok(self.stream)
+}
+
+impl Dialer for FailingTimeoutDialer with fn resolve(
+  self : FailingTimeoutDialer,
+  host : String,
+) -> Result[List[String], NetError] {
+  let _ = self
+  Ok(@list.List([host]))
+}
+
+test "connect does not pool a stream whose timeout update failed" {
+  let dialer = FailingTimeoutDialer::{
+    stream: FailingTimeoutStream::{ is_open: false, fail_timeout: 5000 },
+    dials: 0,
+  }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+    .with_timeout(5000)
+    .with_connect_timeout(200)
+  let url = Url::parse("http://example.com/").unwrap()
+  match connector.connect(url) {
+    Ok(_) => fail("connect accepted a stream whose timeout update failed")
+    Err(err) => assert_eq(err, Timeout)
+  }
+  assert_eq(dialer.dials, 1)
+  assert_false(dialer.stream.is_open)
+  let key = connector.connection_key(url)
+  assert_true(connector.pool.val.idle.get(key) is None)
+}
