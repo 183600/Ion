@@ -58,7 +58,10 @@ test "transfer coding lists ignore commas inside quoted parameters" {
   let not_final = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked;foo=\"a,b\", gzip\r\n\r\n5\r\nhello\r\n0\r\n\r\n"
   let codec = H1Codec::new(regression_mock_stream(not_final, 4096, 4096))
   let response = codec.decode_response().unwrap()
-  assert_true(response.read_body() is Err(NetworkError(ReadError(_))))
+  assert_eq(
+    response.read_body().unwrap(),
+    @utf8.encode("5\r\nhello\r\n0\r\n\r\n"),
+  )
 }
 
 ///|
@@ -97,7 +100,10 @@ test "chunked transfer coding parameters are recognized" {
   let not_final = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked;foo=bar, gzip\r\n\r\n5\r\nhello\r\n0\r\n\r\n"
   let codec = H1Codec::new(regression_mock_stream(not_final, 4096, 4096))
   let response = codec.decode_response().unwrap()
-  assert_true(response.read_body() is Err(NetworkError(ReadError(_))))
+  assert_eq(
+    response.read_body().unwrap(),
+    @utf8.encode("5\r\nhello\r\n0\r\n\r\n"),
+  )
 }
 
 ///|

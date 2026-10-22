@@ -1198,6 +1198,7 @@ fn response_transfer_encoding(
     return Ok(TransferEncodingAbsent)
   }
   let mut chunked_seen = false
+  let mut coding_after_chunked = false
   let mut coding_seen = false
   for value in values {
     for part in split_header_list(value) {
@@ -1209,18 +1210,23 @@ fn response_transfer_encoding(
       }
       coding_seen = true
       let token = transfer_coding_name(part)
-      if chunked_seen {
-        return Err(NetError::ReadError("invalid Transfer-Encoding"))
-      }
       if token == "chunked" {
+        if chunked_seen {
+          // Applying the chunked coding more than once is forbidden.
+          return Err(NetError::ReadError("invalid Transfer-Encoding"))
+        }
         chunked_seen = true
+      } else if chunked_seen {
+        // Another coding was applied after chunked, so the final coding is
+        // not chunked and the response is close-delimited (RFC 9112 §6.3).
+        coding_after_chunked = true
       }
     }
   }
   if !coding_seen {
     return Err(NetError::ReadError("invalid Transfer-Encoding"))
   }
-  if chunked_seen {
+  if chunked_seen && !coding_after_chunked {
     Ok(TransferEncodingChunked)
   } else {
     Ok(TransferEncodingUntilEof)
