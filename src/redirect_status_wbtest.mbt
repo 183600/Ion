@@ -10,6 +10,26 @@ test "300 multiple choices is a redirection" {
 }
 
 ///|
+test "is_redirection covers the whole 3xx class" {
+  for status in [300, 301, 302, 303, 304, 305, 307, 308, 399] {
+    let response = Response::new(
+      status,
+      Headers::new(),
+      regression_mock_stream("", 4096, 4096),
+    )
+    assert_true(response.is_redirection())
+  }
+  for status in [200, 299, 400, 500] {
+    let response = Response::new(
+      status,
+      Headers::new(),
+      regression_mock_stream("", 4096, 4096),
+    )
+    assert_false(response.is_redirection())
+  }
+}
+
+///|
 test "300 redirects without rewriting method or dropping the body" {
   assert_eq(redirect_method(300, POST), (POST, true))
   assert_eq(redirect_method(300, HEAD), (HEAD, true))

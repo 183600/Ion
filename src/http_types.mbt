@@ -1333,8 +1333,9 @@ pub fn Response::is_success(self : Response) -> Bool {
 }
 
 pub fn Response::is_redirection(self : Response) -> Bool {
-  self.status == 300 || self.status == 301 || self.status == 302 ||
-  self.status == 303 || self.status == 307 || self.status == 308
+  // All 3xx statuses are redirections; only a subset is followable by the
+  // client (see the redirect handling in `UnifiedClient`).
+  self.status >= 300 && self.status < 400
 }
 
 pub fn Response::is_client_error(self : Response) -> Bool {
