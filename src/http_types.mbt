@@ -1525,10 +1525,12 @@ pub fn Response::read_body_decoded_with_limit(
 }
 
 /// Whether the non-chunked transfer codings have to be decoded by the body
-/// reader. Only responses with `chunked` as the final coding are decoded here:
-/// the stream has already removed that framing, so the preceding codings are
-/// unambiguously available. A close-delimited response without final chunked
-/// framing is left as-is, matching the existing framing behavior.
+/// reader. When `chunked` is the final coding, the response stream has already
+/// removed that framing, so the preceding codings are unambiguously available.
+/// A response without any `chunked` coding is close-delimited, but its transfer
+/// codings still apply and must be undone. A message that puts `chunked` before
+/// another coding is left untouched: those bytes cannot be interpreted safely
+/// as either chunked framing or an opaque close-delimited payload.
 fn transfer_codings_need_decode(codings : Array[String]) -> Bool {
   let mut chunked_index = -1
   let mut index = 0
@@ -1541,7 +1543,7 @@ fn transfer_codings_need_decode(codings : Array[String]) -> Bool {
     }
     index = index + 1
   }
-  if chunked_index != codings.length() - 1 {
+  if chunked_index >= 0 && chunked_index != codings.length() - 1 {
     return false
   }
   for coding in codings {

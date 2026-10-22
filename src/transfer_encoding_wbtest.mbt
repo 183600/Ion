@@ -71,6 +71,53 @@ test "read_body_decoded rejects unsupported transfer codings" {
   }
 }
 
+test "read_body_decoded applies close-delimited transfer codings" {
+  let gzip_hello_world = Bytes::from_array([
+    31, 139, 8, 0, 0, 0, 0, 0, 2, 3, 203, 72, 205, 201, 201, 87, 40, 207, 47,
+    202, 73, 1, 0, 133, 17, 74, 13, 11, 0, 0, 0,
+  ])
+  let raw_stream = transfer_response_stream(
+    "HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\n\r\n",
+    gzip_hello_world,
+    "",
+  )
+  let raw_response = H1Codec::new(raw_stream).decode_response().unwrap()
+  assert_eq(raw_response.read_body().unwrap(), gzip_hello_world)
+
+  let stream = transfer_response_stream(
+    "HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\n\r\n",
+    gzip_hello_world,
+    "",
+  )
+  let response = H1Codec::new(stream).decode_response().unwrap()
+  assert_eq(response.read_body_decoded().unwrap(), b"hello world")
+
+  let deflate_hello = Bytes::from_array([
+    120, 218, 203, 72, 205, 201, 201, 7, 0, 6, 44, 2, 21,
+  ])
+  let stream = transfer_response_stream(
+    "HTTP/1.1 200 OK\r\nTransfer-Encoding: deflate\r\n\r\n",
+    deflate_hello,
+    "",
+  )
+  let response = H1Codec::new(stream).decode_response().unwrap()
+  assert_eq(response.read_body_decoded().unwrap(), b"hello")
+}
+
+test "read_body_decoded rejects an unsupported close-delimited transfer coding" {
+  let stream = transfer_response_stream(
+    "HTTP/1.1 200 OK\r\nTransfer-Encoding: compress\r\n\r\n",
+    @utf8.encode("hello"),
+    "",
+  )
+  let response = H1Codec::new(stream).decode_response().unwrap()
+  match response.read_body_decoded() {
+    Ok(_) => fail("unsupported close-delimited transfer coding was returned raw")
+    Err(err) =>
+      assert_eq(err, ProtocolError("unsupported Transfer-Encoding: compress"))
+  }
+}
+
 test "identity transfer coding before chunked leaves the body unchanged" {
   let stream = transfer_response_stream(
     "HTTP/1.1 200 OK\r\nTransfer-Encoding: identity, chunked\r\n\r\n5\r\n",

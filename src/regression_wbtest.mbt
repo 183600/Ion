@@ -563,8 +563,26 @@ test "chunk extensions must follow HTTP chunk extension syntax" {
 
 ///|
 test "non-chunked Transfer-Encoding ignores Content-Length" {
-  let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\nContent-Length: 5\r\n\r\nhello world"
-  let stream = regression_mock_stream(raw, 0, 0)
+  let gzip_hello_world = Bytes::from_array([
+    31, 139, 8, 0, 0, 0, 0, 0, 2, 3, 203, 72, 205, 201, 201, 87, 40, 207, 47,
+    202, 73, 1, 0, 133, 17, 74, 13, 11, 0, 0, 0,
+  ])
+  let input = Buffer(size_hint=128)
+  input.write_bytes(
+    @utf8.encode(
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\nContent-Length: 5\r\n\r\n",
+    ),
+  )
+  input.write_bytes(gzip_hello_world)
+  let stream = RegressionMockStream::{
+    input: input.to_bytes(),
+    offset: 0,
+    output: @buffer.new(size_hint=4096),
+    max_read: 0,
+    max_write: 0,
+    is_open: true,
+    last_timeout: 0,
+  }
   let completions : Array[Bool] = []
   let codec = H1Codec::new_with_completion(
     stream,
@@ -578,8 +596,26 @@ test "non-chunked Transfer-Encoding ignores Content-Length" {
 
 ///|
 test "non-chunked Transfer-Encoding with zero Content-Length is not completed early" {
-  let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\nContent-Length: 0\r\n\r\ndeferred"
-  let stream = regression_mock_stream(raw, 0, 0)
+  let gzip_deferred = Bytes::from_array([
+    31, 139, 8, 0, 0, 0, 0, 0, 2, 3, 75, 73, 77, 75, 45, 42, 74, 77, 1, 0, 154,
+    232, 100, 163, 8, 0, 0, 0,
+  ])
+  let input = Buffer(size_hint=128)
+  input.write_bytes(
+    @utf8.encode(
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\nContent-Length: 0\r\n\r\n",
+    ),
+  )
+  input.write_bytes(gzip_deferred)
+  let stream = RegressionMockStream::{
+    input: input.to_bytes(),
+    offset: 0,
+    output: @buffer.new(size_hint=4096),
+    max_read: 0,
+    max_write: 0,
+    is_open: true,
+    last_timeout: 0,
+  }
   let completions : Array[Bool] = []
   let codec = H1Codec::new_with_completion(
     stream,
