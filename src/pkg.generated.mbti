@@ -103,6 +103,7 @@ pub fn Connector::proxy_authorization_for(Self, Url) -> String?
 pub fn Connector::proxy_bypass(Self) -> Array[String]
 pub fn Connector::proxy_for_url(Self, Url) -> Proxy?
 pub fn Connector::store_cookies(Self, Url, Headers) -> Unit
+pub fn Connector::timeout(Self) -> Int32
 pub fn Connector::uses_absolute_form(Self, Url) -> Bool
 pub fn Connector::with_cookie_jar(Self, CookieJar) -> Self
 pub fn Connector::with_cookies(Self, Bool) -> Self

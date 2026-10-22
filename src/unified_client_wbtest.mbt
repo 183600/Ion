@@ -179,8 +179,8 @@ test "UnifiedClient exposes runtime option builders" {
 test "changing the client timeout also changes connection and handshake timeouts" {
   let client = UnifiedClient::new().with_timeout(1234)
   assert_eq(client.client_options().timeout_ms, 1234)
-  assert_eq(client.connector.timeout_ms, 1234)
+  assert_eq(client.connector.timeout(), 1234)
   let clamped = client.with_timeout(-1)
   assert_eq(clamped.client_options().timeout_ms, 0)
-  assert_eq(clamped.connector.timeout_ms, 0)
+  assert_eq(clamped.connector.timeout(), 0)
 }

@@ -377,6 +377,11 @@ pub fn Connector::with_timeout(self : Connector, timeout_ms : Int) -> Connector 
   Connector::{ ..self, timeout_ms }
 }
 
+/// The timeout applied to newly dialed connections and TLS handshakes.
+pub fn Connector::timeout(self : Connector) -> Int {
+  self.timeout_ms
+}
+
 /// Use a shared TLS configuration for every HTTPS connection.
 /// Existing pooled connections were established with the previous
 /// configuration, so they must not be reused.
