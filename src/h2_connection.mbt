@@ -150,7 +150,7 @@ fn h2_valid_field_value(value : String) -> Bool {
 fn h2_forbidden_header(name : String) -> Bool {
   match name.to_lower() {
     "connection" | "proxy-connection" | "keep-alive" | "transfer-encoding" |
-    "upgrade" | "host" => true
+    "upgrade" => true
     _ => false
   }
 }
@@ -219,6 +219,9 @@ fn H2ResponseState::apply_header_block(
     Ok(value) => value
     Err(err) => return Err(err)
   }
+  if status == 101 {
+    return Err(ProtocolError("HTTP/2 does not allow 101 Switching Protocols"))
+  }
   if status < 200 {
     if end_stream {
       return Err(ProtocolError("Informational HTTP/2 response ended the stream"))
@@ -228,10 +231,9 @@ fn H2ResponseState::apply_header_block(
   self.status = status
   self.status_seen = true
   self.headers = regular
-  // Responses to HEAD and 204/205/304 carry no payload body. A 101 response
-  // is not used by HTTP/2, but it also terminates the HTTP message.
-  self.body_forbidden = self.head || status == 101 || status == 204 ||
-    status == 205 || status == 304
+  // Responses to HEAD and 204/205/304 carry no payload body.
+  self.body_forbidden = self.head || status == 204 || status == 205 ||
+    status == 304
   // Content-Length is still validated for bodyless responses so a malformed
   // field cannot be silently accepted just because no body follows it.
   let declared = match response_content_length(regular) {
@@ -562,7 +564,8 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
   }
   for header in request.headers.iter() {
     let name = header.name.to_lower()
-    if h2_forbidden_header(name) || h2_name_in_array(connection_nominated, name) {
+    if h2_forbidden_header(name) || name == "host" ||
+      h2_name_in_array(connection_nominated, name) {
       continue
     }
     if name == "te" && header.value.trim().to_lower() != "trailers" {

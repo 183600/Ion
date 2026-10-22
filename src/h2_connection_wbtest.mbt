@@ -791,3 +791,27 @@ test "http2 rejects surrounding whitespace in outgoing field values" {
     .with_header("X-Test", " value ")
   assert_eq(h2_request_headers(request), Err(InvalidHeader("X-Test")))
 }
+
+test "http2 accepts a Host field in a response" {
+  let response_headers = hpack_encode([(":status", "200"), ("host", "backend.example")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+  ])
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  let response = h2_request(h2_frame_mock_stream(input, 0), request).unwrap()
+  assert_eq(response.headers.get("host"), Some("backend.example"))
+}
+
+test "http2 rejects 101 Switching Protocols" {
+  let response_headers = hpack_encode([(":status", "101")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, response_headers),
+  ])
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match h2_request(h2_frame_mock_stream(input, 0), request) {
+    Ok(_) => fail("HTTP/2 101 response was accepted")
+    Err(err) => assert_eq(err, ProtocolError("HTTP/2 does not allow 101 Switching Protocols"))
+  }
+}
