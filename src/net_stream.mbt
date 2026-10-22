@@ -32,6 +32,10 @@ pub trait Stream {
   // Optional: Get local address
   fn local_addr(Self) -> Result[String, NetError]
 
+  // Optional: whether the transport is still usable for another exchange.
+  // The default preserves the historical `peer_addr` probe used by the pool.
+  fn is_alive(Self) -> Bool = _
+
   // Optional: authorize reading more body bytes for an explicit caller limit.
   fn set_body_limit(Self, Int) -> Unit = _
 
@@ -46,6 +50,10 @@ pub trait Stream {
   // consulting `read_ready`; socket transports override it with a real poll so
   // callers can bound a wait without blocking forever.
   fn wait_readable(Self, Int) -> Result[Bool, NetError] = _
+}
+
+impl Stream with fn is_alive(self) {
+  self.peer_addr() is Ok(_)
 }
 
 impl Stream with fn set_body_limit(_self, _limit) {

@@ -1190,7 +1190,7 @@ pub fn H2ClientConnection::new(stream : &Stream) -> Result[H2ClientConnection, H
 
 /// Whether this connection can still be used for another request.
 fn H2ClientConnection::is_open(self : H2ClientConnection) -> Bool {
-  !self.closed && !self.streaming_busy && self.stream.peer_addr() is Ok(_)
+  !self.closed && !self.streaming_busy && self.stream.is_alive()
 }
 
 /// Close the underlying stream. Closing an already closed connection is a

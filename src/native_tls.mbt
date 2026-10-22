@@ -401,6 +401,15 @@ pub impl Stream for NativeTlsStream with fn close(
   self.underlying.close()
 }
 
+pub impl Stream for NativeTlsStream with fn is_alive(
+  self : NativeTlsStream,
+) -> Bool {
+  if !self.is_open {
+    return false
+  }
+  self.underlying.is_alive()
+}
+
 pub impl Stream for NativeTlsStream with fn set_timeout(
   self : NativeTlsStream,
   timeout_ms : Int,

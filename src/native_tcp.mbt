@@ -197,6 +197,15 @@ pub impl Stream for NativeTcpStream with fn close(
   Ok(())
 }
 
+pub impl Stream for NativeTcpStream with fn is_alive(
+  self : NativeTcpStream,
+) -> Bool {
+  if !self.is_open || self.fd < 0 {
+    return false
+  }
+  feather_tcp_is_alive(self.fd) > 0
+}
+
 pub impl Stream for NativeTcpStream with fn set_timeout(
   self : NativeTcpStream,
   timeout_ms : Int,
@@ -217,9 +226,6 @@ pub impl Stream for NativeTcpStream with fn peer_addr(
   self : NativeTcpStream,
 ) -> Result[String, NetError] {
   if !self.is_open || self.fd < 0 {
-    return Err(NetError::Closed)
-  }
-  if feather_tcp_is_alive(self.fd) <= 0 {
     return Err(NetError::Closed)
   }
   let capacity = 128

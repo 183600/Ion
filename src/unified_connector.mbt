@@ -69,6 +69,13 @@ pub impl Stream for PrefixStream with fn close(self : PrefixStream) -> Result[Un
   self.underlying.close()
 }
 
+pub impl Stream for PrefixStream with fn is_alive(self : PrefixStream) -> Bool {
+  if !self.is_open {
+    return false
+  }
+  self.underlying.is_alive()
+}
+
 pub impl Stream for PrefixStream with fn set_timeout(self : PrefixStream, timeout_ms : Int) -> Result[Unit, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
@@ -348,16 +355,15 @@ pub fn ConnectionLease::release(self : ConnectionLease, reusable : Bool) -> Unit
       }
     None =>
       if reusable {
-        match self.stream.peer_addr() {
-          Ok(_) => self.pool.val.cache_idle_with_protocol(
+        if self.stream.is_alive() {
+          self.pool.val.cache_idle_with_protocol(
             self.key,
             self.stream,
             @env.now(),
             self.negotiated_protocol,
           )
-          Err(_) => {
-            let _ = self.stream.close()
-          }
+        } else {
+          let _ = self.stream.close()
         }
       } else {
         let _ = self.stream.close()
@@ -400,7 +406,7 @@ fn take_idle_connection_at(
         } else {
           true
         }
-        let alive = if expired { false } else { entry.stream.peer_addr() is Ok(_) }
+        let alive = if expired { false } else { entry.stream.is_alive() }
         if expired || !alive || !usable_h2 {
           let _ = entry.stream.close()
           if rest.length() == 0 {
