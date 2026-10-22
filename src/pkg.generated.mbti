@@ -125,6 +125,7 @@ pub struct Cookie {
   host_only : Bool
   expires_at_ms : UInt64?
   creation : Int32
+  // private fields
 } derive(Eq, @debug.Debug)
 
 pub struct CookieJar {

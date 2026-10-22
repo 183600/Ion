@@ -27,7 +27,7 @@ pub struct Cookie {
   host_only : Bool
   // Whether the authority used a bracketed IP-literal form. Bracketed
   // IPvFuture literals look like DNS names but are distinct authorities.
-  bracketed : Bool
+  priv bracketed : Bool
   expires_at_ms : UInt64?
   creation : Int32
 } derive(Eq, Debug)
