@@ -175,16 +175,31 @@ fn cookie_same_identity(a : Cookie, b : Cookie) -> Bool {
   a.bracketed == b.bracketed
 }
 
-/// Whether two cookies occupy the same name/domain/path slot. The secure
-/// overwrite rule intentionally ignores the host-only flag: a non-secure
-/// origin must not be able to shadow a Secure cookie by flipping how it was
-/// scoped. Bracketed literals remain separate from DNS names with the same
-/// text, so they cannot shadow each other.
-fn cookie_same_scope(a : Cookie, b : Cookie) -> Bool {
-  a.name == b.name &&
-  a.domain == b.domain &&
-  a.path == b.path &&
-  a.bracketed == b.bracketed
+/// Whether `host` falls inside the scope of `cookie`'s domain. This is the
+/// §5.1.3 domain-match relation applied to another cookie's domain, used by
+/// the secure-cookie overlay protection below.
+fn cookie_domain_scope_matches(
+  cookie : Cookie,
+  host : String,
+  bracketed : Bool,
+) -> Bool {
+  let literal_host = bracketed || is_ipv4_literal(host) ||
+    is_ipv6_literal_with_zone(host)
+  cookie_domain_matches(cookie, host, literal_host, bracketed)
+}
+
+/// Whether a new non-secure cookie would overlay an existing secure cookie.
+/// RFC 6265bis §5.7 step 16 compares domains with domain-match (in either
+/// direction) and checks that the new path path-matches the old one; exact
+/// string equality would let a longer path or a sibling domain shadow the
+/// secure cookie.
+fn cookie_overlays_secure(existing : Cookie, candidate : Cookie) -> Bool {
+  candidate.name == existing.name &&
+  existing.secure &&
+  existing.bracketed == candidate.bracketed &&
+  (cookie_domain_scope_matches(existing, candidate.domain, candidate.bracketed) ||
+    cookie_domain_scope_matches(candidate, existing.domain, existing.bracketed)) &&
+  cookie_path_matches(existing.path, candidate.path)
 }
 
 ///|
@@ -600,16 +615,18 @@ fn cookie_from_set_cookie(
     let attribute = raw_attribute.trim().to_lower()
     let attribute_value = raw_attribute_value.trim().to_owned()
     if attribute == "domain" {
-      domain_attribute_seen = true
       let mut candidate = attribute_value.to_lower()
       if candidate.has_prefix(".") {
         candidate = candidate[1:].to_owned()
       }
-      // The storage algorithm uses the last Domain attribute in the list;
-      // earlier values do not get a chance to reject the cookie. An empty
-      // value (including a lone leading dot) is ignored entirely, so it must
-      // not discard an earlier valid Domain attribute.
-      if candidate.length() > 0 {
+      // The storage algorithm uses the last Domain attribute whose value is
+      // no longer than 1024 octets; earlier/longer values do not get a chance
+      // to reject the cookie. An empty value (including a lone leading dot) is
+      // ignored entirely, so it must not discard an earlier valid Domain
+      // attribute.
+      if @utf8.encode(attribute_value).length() <= 1024 &&
+        candidate.length() > 0 {
+        domain_attribute_seen = true
         domain_attribute = Some(candidate)
       }
     } else if attribute == "path" {
@@ -801,8 +818,8 @@ fn CookieJar::store_parsed(
 ) -> Unit {
   if !from_secure {
     for existing in self.cookies {
-      if existing.secure && !cookie_expired(existing, now_ms) &&
-        cookie_same_scope(existing, cookie) {
+      if !cookie_expired(existing, now_ms) &&
+        cookie_overlays_secure(existing, cookie) {
         return
       }
     }

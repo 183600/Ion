@@ -964,3 +964,68 @@ test "__Host- cookies require an explicit root Path value" {
   jar.store_at(root, "__Host-valid=1; Secure; Path=account; Path=/", 1000)
   assert_eq(jar.cookie_header_at(root, 1000), Some("__Host-valid=1"))
 }
+
+///|
+test "secure cookies cannot be shadowed by a longer path" {
+  let jar = CookieJar::new()
+  let secure = cookie_test_url("https://example.com/")
+  let plain = cookie_test_url("http://example.com/")
+  jar.store_at(secure, "sid=secret; Secure; Path=/login", 1000)
+  // /login/en path-matches the existing secure cookie's /login scope, so the
+  // non-secure cookie would be sent ahead of it and must be ignored.
+  jar.store_at(plain, "sid=evil; Path=/login/en", 1000)
+  assert_eq(jar.length(), 1)
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("https://example.com/login/en"), 1000),
+    Some("sid=secret"),
+  )
+  // A path that does not path-match the secure cookie is still allowed.
+  jar.store_at(plain, "sid=ok; Path=/other", 1000)
+  assert_eq(jar.length(), 2)
+}
+
+///|
+test "secure cookies cannot be shadowed from a parent domain" {
+  let jar = CookieJar::new()
+  let secure = cookie_test_url("https://sub.example.com/")
+  let plain = cookie_test_url("http://example.com/")
+  // The existing host-only cookie for sub.example.com domain-matches the
+  // candidate's example.com scope, so the non-secure cookie must be ignored.
+  jar.store_at(secure, "sid=secret; Secure; Path=/", 1000)
+  jar.store_at(plain, "sid=evil; Domain=example.com; Path=/", 1000)
+  assert_eq(jar.length(), 1)
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("https://sub.example.com/"), 1000),
+    Some("sid=secret"),
+  )
+}
+
+///|
+test "an empty Domain attribute does not break __Host- cookies" {
+  let jar = CookieJar::new()
+  let secure = cookie_test_url("https://example.com/")
+  jar.store_at(secure, "__Host-x=1; Secure; Path=/; Domain=", 1000)
+  assert_eq(jar.cookie_header_at(secure, 1000), Some("__Host-x=1"))
+}
+
+///|
+test "a Domain attribute longer than 1024 octets is ignored" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("https://example.com/")
+  let long_domain = "a".repeat(1025)
+  jar.store_at(url, "sid=1; Secure; Path=/; Domain=" + long_domain, 1000)
+  // The long attribute is ignored, leaving a host-only cookie.
+  assert_eq(jar.length(), 1)
+  assert_eq(jar.cookie_header_at(url, 1000), Some("sid=1"))
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("https://sub.example.com/"), 1000),
+    None,
+  )
+
+  // An earlier valid Domain attribute is still used when a later one is long.
+  jar.store_at(url, "tok=1; Domain=example.com; Domain=" + long_domain, 1000)
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("https://sub.example.com/"), 1000),
+    Some("tok=1"),
+  )
+}
