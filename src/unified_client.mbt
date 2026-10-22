@@ -908,6 +908,21 @@ pub fn UnifiedClient::trace(self : UnifiedClient, url : String) -> Result[Respon
   self.do_request(req)
 }
 
+/// Open a CONNECT tunnel. A successful response exposes the tunnelled bytes as
+/// the response body stream until the peer closes it.
+pub fn UnifiedClient::connect(
+  self : UnifiedClient,
+  url : String,
+) -> Result[Response, HttpError] {
+  let request = match Request::from_url(CONNECT, url) {
+    Ok(request) => request
+    Err(err) => return Err(err)
+  }
+  let request = request.with_timeout(self.options.timeout_ms)
+  self.redirect_count = 0
+  self.do_request(request)
+}
+
 /// Close all connections
 pub fn UnifiedClient::close(self : UnifiedClient) -> Result[Unit, HttpError] {
   self.connector.close_all()

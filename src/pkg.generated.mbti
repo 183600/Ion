@@ -450,6 +450,7 @@ pub struct UnifiedClient {
 pub fn UnifiedClient::client_options(Self) -> ClientOptions
 pub fn UnifiedClient::close(Self) -> Result[Unit, HttpError]
 pub fn UnifiedClient::close_all(Self) -> Result[Unit, HttpError]
+pub fn UnifiedClient::connect(Self, String) -> Result[Response, HttpError]
 pub fn UnifiedClient::cookie_jar(Self) -> CookieJar
 pub fn UnifiedClient::delete(Self, String) -> Result[Response, HttpError]
 pub fn UnifiedClient::get(Self, String) -> Result[Response, HttpError]
@@ -523,6 +524,7 @@ pub trait Dialer {
 pub trait HttpClient {
   fn request(Self, Request) -> Result[Response, HttpError]
 }
+pub fn &HttpClient::connect(Self, String) -> Result[Response, HttpError]
 pub fn &HttpClient::delete(Self, String) -> Result[Response, HttpError]
 pub fn &HttpClient::get(Self, String) -> Result[Response, HttpError]
 pub fn &HttpClient::head(Self, String) -> Result[Response, HttpError]

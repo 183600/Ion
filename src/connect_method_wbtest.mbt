@@ -174,3 +174,25 @@ test "HTTP/2 successful CONNECT rejects Content-Length" {
       )
   }
 }
+
+///|
+test "UnifiedClient exposes a CONNECT convenience method" {
+  let stream = regression_mock_stream(
+    "HTTP/1.1 200 Connection Established\r\n\r\ntunnel",
+    0,
+    0,
+  )
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new().with_follow_redirects(false),
+    redirect_count: 0,
+  }
+  let response = client.connect("http://example.com:80/").unwrap()
+  assert_eq(response.status, 200)
+  assert_eq(response.read_body().unwrap(), b"tunnel")
+  let wire = @utf8.decode(stream.output.to_bytes()[:])
+  assert_true(wire.has_prefix("CONNECT example.com:80 HTTP/1.1\r\n"))
+  let _ = client.close_all()
+}

@@ -1635,3 +1635,16 @@ pub fn &HttpClient::trace(self : &HttpClient, url : String) -> Result[Response, 
   }
   self.request(request)
 }
+
+/// Open a CONNECT tunnel. A successful response exposes the tunnelled bytes as
+/// the response body stream.
+pub fn &HttpClient::connect(
+  self : &HttpClient,
+  url : String,
+) -> Result[Response, HttpError] {
+  let request = match Request::from_url(CONNECT, url) {
+    Ok(request) => request
+    Err(err) => return Err(err)
+  }
+  self.request(request)
+}
