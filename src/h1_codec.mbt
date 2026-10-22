@@ -968,6 +968,39 @@ fn read_chunk_size(reader : StreamReader) -> Result[Int, NetError] {
   Ok(size)
 }
 
+fn is_forbidden_trailer_field(name : String) -> Bool {
+  match name.to_lower() {
+    "content-length"
+    | "transfer-encoding"
+    | "host"
+    | "connection"
+    | "trailer"
+    | "te"
+    | "upgrade"
+    | "keep-alive"
+    | "proxy-connection"
+    | "content-encoding"
+    | "content-type"
+    | "content-range"
+    | "authorization"
+    | "proxy-authorization"
+    | "www-authenticate"
+    | "proxy-authenticate"
+    | "cookie"
+    | "set-cookie"
+    | "cache-control"
+    | "expect"
+    | "max-forwards"
+    | "range"
+    | "if-match"
+    | "if-none-match"
+    | "if-modified-since"
+    | "if-unmodified-since"
+    | "if-range" => true
+    _ => false
+  }
+}
+
 fn consume_chunk_trailers(
   reader : StreamReader,
   trailers : @ref.Ref[Headers],
@@ -997,7 +1030,8 @@ fn consume_chunk_trailers(
     }
     let name = trailer[0:colon_idx].to_owned()
     let value = trim_header_ows(trailer[colon_idx + 1:].to_owned())
-    if !valid_header_name(name) || !valid_header_value(value) {
+    if !valid_header_name(name) || !valid_header_value(value) ||
+      is_forbidden_trailer_field(name) {
       return Err(NetError::ReadError("invalid chunked trailer"))
     }
     collected = collected.add(name, value)
