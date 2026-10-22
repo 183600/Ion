@@ -552,10 +552,12 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
     (":path", request.url.request_target()),
   ]
   if (request.body is Some(_) || method_defines_body(request.method)) &&
-    content_lengths.length() == 0 {
+    content_lengths.length() == 0 &&
+    !h2_name_in_array(connection_nominated, "content-length") {
     headers.push(("content-length", body_length.to_string()))
   }
-  if !request.headers.contains("User-Agent") {
+  if !request.headers.contains("User-Agent") &&
+    !h2_name_in_array(connection_nominated, "user-agent") {
     headers.push(("user-agent", "Feather/0.1.0"))
   }
   for header in request.headers.iter() {
@@ -566,7 +568,13 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
     if name == "te" && header.value.trim().to_lower() != "trailers" {
       continue
     }
-    if !h2_valid_field_name(name) || !valid_header_value(header.value) {
+    if name == "content-length" {
+      // Normalize accepted whitespace/leading zeroes before putting the field
+      // on the wire; HTTP/2 field values must not have surrounding OWS.
+      headers.push((name, body_length.to_string()))
+      continue
+    }
+    if !h2_valid_field_name(name) || !h2_valid_field_value(header.value) {
       return Err(InvalidHeader(header.name))
     }
     headers.push((name, header.value))

@@ -396,7 +396,7 @@ test "http2 request content length accepts HTTP whitespace and leading zeroes" {
       .with_header("Content-Length", declared)
       .with_body(@utf8.encode("hello"))
     let headers = h2_request_headers(request).unwrap()
-    assert_eq(h2_test_header_value(headers, "content-length"), Some(declared))
+    assert_eq(h2_test_header_value(headers, "content-length"), Some("5"))
   }
   let request = Request::new(POST, url)
     .with_header("Content-Length", "6")
@@ -775,4 +775,19 @@ test "http2 acknowledges a PING buffered after the response" {
     }
   }
   assert_true(acknowledged)
+}
+
+test "http2 filters synthesized headers nominated by Connection" {
+  let request = Request::new(POST, Url::parse("https://example.com/").unwrap())
+    .with_header("Connection", "User-Agent, Content-Length")
+    .with_body(@utf8.encode("hello"))
+  let fields = h2_request_headers(request).unwrap()
+  assert_eq(h2_test_header_value(fields, "user-agent"), None)
+  assert_eq(h2_test_header_value(fields, "content-length"), None)
+}
+
+test "http2 rejects surrounding whitespace in outgoing field values" {
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+    .with_header("X-Test", " value ")
+  assert_eq(h2_request_headers(request), Err(InvalidHeader("X-Test")))
 }
