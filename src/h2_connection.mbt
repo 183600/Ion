@@ -81,6 +81,10 @@ struct H2ResponseState {
   mut content_length : Int?
   mut body_forbidden : Bool
   mut body : Buffer
+  // Total payload bytes accepted for this stream. `body` is only the bytes
+  // that have not been handed to the caller yet, so this separate counter is
+  // what Content-Length validation must use.
+  mut body_received : Int
   mut trailers : Headers
   mut ended : Bool
   mut header_block : Buffer
@@ -109,6 +113,7 @@ fn H2ResponseState::new(
     content_length: None,
     body_forbidden: false,
     body: Buffer(size_hint=4096),
+    body_received: 0,
     trailers: Headers::new(),
     ended: false,
     header_block: Buffer(size_hint=256),
@@ -274,6 +279,14 @@ fn h2_trailer_names(trailers : Headers) -> String {
   @utf8.decode_lossy(names.to_bytes()[:])
 }
 
+/// Remove the currently buffered body bytes and reset the staging buffer.
+/// `body_received` keeps the lifetime total for Content-Length validation.
+fn H2ResponseState::take_body(self : H2ResponseState) -> Bytes {
+  let data = self.body.to_bytes()
+  self.body = Buffer(size_hint=4096)
+  data
+}
+
 fn H2ResponseState::is_tunnel(self : H2ResponseState) -> Bool {
   self.connect && self.status_seen && self.status >= 200 && self.status < 300
 }
@@ -302,7 +315,7 @@ fn H2ResponseState::apply_header_block(
       return Err(ProtocolError("HTTP/2 trailers did not end the stream"))
     }
     if !self.body_forbidden && self.content_length is Some(length) &&
-      self.body.length() != length {
+      self.body_received != length {
       return Err(ProtocolError("HTTP/2 response body does not match Content-Length"))
     }
     self.trailers = Headers::new()
@@ -349,7 +362,7 @@ fn H2ResponseState::apply_header_block(
       return Err(ProtocolError("HTTP/2 trailers did not end the stream"))
     }
     if !self.body_forbidden && self.content_length is Some(length) &&
-      self.body.length() != length {
+      self.body_received != length {
       return Err(ProtocolError("HTTP/2 response body does not match Content-Length"))
     }
     self.trailers = regular
@@ -538,18 +551,19 @@ fn H2ResponseState::handle_frame(
           }
         } else {
           if !self.is_tunnel() &&
-            payload.length() > self.max_body_bytes - self.body.length() {
+            payload.length() > self.max_body_bytes - self.body_received {
             return Err(ProtocolError("HTTP/2 response body too large"))
           }
           if self.content_length is Some(length) &&
-            payload.length() > length - self.body.length() {
+            payload.length() > length - self.body_received {
             return Err(ProtocolError("HTTP/2 response body does not match Content-Length"))
           }
           self.body.write_bytes(payload)
+          self.body_received = self.body_received + payload.length()
         }
         if (frame.flags & H2_FLAG_END_STREAM) != 0 {
           if !self.body_forbidden && self.content_length is Some(length) &&
-            self.body.length() != length {
+            self.body_received != length {
             return Err(ProtocolError("HTTP/2 response body does not match Content-Length"))
           }
           self.ended = true
@@ -1168,6 +1182,201 @@ fn H2ClientConnection::is_open(self : H2ClientConnection) -> Bool {
 pub fn H2ClientConnection::close(self : H2ClientConnection) -> Unit {
   self.closed = true
   let _ = self.stream.close()
+}
+
+/// Lazily-read response body for `request_streaming`. It owns the connection
+/// exchange until the peer ends the stream or the caller closes the body.
+struct H2LiveBodyStream {
+  connection : H2ClientConnection
+  state : H2ResponseState
+  flow : H2FlowState
+  trailers : @ref.Ref[Headers]
+  mut pending : Bytes
+  mut pending_offset : Int
+  mut is_open : Bool
+  mut completed : Bool
+  mut error : HttpError?
+  on_complete : ((Bool) -> Unit)?
+}
+
+fn H2LiveBodyStream::finish(self : H2LiveBodyStream, reusable : Bool) -> Unit {
+  if self.completed {
+    return
+  }
+  self.completed = true
+  if self.state.ended {
+    self.trailers.val = self.state.trailers
+  }
+  match self.on_complete {
+    Some(callback) => callback(reusable)
+    None => ()
+  }
+  if !reusable {
+    self.connection.close()
+  }
+}
+
+fn H2LiveBodyStream::fail(self : H2LiveBodyStream, err : HttpError) -> NetError {
+  self.error = Some(err)
+  self.finish(false)
+  match err {
+    NetworkError(net) => net
+    Timeout => Timeout
+    ConnectionClosed => Closed
+    _ => NetError::ReadError(@debug.to_string(err))
+  }
+}
+
+/// Read frames until at least one body byte is available or the stream ends.
+/// SETTINGS/PING/WINDOW_UPDATE frames are handled and skipped.
+fn H2LiveBodyStream::pull(self : H2LiveBodyStream) -> Result[Unit, NetError] {
+  while true {
+    if self.state.ended {
+      self.pending = self.state.take_body()
+      self.pending_offset = 0
+      return Ok(())
+    }
+    let frame = match h2_read_connection_frame(self.connection.reader) {
+      Ok(frame) => frame
+      Err(err) => return Err(self.fail(err))
+    }
+    match self.state.handle_frame(
+      frame,
+      self.flow,
+      self.connection.stream,
+    ) {
+      Ok(_) => ()
+      Err(err) => {
+        if h2_error_is_stream_reset(err) {
+          self.connection
+            .discard_buffered_stream_frames(self.state, self.flow, self.state.stream_id)
+        } else {
+          self.connection.closed = true
+        }
+        return Err(self.fail(err))
+      }
+    }
+    self.pending = self.state.take_body()
+    self.pending_offset = 0
+    if self.state.ended {
+      self.trailers.val = self.state.trailers
+    }
+    if self.pending.length() > 0 || self.state.ended {
+      return Ok(())
+    }
+  }
+  Ok(())
+}
+
+pub impl Stream for H2LiveBodyStream with fn read(
+  self : H2LiveBodyStream,
+  buf : Buffer,
+) -> Result[Int, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  match self.error {
+    Some(err) => return Err(self.fail(err))
+    None => ()
+  }
+  while self.pending_offset >= self.pending.length() {
+    if self.state.ended {
+      self.finish(true)
+      return Ok(0)
+    }
+    match self.pull() {
+      Ok(_) => ()
+      Err(err) => return Err(err)
+    }
+  }
+  let available = self.pending.length() - self.pending_offset
+  let take = if available < 8192 { available } else { 8192 }
+  buf.write_bytes(self.pending.exact_view(
+    start=self.pending_offset,
+    end=self.pending_offset + take,
+  ))
+  self.pending_offset = self.pending_offset + take
+  if self.state.ended && self.pending_offset >= self.pending.length() {
+    self.finish(true)
+  }
+  Ok(take)
+}
+
+pub impl Stream for H2LiveBodyStream with fn read_ready(
+  self : H2LiveBodyStream,
+) -> Bool {
+  if !self.is_open {
+    return false
+  }
+  self.pending_offset < self.pending.length() ||
+  self.state.ended ||
+  self.connection.reader.pending_offset < self.connection.reader.pending.length() ||
+  self.connection.stream.read_ready()
+}
+
+pub impl Stream for H2LiveBodyStream with fn write(
+  self : H2LiveBodyStream,
+  buf : Buffer,
+) -> Result[Int, NetError] {
+  let _ = buf
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  Err(NetError::WriteError("HTTP/2 response body is read-only"))
+}
+
+pub impl Stream for H2LiveBodyStream with fn flush(
+  self : H2LiveBodyStream,
+) -> Result[Unit, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  Ok(())
+}
+
+pub impl Stream for H2LiveBodyStream with fn close(
+  self : H2LiveBodyStream,
+) -> Result[Unit, NetError] {
+  if !self.is_open {
+    return Ok(())
+  }
+  self.is_open = false
+  if !self.completed {
+    let reusable = self.state.ended
+    self.finish(reusable)
+    if !reusable {
+      self.connection.close()
+    }
+  }
+  Ok(())
+}
+
+pub impl Stream for H2LiveBodyStream with fn set_timeout(
+  self : H2LiveBodyStream,
+  timeout_ms : Int,
+) -> Result[Unit, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  self.connection.stream.set_timeout(timeout_ms)
+}
+
+pub impl Stream for H2LiveBodyStream with fn peer_addr(
+  self : H2LiveBodyStream,
+) -> Result[String, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  self.connection.stream.peer_addr()
+}
+
+pub impl Stream for H2LiveBodyStream with fn local_addr(
+  self : H2LiveBodyStream,
+) -> Result[String, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  self.connection.stream.local_addr()
 }
 
 fn h2_tunnel_read_error(err : HttpError) -> NetError {
@@ -1828,6 +2037,194 @@ pub fn H2ClientConnection::request_with_limit(
   self.request_with_limit_and_callback(request, max_body_bytes, None)
 }
 
+/// Start an HTTP/2 exchange whose response body is read lazily from the
+/// connection instead of being buffered before `request` returns.
+///
+/// Requests that need to send content, trailers, CONNECT, or an extended
+/// CONNECT keep the fully buffered behavior: those exchanges already have to
+/// read response frames while uploading, so returning a lazy body would make
+/// the ownership rules ambiguous. For ordinary bodyless requests (the common
+/// download path) the response head is returned as soon as it arrives and
+/// DATA frames are consumed only as the caller reads the body.
+pub fn H2ClientConnection::request_streaming(
+  self : H2ClientConnection,
+  request : Request,
+) -> Result[Response, HttpError] {
+  self.request_streaming_with_limit(request, DEFAULT_MAX_BODY_BYTES)
+}
+
+/// Like `request_streaming`, but bound the response body at `max_body_bytes`.
+pub fn H2ClientConnection::request_streaming_with_limit(
+  self : H2ClientConnection,
+  request : Request,
+  max_body_bytes : Int,
+) -> Result[Response, HttpError] {
+  self.request_streaming_with_callback(request, max_body_bytes, None)
+}
+
+fn H2ClientConnection::request_streaming_with_callback(
+  self : H2ClientConnection,
+  request : Request,
+  max_body_bytes : Int,
+  on_complete : ((Bool) -> Unit)?,
+) -> Result[Response, HttpError] {
+  if !self.is_open() {
+    return Err(ConnectionClosed)
+  }
+  let resolved_method = canonical_http_method(request.method)
+  let body_length = match request.body {
+    Some(body) => body.length()
+    None => 0
+  }
+  // Content uploads and tunnels interleave request and response frames. Keep
+  // the well-tested buffered exchange for those cases.
+  if body_length > 0 || request.trailers.length() > 0 ||
+    resolved_method == CONNECT || request_requests_upgrade(request.headers) {
+    let tunnel = resolved_method == CONNECT ||
+      request_requests_upgrade(request.headers)
+    if tunnel {
+      let tunnel_completion : (() -> Unit)? = match on_complete {
+        Some(callback) => Some(fn() { callback(false) })
+        None => None
+      }
+      return self.request_with_limit_and_callback(
+        request,
+        max_body_bytes,
+        tunnel_completion,
+      )
+    }
+    // A buffered exchange is complete when it returns, so hand ownership back
+    // before the caller sees the response.
+    return match self.request_with_limit_and_callback(
+      request,
+      max_body_bytes,
+      None,
+    ) {
+      Ok(response) => {
+        match on_complete {
+          Some(callback) => callback(true)
+          None => ()
+        }
+        Ok(response)
+      }
+      Err(err) => Err(err)
+    }
+  }
+  if !self.settings_received {
+    match self.read_initial_settings(self.flow) {
+      Ok(_) => ()
+      Err(err) => return Err(err)
+    }
+  }
+  match self.drain_buffered_settings(self.flow) {
+    Ok(_) => ()
+    Err(err) => return Err(err)
+  }
+  // A request with an `Upgrade` field but no offer is still validated by the
+  // normal header builder below. An actual upgrade was routed to the buffered
+  // path above.
+  if headers_have_token(request.headers, "Connection", "upgrade") &&
+    request.headers.contains("Upgrade") {
+    return Err(InvalidHeader("Upgrade"))
+  }
+  let headers = match h2_request_headers_with_protocol(request, None) {
+    Ok(headers) => headers
+    Err(err) => return Err(err)
+  }
+  if self.flow.peer_max_concurrent_streams < 1 {
+    return Err(ProtocolError("HTTP/2 max concurrent streams is zero"))
+  }
+  if h2_header_list_size(headers) > self.flow.peer_max_header_list_size {
+    return Err(ProtocolError("HTTP/2 request header list too large"))
+  }
+  let stream_id = self.next_stream_id
+  if stream_id < 1 || stream_id > H2_MAX_WINDOW_SIZE {
+    self.closed = true
+    return Err(ProtocolError("HTTP/2 stream id exhausted"))
+  }
+  if self.flow.peer_initial_window >
+    H2_MAX_WINDOW_SIZE - self.flow.pending_stream_window {
+    self.closed = true
+    return Err(ProtocolError("HTTP/2 stream window overflow"))
+  }
+  self.flow.stream_send_window = self.flow.peer_initial_window +
+    self.flow.pending_stream_window
+  self.flow.pending_stream_window = 0
+  let block = hpack_encode(headers)
+  match h2_write_header_block(self.stream, stream_id, block, true) {
+    Ok(_) => ()
+    Err(err) => {
+      self.closed = true
+      return Err(err)
+    }
+  }
+  self.next_stream_id = stream_id + 2
+  match self.stream.flush() {
+    Ok(_) => ()
+    Err(err) => {
+      self.closed = true
+      return Err(http_error_from_net(err))
+    }
+  }
+  let state = H2ResponseState::new(
+    stream_id,
+    self.decoder,
+    max_body_bytes,
+    resolved_method == HEAD,
+    false,
+  )
+  // Read only until the final response head is available. Any DATA frames the
+  // peer already sent stay buffered by the lazily-read body stream.
+  while !state.status_seen && !state.ended {
+    let frame = match h2_read_connection_frame(self.reader) {
+      Ok(frame) => frame
+      Err(err) => {
+        self.closed = true
+        return Err(err)
+      }
+    }
+    match state.handle_frame(frame, self.flow, self.stream) {
+      Ok(_) => ()
+      Err(err) => {
+        if h2_error_is_stream_reset(err) {
+          self.discard_buffered_stream_frames(state, self.flow, state.stream_id)
+        } else {
+          self.closed = true
+        }
+        return Err(err)
+      }
+    }
+  }
+  if !state.status_seen {
+    self.closed = true
+    return Err(ProtocolError("HTTP/2 response ended before a status"))
+  }
+  let trailers = @ref.Ref(state.trailers)
+  let body = H2LiveBodyStream::{
+    connection: self,
+    state,
+    flow: self.flow,
+    trailers,
+    pending: b"",
+    pending_offset: 0,
+    is_open: true,
+    completed: false,
+    error: None,
+    on_complete,
+  }
+  let response = Response::new_with_version(
+    "HTTP/2",
+    state.status,
+    state.headers,
+    body,
+  )
+  Ok(
+    response
+    .with_trailers(trailers)
+    .with_max_body_bytes(state.max_body_bytes),
+  )
+}
+
 /// Like `request_with_limit`, but a successful CONNECT tunnel owns the
 /// connection until its streaming body is exhausted or closed. `on_close` is
 /// invoked exactly once when that happens.
@@ -2134,6 +2531,23 @@ fn h2_request_with_limit_and_callback(
     request,
     max_body_bytes,
     connect_completion,
+  )
+}
+
+fn h2_request_streaming_with_callback(
+  stream : &Stream,
+  request : Request,
+  max_body_bytes : Int,
+  on_complete : ((Bool) -> Unit)?,
+) -> Result[Response, HttpError] {
+  let connection = match H2ClientConnection::new(stream) {
+    Ok(connection) => connection
+    Err(err) => return Err(err)
+  }
+  connection.request_streaming_with_callback(
+    request,
+    max_body_bytes,
+    on_complete,
   )
 }
 

@@ -15,6 +15,10 @@ pub struct ClientOptions {
   max_response_body_bytes : Int
   http2 : Bool
   http2_prior_knowledge : Bool
+  /// Consume HTTP/2 response bodies lazily instead of buffering the complete
+  /// body before `request` returns. Disabled by default so existing callers
+  /// keep the historical all-at-once behavior.
+  http2_streaming : Bool
   /// Headers added to every top-level request that does not already supply
   /// the same field. They are never re-applied after a redirect, and a
   /// cross-origin redirect drops them along with caller-supplied credentials.
@@ -31,6 +35,7 @@ pub fn ClientOptions::new() -> ClientOptions {
     max_response_body_bytes: DEFAULT_MAX_BODY_BYTES,
     http2: true,
     http2_prior_knowledge: false,
+    http2_streaming: false,
     default_headers: Headers::new(),
   }
 }
@@ -84,6 +89,16 @@ pub fn ClientOptions::with_http2_prior_knowledge(
     http2: enabled || self.http2,
     http2_prior_knowledge: enabled,
   }
+}
+
+/// Consume HTTP/2 response bodies lazily. When enabled, `request` returns as
+/// soon as the response head arrives and DATA frames are read by the caller.
+/// Uploads, trailers, CONNECT and upgrade requests keep the buffered path.
+pub fn ClientOptions::with_http2_streaming(
+  self : ClientOptions,
+  enabled : Bool,
+) -> ClientOptions {
+  ClientOptions::{ ..self, http2_streaming: enabled }
 }
 
 /// Cap the number of body bytes read from a single response. A value below 1 is
@@ -321,6 +336,19 @@ pub fn UnifiedClient::with_http2_prior_knowledge(
   UnifiedClient::{
     connector: self.connector.detached().with_http2_prior_knowledge(enabled),
     options: self.options.with_http2_prior_knowledge(enabled),
+    redirect_count: 0,
+  }
+}
+
+/// Consume HTTP/2 response bodies lazily instead of buffering them. This only
+/// affects bodyless requests; uploads and tunnels retain the buffered path.
+pub fn UnifiedClient::with_http2_streaming(
+  self : UnifiedClient,
+  enabled : Bool,
+) -> UnifiedClient {
+  UnifiedClient::{
+    connector: self.connector,
+    options: self.options.with_http2_streaming(enabled),
     redirect_count: 0,
   }
 }
@@ -665,6 +693,19 @@ fn apply_default_headers(req : Request, defaults : Headers) -> Request {
   request
 }
 
+/// Whether an HTTP/2 exchange can safely return a lazily-read body. This must
+/// match the fallback conditions in `H2ClientConnection::request_streaming` so
+/// the connector knows whether the lease is handed to the body stream.
+fn h2_request_can_stream(request : Request) -> Bool {
+  let body_length = match request.body {
+    Some(body) => body.length()
+    None => 0
+  }
+  body_length == 0 && request.trailers.length() == 0 &&
+  canonical_http_method(request.method) != CONNECT &&
+  !request_requests_upgrade(request.headers)
+}
+
 /// Internal request implementation with redirect handling
 fn UnifiedClient::do_request(self : UnifiedClient, req : Request) -> Result[Response, HttpError] {
   self.do_request_once(
@@ -763,25 +804,54 @@ fn UnifiedClient::do_request_once(
   let h2_tunnel_request = is_http2 &&
     (canonical_http_method(request.method) == CONNECT ||
       request_requests_upgrade(request.headers))
-  let connect_completion : (() -> Unit)? = if h2_tunnel_request {
+  let h2_streaming = is_http2 && !h2_tunnel_request &&
+    self.options.http2_streaming && h2_request_can_stream(request)
+  let stream_completion : (() -> Unit)? = if h2_streaming {
+    None
+  } else if h2_tunnel_request {
     Some(fn() { lease.release(false) })
+  } else {
+    None
+  }
+  let lazy_completion : ((Bool) -> Unit)? = if h2_streaming {
+    // The lazy body owns the lease; release it once END_STREAM is read or the
+    // caller closes the body early.
+    Some(fn(reusable) { lease.release(reusable) })
   } else {
     None
   }
   let response_result = if is_http2 {
     match h2_connection {
       Some(connection) =>
-        connection.request_with_limit_and_callback(
-          request,
-          self.options.max_response_body_bytes,
-          connect_completion,
-        )
-      None => h2_request_with_limit_and_callback(
-        stream,
-        request,
-        self.options.max_response_body_bytes,
-        connect_completion,
-      )
+        if h2_streaming {
+          connection.request_streaming_with_callback(
+            request,
+            self.options.max_response_body_bytes,
+            lazy_completion,
+          )
+        } else {
+          connection.request_with_limit_and_callback(
+            request,
+            self.options.max_response_body_bytes,
+            stream_completion,
+          )
+        }
+      None =>
+        if h2_streaming {
+          h2_request_streaming_with_callback(
+            stream,
+            request,
+            self.options.max_response_body_bytes,
+            lazy_completion,
+          )
+        } else {
+          h2_request_with_limit_and_callback(
+            stream,
+            request,
+            self.options.max_response_body_bytes,
+            stream_completion,
+          )
+        }
     }
   } else {
     let codec = H1Codec::new_with_limit_and_completion(
@@ -824,10 +894,10 @@ fn UnifiedClient::do_request_once(
   }
   let h2_tunnel = h2_tunnel_request &&
     response.status >= 200 && response.status < 300
-  if is_http2 && !h2_tunnel {
-    // The HTTP/2 exchange buffers the body, so the session can be returned to
-    // the pool for the next sequential request immediately. A CONNECT tunnel
-    // instead owns the session until its streaming body finishes.
+  if is_http2 && !h2_tunnel && !h2_streaming {
+    // A buffered HTTP/2 exchange is complete here, so the session can be
+    // returned to the pool immediately. The lazy body and CONNECT tunnel own
+    // the lease until they finish.
     lease.release(true)
   }
 
