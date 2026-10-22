@@ -311,24 +311,27 @@ pub fn UnifiedClient::with_tls_config(
 }
 
 /// Route HTTP requests through a forward proxy and tunnel HTTPS requests with
-/// `CONNECT`. Existing pooled connections are closed because they were made
-/// directly.
+/// `CONNECT`. Connections made directly under the previous routing cannot be
+/// reused, so the derived client gets a fresh pool; the source client's pool
+/// is left untouched.
 pub fn UnifiedClient::with_proxy(self : UnifiedClient, proxy : Proxy) -> UnifiedClient {
   UnifiedClient::{
-    connector: self.connector.with_proxy(proxy),
+    connector: self.connector.detached().with_proxy(proxy),
     options: self.options,
     redirect_count: 0,
   }
 }
 
 /// Send requests for matching hosts directly instead of through the proxy.
-/// See `Connector::with_proxy_bypass` for the supported pattern syntax.
+/// See `Connector::with_proxy_bypass` for the supported pattern syntax. The
+/// derived client owns a fresh pool, so changing routing does not close the
+/// source client's connections.
 pub fn UnifiedClient::with_proxy_bypass(
   self : UnifiedClient,
   patterns : Array[String],
 ) -> UnifiedClient {
   UnifiedClient::{
-    connector: self.connector.with_proxy_bypass(patterns),
+    connector: self.connector.detached().with_proxy_bypass(patterns),
     options: self.options,
     redirect_count: 0,
   }
