@@ -64,6 +64,9 @@ fn is_ipv4_literal(value : String) -> Bool {
     if part.length() == 0 || part.length() > 3 || !is_decimal_digits(part) {
       return false
     }
+    if part.length() > 1 && part.get_char(0) == Some('0') {
+      return false
+    }
     let mut octet = 0
     for ch in part {
       octet = octet * 10 + (ch.to_int() - '0'.to_int())
