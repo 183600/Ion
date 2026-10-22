@@ -801,18 +801,16 @@ pub fn Url::join(self : Url, reference : String) -> Result[Url, HttpError] {
     Ok(url) => url
     Err(err) => return Err(err)
   }
-  let normalized = normalize_url_path(parsed.path)
-  // An empty, fragment-only, or query-only reference keeps the base path.
-  // Preserve the special asterisk-form target as `*` rather than turning it
-  // into the serialized path `/*`, so redirect handling still recognizes it
-  // as the same target.
-  let keeps_asterisk_path = self.path == "*" &&
-    (reference.length() == 0 || reference.has_prefix("#") ||
-      reference.has_prefix("?"))
-  let path = if keeps_asterisk_path && normalized == "/*" {
-    "*"
+  // RFC 3986 §5.2.2 step 3: an empty reference path (including an empty,
+  // fragment-only, or query-only reference) keeps the base path verbatim.
+  // Dot segments are removed only from a non-empty reference path or from a
+  // merged path. Keeping the base text also preserves the special
+  // asterisk-form target as `*` instead of serializing it as `/*`.
+  let path = if reference.length() == 0 || reference.has_prefix("#") ||
+    reference.has_prefix("?") {
+    self.path
   } else {
-    normalized
+    normalize_url_path(parsed.path)
   }
   Ok(parsed.with_path(path))
 }

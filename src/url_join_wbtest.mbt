@@ -110,3 +110,18 @@ test "redirect resolution keeps an asterisk-form base for fragment and query tar
   let next = resolve_redirect_url(base, "next").unwrap()
   assert_eq(next.path, "/next")
 }
+
+test "Url::join keeps dot segments in the base path for empty-path references" {
+  let base = Url::parse("http://example.com/a/../b").unwrap()
+  assert_eq(base.to_string(), "http://example.com/a/../b")
+  for entry in [
+    ("", "http://example.com/a/../b"),
+    ("#s", "http://example.com/a/../b#s"),
+    ("?y=2", "http://example.com/a/../b?y=2"),
+  ] {
+    let (reference, expected) = entry
+    assert_eq(base.join(reference).unwrap().to_string(), expected)
+  }
+  // A reference that supplies a path is still normalized after merging.
+  assert_eq(base.join("next").unwrap().to_string(), "http://example.com/next")
+}
