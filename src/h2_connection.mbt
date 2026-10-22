@@ -380,8 +380,12 @@ fn H2ResponseState::handle_frame(
           Err(err) => return Err(err)
         }
         match h2_write_frame(stream, H2_FRAME_SETTINGS, H2_FLAG_ACK, 0, b"") {
+          Ok(_) => ()
+          Err(err) => return Err(err)
+        }
+        match stream.flush() {
           Ok(_) => Ok(())
-          Err(err) => Err(err)
+          Err(err) => Err(http_error_from_net(err))
         }
       } else {
         Ok(())
@@ -408,8 +412,12 @@ fn H2ResponseState::handle_frame(
     H2_FRAME_PING => {
       if (frame.flags & H2_FLAG_ACK) == 0 {
         match h2_write_frame(stream, H2_FRAME_PING, H2_FLAG_ACK, 0, frame.payload) {
+          Ok(_) => ()
+          Err(err) => return Err(err)
+        }
+        match stream.flush() {
           Ok(_) => Ok(())
-          Err(err) => Err(err)
+          Err(err) => Err(http_error_from_net(err))
         }
       } else {
         Ok(())
