@@ -235,7 +235,7 @@ pub struct Connector {
   tls_config : TlsConfig?
   proxy : Proxy?
   proxy_bypass : Array[String]
-  timeout_ms : Int
+  mut timeout_ms : Int
   mut max_connections_per_host : Int
   http2 : Bool
   mut cookies_enabled : Bool
@@ -373,8 +373,8 @@ pub fn Connector::new(dialer : &Dialer, tls_provider : &TlsProvider) -> Connecto
 
 /// Set the timeout applied to newly dialed connections and TLS handshakes.
 pub fn Connector::with_timeout(self : Connector, timeout_ms : Int) -> Connector {
-  let timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
-  Connector::{ ..self, timeout_ms }
+  self.timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
+  self
 }
 
 /// The timeout applied to newly dialed connections and TLS handshakes.

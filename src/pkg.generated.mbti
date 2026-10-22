@@ -79,7 +79,7 @@ pub struct Connector {
   tls_config : TlsConfig?
   proxy : Proxy?
   proxy_bypass : Array[String]
-  timeout_ms : Int32
+  mut timeout_ms : Int32
   mut max_connections_per_host : Int32
   http2 : Bool
   mut cookies_enabled : Bool

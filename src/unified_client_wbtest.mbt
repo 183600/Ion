@@ -183,4 +183,9 @@ test "changing the client timeout also changes connection and handshake timeouts
   let clamped = client.with_timeout(-1)
   assert_eq(clamped.client_options().timeout_ms, 0)
   assert_eq(clamped.connector.timeout(), 0)
+  // The connector timeout setter is in-place, like the pool tuning setters, so
+  // an ignored return value cannot leave new dials using the old timeout.
+  let connector = Connector::new(TcpDialer::new(), MockTlsProvider::new("test"))
+  let _ = connector.with_timeout(4321)
+  assert_eq(connector.timeout(), 4321)
 }
