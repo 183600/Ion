@@ -1287,6 +1287,24 @@ pub fn Response::read_body_decoded_with_limit(
     Err(err) => return Err(err)
   }
   if raw.length() == 0 {
+    // An empty payload does not need decompression, but an unknown coding is
+    // still an unsupported response rather than silently accepted content.
+    for token in combined.split(",") {
+      let token = token.trim().to_owned()
+      if token.length() > 0 && token.to_lower() != "identity" &&
+        !content_coding_supported(token) {
+        return Err(ProtocolError("unsupported Content-Encoding: " + token))
+      }
+    }
+    if has_transfer {
+      for coding in transfer_codings {
+        let token = coding.trim().to_owned()
+        if token.length() > 0 && token.to_lower() != "identity" &&
+          token != "chunked" && !content_coding_supported(token) {
+          return Err(ProtocolError("unsupported Transfer-Encoding: " + token))
+        }
+      }
+    }
     return Ok(raw)
   }
   let mut decoded = raw

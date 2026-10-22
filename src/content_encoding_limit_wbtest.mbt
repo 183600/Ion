@@ -88,3 +88,23 @@ test "nested Content-Encoding limits apply to the final decoded output" {
   let response = Response::new(200, headers, stream)
   assert_true(response.read_body_decoded_with_limit(4) is Err(_))
 }
+
+test "empty bodies still reject unsupported declared codings" {
+  let stream : &Stream = NestedEncodingMockStream::{ input: b"", offset: 0 }
+  let headers = Headers::new().set("Content-Encoding", "br")
+  let response = Response::new(200, headers, stream)
+  match response.read_body_decoded() {
+    Err(ProtocolError(message)) =>
+      assert_eq(message, "unsupported Content-Encoding: br")
+    _ => fail("unsupported Content-Encoding was accepted for an empty body")
+  }
+
+  let stream : &Stream = NestedEncodingMockStream::{ input: b"", offset: 0 }
+  let headers = Headers::new().set("Transfer-Encoding", "compress, chunked")
+  let response = Response::new(200, headers, stream)
+  match response.read_body_decoded() {
+    Err(ProtocolError(message)) =>
+      assert_eq(message, "unsupported Transfer-Encoding: compress")
+    _ => fail("unsupported Transfer-Encoding was accepted for an empty body")
+  }
+}
