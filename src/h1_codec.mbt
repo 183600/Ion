@@ -3,7 +3,7 @@ pub struct H1Codec {
   stream : &Stream
   // Shared with the response stream so bytes buffered while reading a head
   // remain visible when the same codec is reused for the next exchange.
-  reader : @ref.Ref[StreamReader]
+  priv reader : @ref.Ref[StreamReader]
   mut last_is_head : Bool
   mut close_after_request : Bool
   max_body_bytes : Int

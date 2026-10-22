@@ -144,11 +144,11 @@ pub fn CookieJar::store_from_headers(Self, Url, Headers) -> Unit
 
 pub struct H1Codec {
   stream : &Stream
-  reader : StreamReader
   mut last_is_head : Bool
   mut close_after_request : Bool
   max_body_bytes : Int32
   on_complete : ((Bool) -> Unit)?
+  // private fields
 }
 pub fn H1Codec::decode_response(Self, head? : Bool) -> Result[Response, HttpError]
 pub fn H1Codec::encode_request(Self, Request, absolute_form? : Bool) -> Result[Unit, HttpError]
