@@ -387,13 +387,14 @@ test "RFC 850 expiry dates without GMT are applied" {
   assert_eq(jar.cookie_header_at(url, expires_at), None)
 }
 
-test "single-digit expiry years are normalized" {
+test "single-digit year tokens do not satisfy the year production" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
   jar.store_at(url, "y=1; Expires=Wed, 01 Jan 5 00:00:00 GMT; Path=/", 0)
-  let expires_at : UInt64 = 1104537600000L.to_uint64()
-  assert_eq(jar.cookie_header_at(url, expires_at - 1), Some("y=1"))
-  assert_eq(jar.cookie_header_at(url, expires_at), None)
+  // RFC 6265 requires 2-4 digits for a year, so "5" is not a year and the
+  // cookie remains a session cookie.
+  let after_2030 : UInt64 = 2000000000000L.to_uint64()
+  assert_eq(jar.cookie_header_at(url, after_2030), Some("y=1"))
 }
 
 test "leading-zero expiry years are normalized by value" {
@@ -443,7 +444,7 @@ test "cookie expiry dates accept RFC date delimiters and token order" {
   assert_eq(jar.cookie_header_at(url, expiry), None)
 }
 
-test "cookie expiry dates with one unknown token are ignored" {
+test "cookie expiry dates ignore unknown tokens" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
   jar.store_at(
@@ -452,21 +453,32 @@ test "cookie expiry dates with one unknown token are ignored" {
     0,
   )
   let after_2030 : UInt64 = 2000000000000L.to_uint64()
-  assert_eq(jar.cookie_header_at(url, after_2030), Some("extra=1"))
+  assert_eq(jar.cookie_header_at(url, after_2030), None)
 }
 
-test "cookie expiry ignores only a leading weekday token" {
+test "cookie expiry ignores weekday tokens anywhere in the date" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
-  // The weekday-looking token in the middle is not the ignored leading
-  // weekday, so the date is invalid and the cookie becomes a session cookie.
   jar.store_at(
     url,
     "mid=1; Expires=09 Mon Jun 2021 10:00:00 GMT; Path=/",
     0,
   )
   let after_2030 : UInt64 = 2000000000000L.to_uint64()
-  assert_eq(jar.cookie_header_at(url, after_2030), Some("mid=1"))
+  assert_eq(jar.cookie_header_at(url, after_2030), None)
+}
+
+test "cookie expiry accepts RFC date token suffixes" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  let expiry : UInt64 = 1789975680000L.to_uint64()
+  jar.store_at(
+    url,
+    "suffix=1; Expires=Wed, 21st Sept 2026 07:28:00GMT; Path=/",
+    0,
+  )
+  assert_eq(jar.cookie_header_at(url, expiry - 1), Some("suffix=1"))
+  assert_eq(jar.cookie_header_at(url, expiry), None)
 }
 
 test "pre-epoch expiry dates delete cookies" {
@@ -630,7 +642,7 @@ test "impossible expiry dates are ignored" {
   assert_eq(jar.cookie_header_at(url, after_2030), Some("bad=1; also=1"))
 }
 
-test "expiry dates with extra tokens are ignored" {
+test "expiry dates ignore extra tokens" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
   let after_2030 : UInt64 = 2000000000000L.to_uint64()
@@ -639,7 +651,7 @@ test "expiry dates with extra tokens are ignored" {
     "extra=1; Expires=Wed, 21 Oct 2026 07:28:00 GMT extra; Path=/",
     0,
   )
-  assert_eq(jar.cookie_header_at(url, after_2030), Some("extra=1"))
+  assert_eq(jar.cookie_header_at(url, after_2030), None)
 }
 
 ///|
@@ -739,7 +751,7 @@ test "cookie domain suffixes never match IP address hosts" {  let jar = CookieJa
 }
 
 ///|
-test "cookie expiry rejects month names with unknown suffixes" {
+test "cookie expiry accepts RFC month suffixes" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
   let after_2030 : UInt64 = 2000000000000L.to_uint64()
@@ -748,7 +760,7 @@ test "cookie expiry rejects month names with unknown suffixes" {
     "junk=1; Expires=Wed, 21 Octopus 2030 07:28:00 GMT; Path=/",
     0,
   )
-  assert_eq(jar.cookie_header_at(url, after_2030), Some("junk=1"))
+  assert_eq(jar.cookie_header_at(url, after_2030), None)
 }
 
 ///|

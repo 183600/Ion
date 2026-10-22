@@ -249,47 +249,28 @@ fn cookie_date_tokens(value : String) -> Array[String] {
 
 ///|
 fn cookie_month(value : String) -> Int32? {
-  match value.to_lower() {
-    "jan" | "january" => Some(1)
-    "feb" | "february" => Some(2)
-    "mar" | "march" => Some(3)
-    "apr" | "april" => Some(4)
-    "may" => Some(5)
-    "jun" | "june" => Some(6)
-    "jul" | "july" => Some(7)
-    "aug" | "august" => Some(8)
-    "sep" | "september" => Some(9)
-    "oct" | "october" => Some(10)
-    "nov" | "november" => Some(11)
-    "dec" | "december" => Some(12)
-    _ => None
-  }
-}
-
-///|
-fn cookie_weekday(value : String) -> Bool {
-  let value = value.trim().to_owned()
-  let value = if value.has_suffix(",") {
-    value[0:value.length() - 1].to_owned()
+  // RFC 6265 §5.1.1: month = ( "jan" / ... / "dec" ) *OCTET. Only the
+  // three-letter prefix is significant, so both "Sept" and "September" work.
+  let lower = value.to_lower()
+  let prefix = if lower.length() > 3 {
+    lower[0:3].to_owned()
   } else {
-    value
+    lower
   }
-  match value.to_lower() {
-    "mon"
-    | "monday"
-    | "tue"
-    | "tuesday"
-    | "wed"
-    | "wednesday"
-    | "thu"
-    | "thursday"
-    | "fri"
-    | "friday"
-    | "sat"
-    | "saturday"
-    | "sun"
-    | "sunday" => true
-    _ => false
+  match prefix {
+    "jan" => Some(1)
+    "feb" => Some(2)
+    "mar" => Some(3)
+    "apr" => Some(4)
+    "may" => Some(5)
+    "jun" => Some(6)
+    "jul" => Some(7)
+    "aug" => Some(8)
+    "sep" => Some(9)
+    "oct" => Some(10)
+    "nov" => Some(11)
+    "dec" => Some(12)
+    _ => None
   }
 }
 
@@ -324,15 +305,40 @@ fn cookie_parse_decimal(value : String) -> Int32? {
   Some(parsed)
 }
 
-///|
-fn cookie_parse_year(value : String) -> Int32? {
-  // RFC 6265 §5.1.1 defines a year as 2*4DIGIT. Keep the historical
-  // single-digit normalization used by browsers, but do not accept longer
-  // numeric tokens that merely happen to have leading zeroes.
-  if value.length() > 4 {
+/// Parse between `min` and `max` leading digits. RFC 6265 date productions
+/// allow the digits to be followed by `non-digit *OCTET`, so the remainder is
+/// accepted as long as it does not start with another digit.
+fn cookie_leading_number(value : String, min_digits : Int, max_digits : Int) -> Int32? {
+  let mut index = 0
+  let mut number : Int32 = 0
+  while index < value.length() && index < max_digits {
+    let ch = match value.get_char(index) {
+      Some(ch) => ch
+      None => break
+    }
+    if ch < '0' || ch > '9' {
+      break
+    }
+    number = number * 10 + (ch.to_int() - '0'.to_int())
+    index = index + 1
+  }
+  if index < min_digits {
     return None
   }
-  let year = match cookie_parse_decimal(value) {
+  if index < value.length() {
+    let next = value.get_char(index)
+    if next is Some(ch) && ch >= '0' && ch <= '9' {
+      return None
+    }
+  }
+  Some(number)
+}
+
+///|
+fn cookie_parse_year(value : String) -> Int32? {
+  // RFC 6265 §5.1.1 defines a year as 2*4DIGIT plus an optional non-digit
+  // suffix. Normalize two-digit years the way the algorithm requires.
+  let year = match cookie_leading_number(value, 2, 4) {
     Some(year) => year
     None => return None
   }
@@ -353,19 +359,32 @@ fn cookie_parse_year(value : String) -> Int32? {
 
 ///|
 fn cookie_parse_clock(value : String) -> (Int32, Int32, Int32)? {
-  let parts = value.split(":").collect()
-  if parts.length() != 3 {
+  // RFC 6265 time = hms-time [ non-digit *OCTET ].
+  let first_colon = match value.find(":") {
+    Some(index) => index
+    None => return None
+  }
+  let rest = value[first_colon + 1:].to_owned()
+  let second_colon = match rest.find(":") {
+    Some(index) => index
+    None => return None
+  }
+  let hour_text = value[0:first_colon].to_owned()
+  let minute_text = rest[0:second_colon].to_owned()
+  let second_text = rest[second_colon + 1:].to_owned()
+  if hour_text.length() < 1 || hour_text.length() > 2 ||
+    minute_text.length() < 1 || minute_text.length() > 2 {
     return None
   }
-  let hour = match cookie_parse_decimal(parts[0].to_owned()) {
+  let hour = match cookie_parse_decimal(hour_text) {
     Some(value) => value
     None => return None
   }
-  let minute = match cookie_parse_decimal(parts[1].to_owned()) {
+  let minute = match cookie_parse_decimal(minute_text) {
     Some(value) => value
     None => return None
   }
-  let second = match cookie_parse_decimal(parts[2].to_owned()) {
+  let second = match cookie_leading_number(second_text, 1, 2) {
     Some(value) => value
     None => return None
   }
@@ -413,72 +432,54 @@ fn cookie_make_time(
 
 ///|
 /// Parse an `Expires` value using the RFC 6265 §5.1.1 date algorithm: split
-/// on delimiter characters, ignore a weekday, and recognize the day, month,
-/// time and year tokens regardless of their order. Formats with unexpected
-/// extra tokens are ignored rather than guessed at.
+/// on delimiter characters, then consume the first token matching the time,
+/// day-of-month, month and year productions. Tokens that match no production
+/// (weekdays, zones, junk) are ignored.
 fn cookie_parse_date(value : String) -> UInt64? {
   let text = value.trim().to_owned()
   if text.length() == 0 {
     return None
   }
-  let raw_tokens = cookie_date_tokens(text)
-  // RFC 6265 §5.1.1 ignores a leading weekday token only. A weekday-looking
-  // token anywhere else is an unexpected token and invalidates the date.
-  let mut first = 0
-  if raw_tokens.length() > 0 && cookie_weekday(raw_tokens[0]) {
-    first = 1
-  }
-  let tokens : Array[String] = []
-  let mut token_index = first
-  while token_index < raw_tokens.length() {
-    tokens.push(raw_tokens[token_index])
-    token_index = token_index + 1
-  }
-  if tokens.length() < 2 || tokens.length() > 5 {
-    return None
-  }
+  let tokens = cookie_date_tokens(text)
   let mut day : Int32? = None
   let mut month : Int32? = None
   let mut year : Int32? = None
   let mut clock : (Int32, Int32, Int32)? = None
-  let mut zones = 0
   for token in tokens {
-    if token.contains(":") {
-      if clock is Some(_) {
-        return None
-      }
-      clock = cookie_parse_clock(token)
-      if clock is None {
-        return None
-      }
-    } else if cookie_month(token) is Some(_) {
-      if month is Some(_) {
-        return None
-      }
-      month = cookie_month(token)
-    } else if is_decimal_digits(token) {
-      // A one- or two-digit number is a day-of-month until that slot is
-      // filled; longer numbers can only be years. This also keeps the
-      // historical single-digit-year normalization used by browsers.
-      if day is None && token.length() <= 2 {
-        day = cookie_parse_decimal(token)
-      } else if year is None {
-        year = cookie_parse_year(token)
-        if year is None {
-          return None
+    if clock is None {
+      match cookie_parse_clock(token) {
+        Some(value) => {
+          clock = Some(value)
+          continue
         }
-      } else {
-        return None
+        None => ()
       }
-    } else {
-      let zone = token.to_lower()
-      if zone == "gmt" || zone == "utc" || zone == "ut" || zone == "z" {
-        zones = zones + 1
-        if zones > 1 {
-          return None
+    }
+    if day is None {
+      match cookie_leading_number(token, 1, 2) {
+        Some(value) => {
+          day = Some(value)
+          continue
         }
-      } else {
-        return None
+        None => ()
+      }
+    }
+    if month is None {
+      match cookie_month(token) {
+        Some(value) => {
+          month = Some(value)
+          continue
+        }
+        None => ()
+      }
+    }
+    if year is None {
+      match cookie_parse_year(token) {
+        Some(value) => {
+          year = Some(value)
+          continue
+        }
+        None => ()
       }
     }
   }
@@ -497,6 +498,9 @@ fn cookie_parse_date(value : String) -> UInt64? {
   let clock = match clock {
     Some(value) => value
     None => return None
+  }
+  if day < 1 || day > 31 {
+    return None
   }
   cookie_make_time(year, month, day, clock)
 }
