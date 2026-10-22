@@ -413,6 +413,7 @@ pub fn Response::read_body_decoded(Self) -> Result[Bytes, HttpError]
 pub fn Response::read_body_decoded_with_limit(Self, Int32) -> Result[Bytes, HttpError]
 pub fn Response::read_body_with_limit(Self, Int32) -> Result[Bytes, HttpError]
 pub fn Response::text(Self) -> Result[String, HttpError]
+pub fn Response::text_with_limit(Self, Int32) -> Result[String, HttpError]
 pub fn Response::trailers(Self) -> Headers
 
 type ResponseBodyMode

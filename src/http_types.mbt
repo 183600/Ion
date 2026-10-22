@@ -1727,9 +1727,20 @@ fn decode_encodings(
 /// Decode the complete response body as text, decompressing any recognised
 /// `Content-Encoding` first. The `charset` parameter of `Content-Type` is
 /// honoured for UTF-8, US-ASCII, ISO-8859-1, Windows-1252 and UTF-16; unknown
-/// charsets fall back to UTF-8.
+/// charsets fall back to UTF-8. The response's configured body limit bounds
+/// both the encoded input and the decoded output.
 pub fn Response::text(self : Response) -> Result[String, HttpError] {
-  match self.read_body_decoded() {
+  self.text_with_limit(self.max_body_bytes)
+}
+
+/// Like `text`, but bounds the decoded body by `max_bytes`. This is useful for
+/// untrusted responses whose compressed payload may expand substantially
+/// beyond the response's default limit.
+pub fn Response::text_with_limit(
+  self : Response,
+  max_bytes : Int,
+) -> Result[String, HttpError] {
+  match self.read_body_decoded_with_limit(max_bytes) {
     Ok(body) => Ok(decode_text_body(body, response_charset(self.headers)))
     Err(err) => Err(err)
   }
