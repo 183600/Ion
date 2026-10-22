@@ -127,3 +127,21 @@ test "hpack table size updates reset the dynamic table" {
     Err(_) => ()
   }
 }
+
+test "hpack sizes dynamic entries by UTF-8 octets" {
+  // x: é is 1 + 2 + 32 = 35 octets. A 34-byte table cannot hold it, but
+  // UTF-16 code-unit accounting used to count only 34 and kept the entry.
+  let small = HpackDecoder::with_max_size(34)
+  let decoded = small.decode(hpack_test_hex("40017802c3a9")).unwrap()
+  assert_eq(decoded.length(), 1)
+  match small.decode(hpack_test_hex("be")) {
+    Ok(_) => fail("oversized HPACK dynamic entry was retained")
+    Err(_) => ()
+  }
+
+  let fits = HpackDecoder::with_max_size(35)
+  let _ = fits.decode(hpack_test_hex("40017802c3a9")).unwrap()
+  let indexed = fits.decode(hpack_test_hex("be")).unwrap()
+  assert_eq(indexed.length(), 1)
+  assert_eq(indexed[0], ("x", "é"))
+}

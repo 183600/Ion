@@ -318,13 +318,21 @@ fn HpackDecoder::evict(self : HpackDecoder) -> Unit {
   while self.size > self.max_size && self.dynamic.length() > 0 {
     let last = self.dynamic[self.dynamic.length() - 1]
     let (name, value) = last
-    self.size = self.size - (name.length() + value.length() + 32)
+    self.size = self.size - hpack_entry_size(name, value)
     let _ = self.dynamic.pop()
   }
 }
 
+/// RFC 7541 §4.1 sizes a dynamic-table entry by the number of octets in the
+/// UTF-8 encoding of its name and value. `String::length` counts UTF-16 code
+/// units, which under-counts non-ASCII text and would let the table exceed
+/// the peer's advertised size.
+fn hpack_entry_size(name : String, value : String) -> Int {
+  @utf8.encode(name).length() + @utf8.encode(value).length() + 32
+}
+
 fn HpackDecoder::add(self : HpackDecoder, name : String, value : String) -> Unit {
-  let entry_size = name.length() + value.length() + 32
+  let entry_size = hpack_entry_size(name, value)
   if entry_size > self.max_size {
     self.dynamic = []
     self.size = 0
@@ -368,7 +376,7 @@ pub fn HpackDecoder::decode(self : HpackDecoder, block : Bytes) -> Result[Array[
         Err(err) => return Err(err)
       }
       headers.push((name, value))
-      total_size = total_size + name.length() + value.length() + 32
+      total_size = total_size + hpack_entry_size(name, value)
       saw_field = true
     } else if (first & 0xc0) == 0x40 {
       let (name_index, next) = match hpack_read_integer(block, offset, 6) {
@@ -396,7 +404,7 @@ pub fn HpackDecoder::decode(self : HpackDecoder, block : Bytes) -> Result[Array[
       }
       offset = next
       headers.push((name, value))
-      total_size = total_size + name.length() + value.length() + 32
+      total_size = total_size + hpack_entry_size(name, value)
       saw_field = true
       self.add(name, value)
     } else if (first & 0xf0) == 0x00 || (first & 0xf0) == 0x10 {
@@ -425,7 +433,7 @@ pub fn HpackDecoder::decode(self : HpackDecoder, block : Bytes) -> Result[Array[
       }
       offset = next
       headers.push((name, value))
-      total_size = total_size + name.length() + value.length() + 32
+      total_size = total_size + hpack_entry_size(name, value)
       saw_field = true
     } else if (first & 0xe0) == 0x20 {
       if saw_field {
