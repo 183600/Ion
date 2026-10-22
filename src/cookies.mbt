@@ -534,13 +534,20 @@ fn cookie_parse_date(value : String) -> UInt64? {
     // historical last-one-wins behavior.
     if cookie_is_time_token(token) {
       match cookie_parse_clock(token) {
-        Some(value) => clock = Some(value)
+        Some(value) => {
+          clock = Some(value)
+          continue
+        }
         None =>
           if clock is None {
+            // The token matches the time grammar but has an out-of-range
+            // field, so the date is invalid rather than a day-of-month.
             return None
           }
+        // A valid clock is already set. RFC 6265 §5.1.1 only skips the time
+        // production once found-time is set, so this token still gets a
+        // chance to match the day-of-month production below.
       }
-      continue
     }
     if day is None {
       match cookie_leading_number(token, 1, 2) {

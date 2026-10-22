@@ -1192,3 +1192,20 @@ test "http1 combines split cookie fields into one header" {
   assert_false(wire.contains("Cookie: a=1\r\nCookie: b=2") )
   assert_eq(wire.split("Cookie:").length(), 2)
 }
+
+///|
+test "a later malformed time token can still supply the day of month" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("https://example.com/")
+  // The first token sets the clock. Once found-time is set, the second
+  // time-shaped token is no longer eligible for the time production and must
+  // be reconsidered as a day-of-month, matching RFC 6265 §5.1.1.
+  jar.store_at(
+    url,
+    "x=1; Expires=08:49:37 25:00:00 Oct 2030; Path=/",
+    0,
+  )
+  let expiry : UInt64 = 1919148577000L.to_uint64()
+  assert_eq(jar.cookie_header_at(url, expiry - 1), Some("x=1"))
+  assert_eq(jar.cookie_header_at(url, expiry), None)
+}
