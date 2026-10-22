@@ -539,8 +539,20 @@ fn read_be32(data : Bytes, offset : Int) -> Int {
   (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
 }
 
-/// Decompress a zlib (RFC 1950) wrapped DEFLATE stream.
-fn inflate_zlib(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
+fn has_zlib_header(data : Bytes) -> Bool {
+  if data.length() < 2 {
+    false
+  } else {
+    let cmf = data[0].to_int()
+    let flg = data[1].to_int()
+    (cmf & 0x0F) == 8 && (cmf >> 4) <= 7 && ((cmf << 8) | flg) % 31 == 0
+  }
+}
+
+/// Decode a zlib (RFC 1950) header and its DEFLATE body, reporting how many
+/// body bytes were consumed. The Adler-32 trailer is deliberately left to the
+/// caller so that a wrapper failure can be distinguished from a body failure.
+fn inflate_zlib_body(data : Bytes, max_bytes : Int) -> Result[(Bytes, Int), HttpError] {
   if data.length() < 2 {
     return Err(inflate_error("truncated zlib header"))
   }
@@ -564,14 +576,15 @@ fn inflate_zlib(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
   // from the end of the input would be wrong whenever trailing bytes follow the
   // zlib stream.
   let window_size = 1 << ((cmf >> 4) + 8)
-  let (inflated, consumed) = match inflate_raw_consume_with_window(
-    body,
-    max_bytes,
-    window_size,
-  ) {
-    Ok(result) => result
-    Err(err) => return Err(err)
-  }
+  inflate_raw_consume_with_window(body, max_bytes, window_size)
+}
+
+fn verify_zlib_trailer(
+  data : Bytes,
+  inflated : Bytes,
+  consumed : Int,
+) -> Result[Unit, HttpError] {
+  let body = data[2:].to_bytes()
   let expected = adler32(inflated)
   if consumed + 4 > body.length() {
     return Err(inflate_error("missing zlib checksum"))
@@ -581,7 +594,19 @@ fn inflate_zlib(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
   if stored != expected {
     return Err(inflate_error("zlib checksum mismatch"))
   }
-  Ok(inflated)
+  Ok(())
+}
+
+/// Decompress a zlib (RFC 1950) wrapped DEFLATE stream.
+fn inflate_zlib(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
+  let (inflated, consumed) = match inflate_zlib_body(data, max_bytes) {
+    Ok(result) => result
+    Err(err) => return Err(err)
+  }
+  match verify_zlib_trailer(data, inflated, consumed) {
+    Ok(_) => Ok(inflated)
+    Err(err) => Err(err)
+  }
 }
 
 /// Decompress a gzip (RFC 1952) stream. A gzip payload may contain several
@@ -702,23 +727,27 @@ fn skip_cstring(data : Bytes, offset : Int) -> Int {
 /// servers send `Content-Encoding: deflate` without the zlib wrapper).
 pub fn inflate(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
   let limit = if max_bytes < 0 { 0 } else { max_bytes }
-  if data.length() >= 2 {
-    let cmf = data[0].to_int()
+  if has_zlib_header(data) {
     let flg = data[1].to_int()
-    if (cmf & 0x0F) == 8 && (cmf >> 4) <= 7 && ((cmf << 8) | flg) % 31 == 0 {
-      let zlib_result = inflate_zlib(data, limit)
-      match zlib_result {
-        Ok(decoded) => return Ok(decoded)
-        Err(zlib_error) => {
-          // A preset dictionary is a declared zlib feature that this decoder
-          // does not support; do not reinterpret the same bytes as raw DEFLATE.
-          if (flg & 0x20) != 0 {
-            return Err(zlib_error)
-          }
-          match inflate_raw(data, limit) {
-            Ok(decoded) => return Ok(decoded)
-            Err(_) => return Err(zlib_error)
-          }
+    // A preset dictionary is a declared zlib feature that this decoder does
+    // not support; do not reinterpret the same bytes as raw DEFLATE.
+    if (flg & 0x20) != 0 {
+      return inflate_zlib(data, limit)
+    }
+    match inflate_zlib_body(data, limit) {
+      Ok((inflated, consumed)) => {
+        // Once the DEFLATE body decoded, a bad or missing trailer means the
+        // zlib stream is corrupt. Falling back to raw DEFLATE here would
+        // silently accept the same bytes as a different stream.
+        return match verify_zlib_trailer(data, inflated, consumed) {
+          Ok(_) => Ok(inflated)
+          Err(err) => Err(err)
+        }
+      }
+      Err(zlib_error) => {
+        match inflate_raw(data, limit) {
+          Ok(decoded) => return Ok(decoded)
+          Err(_) => return Err(zlib_error)
         }
       }
     }

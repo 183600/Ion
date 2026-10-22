@@ -1014,6 +1014,54 @@ test "zlib checksum mismatch is still reported with trailing bytes" {
   assert_true(inflate(corrupt, 10_000_000) is Err(_))
 }
 
+test "zlib trailer failures do not fall back to raw deflate" {
+  // The same bytes also form a valid raw DEFLATE stream that decodes to 257
+  // bytes, but the zlib body is valid and only its trailer is corrupt. The
+  // raw fallback must not turn a corrupt zlib stream into different output.
+  let data = @buffer.new(size_hint=65289)
+  data.write_byte(0x78)
+  data.write_byte(0x01)
+  data.write_byte(0x01)
+  data.write_byte(0xFE)
+  data.write_byte(0xFE)
+  data.write_byte(0x01)
+  data.write_byte(0x01)
+  let mut index = 0
+  while index < 65278 {
+    let byte = if index == 255 {
+      0x01
+    } else if index == 256 {
+      0x00
+    } else if index == 257 {
+      0x00
+    } else if index == 258 {
+      0xFF
+    } else if index == 259 {
+      0xFF
+    } else {
+      0x00
+    }
+    data.write_byte(byte.to_byte())
+    index = index + 1
+  }
+  data.write_byte(0x00)
+  data.write_byte(0x00)
+  data.write_byte(0x00)
+  data.write_byte(0x00)
+  let corrupt = data.to_bytes()
+  let mismatch = match inflate(corrupt, 100_000) {
+    Err(ProtocolError(message)) => message.contains("zlib checksum mismatch")
+    _ => false
+  }
+  assert_true(mismatch)
+  let truncated = corrupt[:corrupt.length() - 4].to_bytes()
+  let missing = match inflate(truncated, 100_000) {
+    Err(ProtocolError(message)) => message.contains("missing zlib checksum")
+    _ => false
+  }
+  assert_true(missing)
+}
+
 ///|
 test "inflate dynamic huffman streams" {
   let expected = "The quick brown fox jumps over the lazy dog. Feather HTTP client tests dynamic Huffman blocks. The quick brown fox jumps over the lazy dog. Feather HTTP client tests dynamic Huffman blocks. "
