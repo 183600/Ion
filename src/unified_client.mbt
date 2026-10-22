@@ -688,14 +688,22 @@ fn request_can_be_retried(verb : HttpMethod) -> Bool {
 /// on the request wins; repeated default values for the same field are all
 /// preserved. Defaults are applied once, before the first request, so a
 /// redirect cannot reintroduce credentials the redirect logic stripped.
-fn apply_default_headers(req : Request, defaults : Headers) -> Request {
+fn apply_default_headers(
+  req : Request,
+  defaults : Headers,
+) -> (Request, Array[String]) {
   let mut request = req
+  let applied : Array[String] = []
   for header in defaults.iter() {
     if req.get_header(header.name) is None {
       request = request.with_header(header.name, header.value)
+      let name = header.name.to_lower()
+      if !applied.contains(name) {
+        applied.push(name)
+      }
     }
   }
-  request
+  (request, applied)
 }
 
 /// Whether an HTTP/2 exchange can safely return a lazily-read body. This must
@@ -713,16 +721,18 @@ fn h2_request_can_stream(request : Request) -> Bool {
 
 /// Internal request implementation with redirect handling
 fn UnifiedClient::do_request(self : UnifiedClient, req : Request) -> Result[Response, HttpError] {
-  self.do_request_once(
-    apply_default_headers(req, self.options.default_headers),
-    true,
+  let (request, applied_defaults) = apply_default_headers(
+    req,
+    self.options.default_headers,
   )
+  self.do_request_once(request, true, applied_defaults)
 }
 
 fn UnifiedClient::do_request_once(
   self : UnifiedClient,
   req : Request,
   allow_retry : Bool,
+  applied_defaults : Array[String],
 ) -> Result[Response, HttpError] {
   // Resolve the effective timeout before connecting: an explicit per-request
   // timeout bounds dialing and the TLS handshake too, not only the subsequent
@@ -751,7 +761,7 @@ fn UnifiedClient::do_request_once(
       // method, including non-idempotent ones. A stale reused connection is the
       // usual reason this fails.
       if allow_retry && lease.reused {
-        return self.do_request_once(req, false)
+        return self.do_request_once(req, false, applied_defaults)
       }
       return Err(http_error_from_net(err))
     }
@@ -892,7 +902,7 @@ fn UnifiedClient::do_request_once(
       // requests.
       if allow_retry &&
         (unprocessed || (lease.reused && request_can_be_retried(request.method))) {
-        return self.do_request_once(req, false)
+        return self.do_request_once(req, false, applied_defaults)
       }
       return Err(normalize_http_error(err))
     }
@@ -976,8 +986,8 @@ fn UnifiedClient::do_request_once(
       // were applied for the original origin, so do not forward them to a
       // different one. They are also not re-applied by `do_request_once`,
       // which keeps a redirect chain from leaking them to a later hop.
-      for header in self.options.default_headers.iter() {
-        next_headers = next_headers.remove(header.name)
+      for name in applied_defaults {
+        next_headers = next_headers.remove(name)
       }
     }
 
@@ -994,7 +1004,7 @@ fn UnifiedClient::do_request_once(
 
     // Follow redirect. Defaults were already merged into the original
     // request and must not be applied again here.
-    return self.do_request_once(redirect_req, true)
+    return self.do_request_once(redirect_req, true, applied_defaults)
   }
 
   Ok(response)

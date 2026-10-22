@@ -79,3 +79,24 @@ test "repeated default header values are all preserved" {
   assert_true(wire.contains("X-Multi: one\r\n"))
   assert_true(wire.contains("X-Multi: two\r\n"))
 }
+
+///|
+test "cross-origin redirects keep caller headers that override defaults" {
+  let raw = "HTTP/1.1 302 Found\r\nLocation: http://other.example/next\r\nContent-Length: 0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
+  let stream = regression_mock_stream(raw, 1, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new().with_default_header("X-Api-Key", "secret"),
+    redirect_count: 0,
+  }
+  let url = Url::parse("http://example.com/start").unwrap()
+  let request = Request::new(GET, url).with_header("X-Api-Key", "caller")
+  assert_true(client.request(request) is Ok(_))
+  let wire = @utf8.decode_lossy(stream.output.to_bytes()[:])
+  let next_index = wire.find("GET /next HTTP/1.1").unwrap()
+  let second_request = wire.substring(start=next_index)
+  assert_true(second_request.contains("X-Api-Key: caller\r\n"))
+  assert_false(second_request.contains("X-Api-Key: secret\r\n"))
+}
