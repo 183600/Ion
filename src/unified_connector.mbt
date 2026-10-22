@@ -419,14 +419,24 @@ fn take_idle_connection_at(
         } else {
           false
         }
-        let usable_h2 = if entry.h2 is Some(connection) {
-          accept_h2 && connection.is_open()
+        // A negotiated h2 stream may be cached before its preface is sent
+        // (`Connector::connect` hands the raw stream back to the caller). It
+        // still belongs to an HTTP/2 session, so callers that cannot start a
+        // fresh preface must not receive it.
+        let is_h2 = entry.h2 is Some(_) ||
+          entry.negotiated_protocol == Some("h2")
+        let usable_h2 = if is_h2 {
+          accept_h2 &&
+          (match entry.h2 {
+            Some(connection) => connection.is_open()
+            None => true
+          })
         } else {
           true
         }
         let alive = if expired {
           false
-        } else if entry.h2 is Some(_) {
+        } else if is_h2 {
           // Bytes waiting for an HTTP/2 session belong to that session, not
           // to a stale HTTP/1 response, so only check the transport liveness.
           entry.stream.is_alive()
@@ -1511,14 +1521,24 @@ pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpEr
       // `connect` documents that the returned stream is also reachable through
       // the pool. `take_idle_connection_at` removed a reused entry, so publish
       // it again; otherwise `close` could not find the connection and the next
-      // `connect` would dial a fresh socket while the returned one leaked.
-      if h2 is None && negotiated_protocol != Some("h2") {
-        self.pool.val.cache_idle_with_protocol(
-          self.connection_key(url),
-          stream,
-          @env.now(),
-          negotiated_protocol,
-        )
+      // `connect` would dial a fresh socket while the returned one leaked. An
+      // ALPN-negotiated h2 stream is cached without a client preface so that a
+      // later `checkout` can initialize (or a plain `connect`, which cannot do
+      // so, closes it and dials a fresh connection).
+      match h2 {
+        Some(connection) =>
+          self.pool.val.cache_idle_h2(
+            self.connection_key(url),
+            connection,
+            @env.now(),
+          )
+        None =>
+          self.pool.val.cache_idle_with_protocol(
+            self.connection_key(url),
+            stream,
+            @env.now(),
+            negotiated_protocol,
+          )
       }
       Ok(stream)
     }
