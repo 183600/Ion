@@ -1029,3 +1029,23 @@ test "a Domain attribute longer than 1024 octets is ignored" {
     Some("tok=1"),
   )
 }
+
+///|
+test "Path attributes longer than 1024 octets are ignored" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/a/b")
+  let long_path = "/" + "a".repeat(1024)
+  // A long Path attribute is ignored, so the earlier valid Path stays in
+  // effect rather than becoming the oversized value.
+  jar.store_at(url, "p=1; Path=/other; Path=" + long_path, 1000)
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://example.com/other/x"), 1000),
+    Some("p=1"),
+  )
+  // With no accepted Path attribute the default-path applies.
+  jar.store_at(url, "q=1; Path=" + long_path, 1000)
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://example.com/a/c"), 1000),
+    Some("q=1"),
+  )
+}

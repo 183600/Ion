@@ -630,15 +630,19 @@ fn cookie_from_set_cookie(
         domain_attribute = Some(candidate)
       }
     } else if attribute == "path" {
-      // RFC 6265 §5.2.4: an empty Path or one that does not begin with "/"
-      // resolves to the default-path. The last Path attribute wins.
-      path = if attribute_value.has_prefix("/") {
-        attribute_value
-      } else {
-        cookie_default_path(url)
-      }
       path_attribute_seen = true
-      path_attribute_is_root = attribute_value == "/"
+      // RFC 6265bis §5.6 step 11 only considers a Path attribute whose value
+      // is at most 1024 octets; longer values are ignored, leaving an earlier
+      // valid Path attribute in effect. §5.2.4 still resolves an empty value
+      // or one that does not begin with "/" to the default-path.
+      if @utf8.encode(attribute_value).length() <= 1024 {
+        path = if attribute_value.has_prefix("/") {
+          attribute_value
+        } else {
+          cookie_default_path(url)
+        }
+        path_attribute_is_root = attribute_value == "/"
+      }
     } else if attribute == "secure" {
       secure = true
     } else if attribute == "max-age" {
