@@ -254,7 +254,12 @@ fn h2_apply_settings(
       (payload[offset + 3].to_int() << 16) |
       (payload[offset + 4].to_int() << 8) |
       payload[offset + 5].to_int()
-    if identifier == H2_SETTINGS_INITIAL_WINDOW_SIZE {
+    if identifier == H2_SETTINGS_ENABLE_PUSH {
+      // SETTINGS_ENABLE_PUSH is a client-to-server setting. A server that
+      // sends it (or a client that considers itself a server for this
+      // connection) is violating RFC 9113 section 6.5.2.
+      return Err(ProtocolError("HTTP/2 server sent ENABLE_PUSH"))
+    } else if identifier == H2_SETTINGS_INITIAL_WINDOW_SIZE {
       // SETTINGS values are unsigned 32-bit. A high bit set exceeds the
       // largest legal flow-control window (2^31-1).
       if (value_high & 0x80) != 0 || value > H2_MAX_WINDOW_SIZE {
@@ -439,6 +444,33 @@ fn H2ResponseState::handle_frame(
   }
 }
 
+/// Header names nominated by `Connection` are hop-by-hop for this message and
+/// must not be forwarded onto an HTTP/2 connection. Fixed hop-by-hop fields
+/// are handled by `h2_forbidden_header`; this also covers application-specific
+/// names such as `Connection: x-trace`.
+fn h2_connection_nominated_names(headers : Headers) -> Array[String] {
+  let names : Array[String] = []
+  for value in headers.get_all("Connection") {
+    for token in split_header_list(value) {
+      let name = token.trim().to_owned().to_lower()
+      if name.length() > 0 && h2_valid_field_name(name) &&
+        !h2_name_in_array(names, name) {
+        names.push(name)
+      }
+    }
+  }
+  names
+}
+
+fn h2_name_in_array(names : Array[String], name : String) -> Bool {
+  for candidate in names {
+    if candidate == name {
+      return true
+    }
+  }
+  false
+}
+
 fn h2_request_headers(request : Request) -> Result[Array[(String, String)], HttpError] {
   if !valid_url_component_chars(request.url.path) ||
     !valid_url_component_chars(request.url.query) {
@@ -447,6 +479,7 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
   if !valid_host(request.url.authority()) {
     return Err(InvalidUrl("Invalid host"))
   }
+  let connection_nominated = h2_connection_nominated_names(request.headers)
   let body_length = match request.body {
     Some(body) => body.length()
     None => 0
@@ -477,7 +510,7 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
   }
   for header in request.headers.iter() {
     let name = header.name.to_lower()
-    if h2_forbidden_header(name) {
+    if h2_forbidden_header(name) || h2_name_in_array(connection_nominated, name) {
       continue
     }
     if name == "te" && header.value.trim().to_lower() != "trailers" {

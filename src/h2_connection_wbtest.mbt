@@ -524,3 +524,35 @@ test "http2 rejects leading and trailing whitespace in field values" {
   let response = h2_request(stream, request).unwrap()
   assert_eq(response.headers.get("x-test"), Some("inner space"))
 }
+
+test "http2 strips headers nominated by Connection" {
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+    .set_header("Connection", "X-Hop, x-hop, X-Custom")
+    .set_header("X-Hop", "drop me")
+    .set_header("X-Custom", "drop me too")
+    .set_header("X-Keep", "keep me")
+  let fields = h2_request_headers(request).unwrap()
+  assert_eq(h2_test_header_value(fields, "connection"), None)
+  assert_eq(h2_test_header_value(fields, "x-hop"), None)
+  assert_eq(h2_test_header_value(fields, "x-custom"), None)
+  assert_eq(h2_test_header_value(fields, "x-keep"), Some("keep me"))
+}
+
+test "http2 rejects a server ENABLE_PUSH setting" {
+  let payload = h2_settings_payload([(H2_SETTINGS_ENABLE_PUSH, 0)])
+  match h2_apply_settings(payload, H2FlowState::new()) {
+    Ok(_) => fail("server SETTINGS_ENABLE_PUSH was accepted")
+    Err(err) => assert_eq(err, ProtocolError("HTTP/2 server sent ENABLE_PUSH"))
+  }
+
+  let input = h2_test_concat([
+    h2_test_frame(H2_FRAME_SETTINGS, 0, 0, payload),
+    h2_test_frame(H2_FRAME_SETTINGS, H2_FLAG_ACK, 0, b""),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match h2_request(stream, request) {
+    Ok(_) => fail("HTTP/2 connection with server ENABLE_PUSH was accepted")
+    Err(err) => assert_eq(err, ProtocolError("HTTP/2 server sent ENABLE_PUSH"))
+  }
+}
