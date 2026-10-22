@@ -894,3 +894,19 @@ test "http2 applies buffered SETTINGS before sending a request body" {
     assert_true(frame.frame_type != H2_FRAME_DATA)
   }
 }
+
+test "http2 accepts ordinary fields in trailers" {
+  let response_headers = hpack_encode([(":status", "200")])
+  let trailers = hpack_encode([("content-type", "text/plain"), ("cache-control", "no-store")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, response_headers),
+    h2_test_frame(H2_FRAME_DATA, 0, 1, @utf8.encode("hello")),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, trailers),
+  ])
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  let response = h2_request(h2_frame_mock_stream(input, 0), request).unwrap()
+  assert_eq(response.read_body().unwrap(), @utf8.encode("hello"))
+  assert_eq(response.trailers().get("content-type"), Some("text/plain"))
+  assert_eq(response.trailers().get("cache-control"), Some("no-store"))
+}
