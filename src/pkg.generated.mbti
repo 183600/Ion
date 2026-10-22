@@ -229,6 +229,7 @@ pub enum HttpMethod {
   HEAD
   OPTIONS
   PATCH
+  TRACE
 } derive(Eq, @debug.Debug)
 pub fn HttpMethod::parse(String) -> Result[Self, HttpError]
 pub fn HttpMethod::to_string(Self) -> String
@@ -438,6 +439,7 @@ pub fn UnifiedClient::post(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::post_form(Self, String, Array[(String, String)]) -> Result[Response, HttpError]
 pub fn UnifiedClient::post_multipart(Self, String, Array[(String, String)], Array[MultipartFile]) -> Result[Response, HttpError]
 pub fn UnifiedClient::put(Self, String, Bytes) -> Result[Response, HttpError]
+pub fn UnifiedClient::trace(Self, String) -> Result[Response, HttpError]
 pub fn UnifiedClient::with_cookie_jar(Self, CookieJar) -> Self
 pub fn UnifiedClient::with_cookies(Self) -> Self
 pub fn UnifiedClient::with_follow_redirects(Self, Bool) -> Self
@@ -505,6 +507,7 @@ pub fn &HttpClient::post(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn &HttpClient::post_form(Self, String, Array[(String, String)]) -> Result[Response, HttpError]
 pub fn &HttpClient::post_multipart(Self, String, Array[(String, String)], Array[MultipartFile]) -> Result[Response, HttpError]
 pub fn &HttpClient::put(Self, String, Bytes) -> Result[Response, HttpError]
+pub fn &HttpClient::trace(Self, String) -> Result[Response, HttpError]
 
 pub trait KeyLogSink {
   fn log(Self, String, Bytes) -> Unit

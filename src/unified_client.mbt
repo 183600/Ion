@@ -455,6 +455,7 @@ fn request_can_be_retried(method : HttpMethod) -> Bool {
     PUT => true
     DELETE => true
     OPTIONS => true
+    TRACE => true
     _ => false
   }
 }
@@ -786,6 +787,17 @@ pub fn UnifiedClient::patch(self : UnifiedClient, url : String, body : Bytes) ->
     Err(err) => return Err(err)
   }
   let req = req.with_body(body).with_timeout(self.options.timeout_ms)
+  self.redirect_count = 0
+  self.do_request(req)
+}
+
+/// Convenience method for TRACE requests.
+pub fn UnifiedClient::trace(self : UnifiedClient, url : String) -> Result[Response, HttpError] {
+  let req = match Request::from_url(TRACE, url) {
+    Ok(req) => req
+    Err(err) => return Err(err)
+  }
+  let req = req.with_timeout(self.options.timeout_ms)
   self.redirect_count = 0
   self.do_request(req)
 }

@@ -46,6 +46,7 @@ pub enum HttpMethod {
   HEAD
   OPTIONS
   PATCH
+  TRACE
 } derive(Eq, Debug)
 
 pub fn HttpMethod::parse(value : String) -> Result[HttpMethod, HttpError] {
@@ -57,6 +58,7 @@ pub fn HttpMethod::parse(value : String) -> Result[HttpMethod, HttpError] {
     "HEAD" => Ok(HEAD)
     "OPTIONS" => Ok(OPTIONS)
     "PATCH" => Ok(PATCH)
+    "TRACE" => Ok(TRACE)
     _ => Err(InvalidMethod(value))
   }
 }
@@ -70,6 +72,7 @@ pub fn HttpMethod::to_string(method : HttpMethod) -> String {
     HEAD => "HEAD"
     OPTIONS => "OPTIONS"
     PATCH => "PATCH"
+    TRACE => "TRACE"
   }
 }
 
@@ -1431,4 +1434,12 @@ pub fn &HttpClient::patch(self : &HttpClient, url : String, body : Bytes) -> Res
     Err(err) => return Err(err)
   }
   self.request(request.with_body(body))
+}
+
+pub fn &HttpClient::trace(self : &HttpClient, url : String) -> Result[Response, HttpError] {
+  let request = match Request::from_url(TRACE, url) {
+    Ok(request) => request
+    Err(err) => return Err(err)
+  }
+  self.request(request)
 }

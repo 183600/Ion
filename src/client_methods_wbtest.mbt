@@ -48,6 +48,18 @@ test "UnifiedClient convenience methods use the right verbs and bodies" {
   let wire = @utf8.decode_lossy(stream.output.to_bytes()[:])
   assert_true(wire.has_prefix("HEAD /head HTTP/1.1\r\n"))
   assert_true(!wire.contains("Content-Length"))
+
+  let (client, stream) = client_for_response(raw)
+  assert_true(client.trace("http://example.com/trace") is Ok(_))
+  let wire = @utf8.decode_lossy(stream.output.to_bytes()[:])
+  assert_true(wire.has_prefix("TRACE /trace HTTP/1.1\r\n"))
+  assert_true(!wire.contains("Content-Length"))
+}
+
+///|
+test "TRACE parses and round-trips through the method helpers" {
+  assert_eq(HttpMethod::parse("trace"), Ok(TRACE))
+  assert_eq(TRACE.to_string(), "TRACE")
 }
 
 ///|

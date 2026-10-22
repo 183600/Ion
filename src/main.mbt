@@ -45,7 +45,7 @@ fn print_usage() -> Unit {
   println("       FEATHER_CLIENT_KEY=<pem file>          client private key for mTLS")
   println("       FEATHER_INSECURE=1 feather             DISABLE TLS verification (unsafe)")
   println("       FEATHER_KEYLOG=1 feather               print TLS key material (debug)")
-  println("Methods: get, post, put, delete, head, options, patch")
+  println("Methods: get, post, put, delete, head, options, patch, trace")
 }
 
 /// Prints each TLS key-log line so the captured secrets can be inspected (or
