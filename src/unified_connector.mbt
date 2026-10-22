@@ -198,6 +198,45 @@ fn ConnectionPoolState::cache_idle_connection(
   self.idle.set(key, updated)
 }
 
+/// Close idle connections whose last use is older than the configured idle
+/// timeout. Lookups only need to inspect the target origin, but a long-lived
+/// client can idle on many origins it never revisits; sweeping all entries
+/// keeps those sockets from staying open indefinitely.
+fn ConnectionPoolState::sweep_expired(self : ConnectionPoolState, now_ms : UInt64) -> Unit {
+  let timeout = self.idle_timeout_ms
+  if timeout <= 0 {
+    return
+  }
+  let keys : Array[String] = []
+  for key in self.idle.keys() {
+    keys.push(key)
+  }
+  for key in keys {
+    match self.idle.get(key) {
+      Some(entries) => {
+        let kept = entries.filter(fn(entry) {
+          let expired = now_ms > entry.last_used_ms &&
+            now_ms - entry.last_used_ms > timeout.to_uint64()
+          if expired {
+            let _ = entry.stream.close()
+            false
+          } else {
+            true
+          }
+        })
+        if kept.length() != entries.length() {
+          if kept.length() == 0 {
+            let _ = self.idle.remove(key)
+          } else {
+            self.idle.set(key, kept)
+          }
+        }
+      }
+      None => ()
+    }
+  }
+}
+
 /// Drop the oldest idle connections until every host is within `max_idle`.
 fn ConnectionPoolState::trim_idle(self : ConnectionPoolState) -> Unit {
   let keys : Array[String] = []
@@ -687,6 +726,7 @@ fn Connector::origin_tls_config(self : Connector, host : String) -> TlsConfig {
 /// `idle_timeout_ms`. A value below 1 disables idle eviction.
 pub fn Connector::with_idle_timeout(self : Connector, idle_timeout_ms : Int) -> Connector {
   self.pool.val.idle_timeout_ms = if idle_timeout_ms < 0 { 0 } else { idle_timeout_ms }
+  self.pool.val.sweep_expired(@env.now())
   self
 }
 
@@ -982,6 +1022,8 @@ fn Connector::connect_impl(
   cache_new : Bool,
   accept_h2_pool : Bool,
 ) -> Result[(&Stream, Bool, String?, H2ClientConnection?), HttpError] {
+  // Expire idle sockets for every origin, not just the one being requested.
+  self.pool.val.sweep_expired(@env.now())
   let scheme = url.scheme.to_lower()
   let host = url.host
   let port = url.port
