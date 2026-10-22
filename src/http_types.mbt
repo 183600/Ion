@@ -479,28 +479,29 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
   }
   let host = if bracketed { host } else { decode_host_unreserved(host) }
 
+  let default_port = if scheme == "https" { 443 } else { 80 }
   let port = match port_str {
     Some(port_text) => {
-      if !is_decimal_digits(port_text) {
-        return Err(InvalidUrl("Invalid port number"))
-      }
-      let parsed = try {
-        @string.parse_int(port_text[:])
-      } catch {
-        _ => return Err(InvalidUrl("Invalid port number"))
-      }
-      if parsed < 1 || parsed > 65535 {
-        return Err(InvalidUrl("Invalid port number"))
-      }
-      parsed
-    }
-    None => {
-      if scheme == "https" {
-        443
+      // RFC 3986 §3.2.3 defines port as *DIGIT, so an empty port is valid and
+      // means the scheme's default.
+      if port_text.length() == 0 {
+        default_port
       } else {
-        80
+        if !is_decimal_digits(port_text) {
+          return Err(InvalidUrl("Invalid port number"))
+        }
+        let parsed = try {
+          @string.parse_int(port_text[:])
+        } catch {
+          _ => return Err(InvalidUrl("Invalid port number"))
+        }
+        if parsed < 1 || parsed > 65535 {
+          return Err(InvalidUrl("Invalid port number"))
+        }
+        parsed
       }
     }
+    None => default_port
   }
 
   let mut path = "/"

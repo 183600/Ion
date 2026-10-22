@@ -113,7 +113,9 @@ test "URL rejects invalid ports" {
   assert_true(Url::parse("http://example.com:0") is Err(_))
   assert_true(Url::parse("http://example.com:65536") is Err(_))
   assert_true(Url::parse("http://example.com:notaport") is Err(_))
-  assert_true(Url::parse("http://example.com:") is Err(_))
+  // RFC 3986 allows an empty port, which means the scheme default.
+  assert_eq(Url::parse("http://example.com:").unwrap().port, 80)
+  assert_eq(Url::parse("https://example.com:").unwrap().port, 443)
   assert_true(Url::parse("http://example.com:+80") is Err(_))
   assert_true(Url::parse("http://example.com:0x50") is Err(_))
   assert_true(Url::parse("http://example.com:8_0") is Err(_))
