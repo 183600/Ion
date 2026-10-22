@@ -433,9 +433,11 @@ fn H2ResponseState::apply_header_block(
   } else if !self.body_forbidden {
     match declared {
       Some(length) => {
-        if length > self.max_body_bytes {
-          return Err(ProtocolError("HTTP/2 response body too large"))
-        }
+        // The declared length is checked against the configured cap while
+        // DATA is consumed. A streaming caller may raise that cap through
+        // `Response::read_body_with_limit` after the response head arrives, so
+        // rejecting solely from the head would make the explicit limit
+        // override unusable for Content-Length responses.
         self.content_length = Some(length)
       }
       None => self.content_length = None
