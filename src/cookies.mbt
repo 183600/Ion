@@ -195,7 +195,10 @@ fn cookie_domain_matches(cookie : Cookie, host : String) -> Bool {
   }
   // RFC 6265 §5.1.3 only allows a suffix match when the request host is a
   // host name; an IP address must never match a domain cookie's suffix.
-  !is_ipv4_literal(host) && !is_ip_literal(host) && host.has_suffix("." + cookie.domain)
+  // IPvFuture literals are not IP addresses here: unbracketed text such as
+  // `v1.example` is a DNS name as far as cookies are concerned.
+  !is_ipv4_literal(host) && !is_ipv6_literal_with_zone(host) &&
+  host.has_suffix("." + cookie.domain)
 }
 
 ///|
@@ -576,7 +579,7 @@ fn cookie_from_set_cookie(
         // request host itself (for example "localhost") remains usable.
         return None
       }
-      let numeric_host = is_ipv4_literal(host) || is_ip_literal(host)
+      let numeric_host = is_ipv4_literal(host) || is_ipv6_literal_with_zone(host)
       if valid_url_host_chars(candidate) &&
         (host == candidate ||
           (!numeric_host && host.has_suffix("." + candidate))) {

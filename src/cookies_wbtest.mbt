@@ -660,9 +660,21 @@ test "cookie jar treats IP Domain attributes as host-only" {
   )
 }
 
-///|
-test "cookie domain suffixes never match IP address hosts" {
+test "DNS hosts that look like IPvFuture use domain matching" {
   let jar = CookieJar::new()
+  jar.store_at(
+    cookie_test_url("http://v1.example/"),
+    "d=1; Domain=v1.example; Path=/",
+    1000,
+  )
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://sub.v1.example/"), 1000),
+    Some("d=1"),
+  )
+}
+
+///|
+test "cookie domain suffixes never match IP address hosts" {  let jar = CookieJar::new()
   jar.store_at(
     cookie_test_url("http://0.0.1/"),
     "leak=1; Domain=0.0.1; Path=/",
