@@ -306,6 +306,9 @@ fn H2ResponseState::handle_frame(
           }
           self.ended = true
         }
+      } else {
+        // Server push is disabled, so no other stream can carry a response.
+        return Err(ProtocolError("HTTP/2 DATA on unknown stream"))
       }
       // The connection-level receive window is replenished as bytes arrive.
       if frame.stream_id == self.stream_id && frame.payload.length() > 0 {
@@ -318,7 +321,7 @@ fn H2ResponseState::handle_frame(
     }
     H2_FRAME_HEADERS => {
       if frame.stream_id != self.stream_id {
-        return Ok(())
+        return Err(ProtocolError("HTTP/2 HEADERS on unknown stream"))
       }
       let block = match h2_header_block_payload(frame) {
         Ok(value) => value

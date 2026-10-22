@@ -469,3 +469,27 @@ test "http2 flushes the request before waiting for a response" {
   assert_eq(response.status, 200)
   assert_true(stream.flushed)
 }
+
+test "http2 rejects frames on unknown streams" {
+  let response_headers = hpack_encode([(":status", "200")])
+  let data_input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 3, @utf8.encode("pushed")),
+  ])
+  let data_stream = h2_frame_mock_stream(data_input, 0)
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match h2_request(data_stream, request) {
+    Ok(_) => fail("HTTP/2 DATA on an unknown stream was accepted")
+    Err(err) => assert_eq(err, ProtocolError("HTTP/2 DATA on unknown stream"))
+  }
+
+  let headers_input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 3, response_headers),
+  ])
+  let headers_stream = h2_frame_mock_stream(headers_input, 0)
+  match h2_request(headers_stream, request) {
+    Ok(_) => fail("HTTP/2 HEADERS on an unknown stream was accepted")
+    Err(err) => assert_eq(err, ProtocolError("HTTP/2 HEADERS on unknown stream"))
+  }
+}
