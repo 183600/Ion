@@ -3,6 +3,12 @@
 
 const H2_MAX_HEADER_BLOCK_BYTES : Int = 1048576
 const H2_SETTINGS_MAX_CONCURRENT_STREAMS : Int = 0x3
+/// Stream-level receive window advertised to the peer. A CONNECT tunnel has
+/// no response-body cap (its data is an opaque byte stream), so this bounds
+/// how much tunnelled data a peer can buffer while the application is not
+/// reading. Non-tunnel bodies replenish the window as frames arrive and are
+/// still bounded by their response body limit.
+const H2_STREAM_RECEIVE_WINDOW : Int = 1048576
 
 struct H2FlowState {
   mut connection_send_window : Int
@@ -104,6 +110,10 @@ struct H2ResponseState {
   mut header_block_end_stream : Bool
   mut goaway_last_stream_id : Int?
   mut informational_count : Int
+  // Tunnel data accepted from the peer whose stream-level flow-control credit
+  // has not been returned yet. A tunnel is not body-capped, so its window is
+  // replenished only when the application consumes the buffered bytes.
+  mut tunnel_unacked_bytes : Int
 }
 
 fn H2ResponseState::new(
@@ -133,6 +143,7 @@ fn H2ResponseState::new(
     header_block_end_stream: false,
     goaway_last_stream_id: None,
     informational_count: 0,
+    tunnel_unacked_bytes: 0,
   }
 }
 
@@ -555,6 +566,10 @@ fn H2ResponseState::handle_frame(
         Ok(value) => value
         Err(err) => return Err(err)
       }
+      // Padding octets (including the pad-length octet) consume flow-control
+      // credit but never reach the application, so they can be acknowledged
+      // immediately even for a tunnel.
+      let padding_bytes = frame.payload.length() - payload.length()
       if frame.stream_id == self.stream_id {
         if !self.status_seen {
           return Err(ProtocolError("HTTP/2 DATA before response headers"))
@@ -574,6 +589,13 @@ fn H2ResponseState::handle_frame(
           }
           self.body.write_bytes(payload)
           self.body_received = self.body_received + payload.length()
+          if self.is_tunnel() {
+            // Do not return this credit until the tunnel body is read. The
+            // advertised receive window then bounds how far a peer can run
+            // ahead while the application is busy writing or idle.
+            self.tunnel_unacked_bytes =
+              self.tunnel_unacked_bytes + payload.length()
+          }
         }
         if (frame.flags & H2_FLAG_END_STREAM) != 0 {
           if !self.body_forbidden && self.content_length is Some(length) &&
@@ -601,15 +623,22 @@ fn H2ResponseState::handle_frame(
           Err(err) => return Err(err)
         }
       }
-      // Padding consumes the stream's flow-control window even though it is
-      // not part of the response body. Replenish the active stream as well so
-      // a peer that pads heavily cannot exhaust the window and stall while the
-      // client waits for more body bytes.
+      // For ordinary bodies the whole frame is consumed as soon as it is
+      // buffered (the body cap bounds memory), so the full stream credit can be
+      // returned. A tunnel is not body-capped: only its padding is safe to
+      // acknowledge here; `H2TunnelBody` returns the data credit as it reads.
       if frame.stream_id == self.stream_id && !self.ended &&
         frame.payload.length() > 0 {
-        match h2_send_window_update(stream, self.stream_id, frame.payload.length(), flush=true) {
-          Ok(_) => ()
-          Err(err) => return Err(err)
+        let acknowledge = if self.is_tunnel() {
+          padding_bytes
+        } else {
+          frame.payload.length()
+        }
+        if acknowledge > 0 {
+          match h2_send_window_update(stream, self.stream_id, acknowledge, flush=true) {
+            Ok(_) => ()
+            Err(err) => return Err(err)
+          }
         }
       }
       Ok(())
@@ -1180,7 +1209,7 @@ fn H2ClientConnection::send_preface(self : H2ClientConnection) -> Result[Unit, H
   }
   let settings = h2_settings_payload([
     (H2_SETTINGS_ENABLE_PUSH, 0),
-    (H2_SETTINGS_INITIAL_WINDOW_SIZE, H2_MAX_WINDOW_SIZE),
+    (H2_SETTINGS_INITIAL_WINDOW_SIZE, H2_STREAM_RECEIVE_WINDOW),
     (H2_SETTINGS_MAX_HEADER_LIST_SIZE, 1048576),
     (H2_SETTINGS_ENABLE_CONNECT_PROTOCOL, 1),
   ])
@@ -1595,12 +1624,38 @@ fn H2TunnelBody::advance(self : H2TunnelBody) -> Result[Unit, NetError] {
   Ok(())
 }
 
-fn H2TunnelBody::drain_buffered(self : H2TunnelBody, buf : Buffer) -> Int {
+fn H2TunnelBody::drain_buffered(
+  self : H2TunnelBody,
+  buf : Buffer,
+) -> Result[Int, NetError] {
   let data = self.state.body.to_bytes()
   if data.length() == 0 {
-    return 0
+    return Ok(0)
   }
   let take = if data.length() < 8192 { data.length() } else { 8192 }
+  // Return tunnel flow-control credit only for bytes the application actually
+  // consumes. The peer's advertised stream window therefore bounds how much
+  // unread tunnel data can accumulate while a caller is writing or idle.
+  let acknowledge = if !self.state.ended && self.state.tunnel_unacked_bytes > 0 {
+    let pending = self.state.tunnel_unacked_bytes
+    let acknowledge = if take < pending { take } else { pending }
+    match h2_send_window_update(
+      self.connection.stream,
+      self.state.stream_id,
+      acknowledge,
+      flush=true,
+    ) {
+      Ok(_) => acknowledge
+      Err(err) => {
+        self.finish()
+        self.is_open = false
+        return Err(h2_tunnel_write_error(err))
+      }
+    }
+  } else {
+    0
+  }
+  self.state.tunnel_unacked_bytes = self.state.tunnel_unacked_bytes - acknowledge
   buf.write_bytes(data.exact_view(start=0, end=take))
   let remaining = data.exact_view(start=take, end=data.length()).to_owned()
   let next = Buffer(size_hint=remaining.length())
@@ -1609,7 +1664,7 @@ fn H2TunnelBody::drain_buffered(self : H2TunnelBody, buf : Buffer) -> Int {
   if self.state.body.length() == 0 && self.state.ended {
     self.finish()
   }
-  take
+  Ok(take)
 }
 
 pub impl Stream for H2TunnelBody with fn read(
@@ -1620,7 +1675,7 @@ pub impl Stream for H2TunnelBody with fn read(
     return Err(NetError::Closed)
   }
   if self.state.body.length() > 0 {
-    return Ok(self.drain_buffered(buf))
+    return self.drain_buffered(buf)
   }
   if self.state.ended {
     self.finish()
@@ -1632,7 +1687,7 @@ pub impl Stream for H2TunnelBody with fn read(
       Err(err) => return Err(err)
     }
     if self.state.body.length() > 0 {
-      return Ok(self.drain_buffered(buf))
+      return self.drain_buffered(buf)
     }
     if self.state.ended {
       self.finish()
