@@ -39,3 +39,20 @@ test "connector connect dials fresh instead of reusing a negotiated HTTP/2 sessi
   assert_true(connector.close(url) is Ok(_))
   assert_false(second.is_open)
 }
+
+test "connector connect rejects an unsupported negotiated protocol" {
+  let stream = h2_frame_mock_stream(b"", 0)
+  let connector = Connector::new(
+    RegressionMockDialer::{ stream, count: 0 },
+    H2NegotiatingTlsProvider::{ protocol: Some("spdy/3.1") },
+  ).with_http2(true)
+  let url = Url::parse("https://example.com/").unwrap()
+  match connector.connect(url) {
+    Ok(_) => fail("unsupported ALPN protocol was accepted")
+    Err(err) =>
+      assert_eq(err, ProtocolError("Unsupported negotiated ALPN protocol: spdy/3.1"))
+  }
+  assert_false(stream.is_open)
+  assert_eq(connector.idle_connection_count(), 0)
+  assert_eq(connector.connection_count(), 0)
+}

@@ -1507,6 +1507,19 @@ pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpEr
   // `set_timeout` fails, so a later checkout could hand it out again.
   match self.connect_impl(url, false, false, connect_timeout) {
     Ok((stream, _reused, negotiated_protocol, h2)) => {
+      // A raw stream is only useful to an HTTP/1.1 or HTTP/2 caller. Reject an
+      // ALPN result that neither codec can speak instead of handing back an
+      // unusable transport (and caching it under a misleading key).
+      match negotiated_protocol {
+        Some(protocol) =>
+          if protocol != "h2" && protocol != "http/1.1" {
+            let _ = stream.close()
+            return Err(
+              ProtocolError("Unsupported negotiated ALPN protocol: " + protocol),
+            )
+          }
+        None => ()
+      }
       // The connect timeout only bounds dialing and the TLS handshake; restore
       // the request timeout for the bytes exchanged after the connection is up.
       // A pooled stream may still carry the timeout from its previous request,
