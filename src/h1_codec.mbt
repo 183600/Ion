@@ -1707,6 +1707,18 @@ fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
       }
     _ => None
   }
+  // Transfer-Encoding overrides Content-Length for parsing, but a message that
+  // carries both is ambiguous and a known request-smuggling vector. Existing
+  // behavior keeps the transfer coding (some peers send a harmless stale
+  // Content-Length), while refusing to pool a connection whose framing was
+  // contradictory (RFC 9112 §6.1).
+  let has_transfer_encoding = match transfer_encoding {
+    TransferEncodingAbsent => false
+    _ => true
+  }
+  if has_transfer_encoding && self.headers.contains("Content-Length") {
+    self.close_after_body = true
+  }
 
   // 204 responses must not carry framing fields at all (RFC 9110 §8.6,
   // RFC 9112 §6.1). A 205 response may only advertise a zero-length body, so

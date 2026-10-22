@@ -2840,3 +2840,18 @@ test "form encoding uses the WHATWG safe byte set" {
     "tilde=%7E&star=*&reserved=-._&spaces=a+b",
   )
 }
+
+///|
+test "chunked responses with Content-Length are not pooled" {
+  let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 5\r\n\r\n5\r\nhello\r\n0\r\n\r\n"
+  let stream = regression_mock_stream(raw, 4096, 4096)
+  let completions : Array[Bool] = []
+  let codec = H1Codec::new_with_completion(
+    stream,
+    fn(reusable) { completions.push(reusable) },
+  )
+  let response = codec.decode_response().unwrap()
+  assert_eq(response.text().unwrap(), "hello")
+  assert_eq(completions, [false])
+  assert_false(stream.is_open)
+}
