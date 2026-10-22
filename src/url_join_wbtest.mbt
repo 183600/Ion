@@ -98,3 +98,15 @@ test "Url::join keeps an asterisk-form base intact for empty and query-only refe
   let path = base.join("next").unwrap()
   assert_eq(path.path, "/next")
 }
+
+test "redirect resolution keeps an asterisk-form base for fragment and query targets" {
+  let base = Url::parse("http://example.com").unwrap().with_path("*")
+  let fragment = resolve_redirect_url(base, "#s").unwrap()
+  assert_eq(fragment.path, "*")
+  assert_eq(fragment.fragment, "s")
+  let query = resolve_redirect_url(base, "?y=2").unwrap()
+  assert_eq(query.path, "*")
+  assert_eq(query.query, "y=2")
+  let next = resolve_redirect_url(base, "next").unwrap()
+  assert_eq(next.path, "/next")
+}

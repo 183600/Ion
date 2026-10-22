@@ -496,7 +496,14 @@ fn resolve_redirect_url(base : Url, location : String) -> Result[Url, HttpError]
     Ok(url) => url
     Err(err) => return Err(err)
   }
-  Ok(joined.with_path(normalize_path_and_suffix(joined.path)))
+  // `join` already normalizes dot segments, but it deliberately keeps the
+  // special asterisk-form path as `*`. Do not turn that back into `/*` here.
+  let path = if joined.path == "*" {
+    "*"
+  } else {
+    normalize_path_and_suffix(joined.path)
+  }
+  Ok(joined.with_path(path))
 }
 
 /// Whether two URLs address the same resource for request purposes. Fragments
