@@ -149,6 +149,16 @@ int32_t feather_tcp_connect(moonbit_bytes_t host, int32_t port, int32_t timeout_
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_protocol = IPPROTO_TCP;
 
+  // Start the dial deadline before name resolution so the configured timeout
+  // covers the whole operation, not just the TCP connection attempts.
+  int64_t deadline_ms = 0;
+  if (timeout_ms > 0) {
+    int64_t now = feather_monotonic_ms();
+    if (now >= 0) {
+      deadline_ms = now + (int64_t)timeout_ms;
+    }
+  }
+
   struct addrinfo *result = NULL;
   int gai = getaddrinfo(name, service, &hints, &result);
   if (gai != 0) {
@@ -158,13 +168,6 @@ int32_t feather_tcp_connect(moonbit_bytes_t host, int32_t port, int32_t timeout_
 
   int last_error = EHOSTUNREACH;
   int fd = -1;
-  int64_t deadline_ms = 0;
-  if (timeout_ms > 0) {
-    int64_t now = feather_monotonic_ms();
-    if (now >= 0) {
-      deadline_ms = now + (int64_t)timeout_ms;
-    }
-  }
   for (struct addrinfo *entry = result; entry != NULL; entry = entry->ai_next) {
     // The timeout bounds the whole dial, not each resolved address.
     if (timeout_ms > 0 && deadline_ms > 0 &&
