@@ -961,6 +961,30 @@ fn H2ClientConnection::drain_buffered_connection_frames(
       | H2_FRAME_WINDOW_UPDATE
       | H2_FRAME_GOAWAY
       | H2_FRAME_PRIORITY => ()
+      H2_FRAME_RST_STREAM => {
+        let offset = self.reader.pending_offset
+        let frame_stream_id = ((self.reader.pending[offset + 5].to_int() & 0x7f) << 24) |
+          (self.reader.pending[offset + 6].to_int() << 16) |
+          (self.reader.pending[offset + 7].to_int() << 8) |
+          self.reader.pending[offset + 8].to_int()
+        match h2_read_frame(self.reader) {
+          Ok(_) => ()
+          Err(_) => {
+            self.closed = true
+            return
+          }
+        }
+        // After END_STREAM, the peer may still have a RST_STREAM in flight
+        // before it processes the end of the response (RFC 9113 §5.1). Ignore
+        // it for a client stream we already completed. An RST_STREAM for an
+        // idle future stream, or for a server-push stream, is a protocol error.
+        if h2_is_client_stream(frame_stream_id) &&
+          frame_stream_id <= state.stream_id {
+          continue
+        }
+        self.closed = true
+        return
+      }
       H2_FRAME_DATA => {
         let offset = self.reader.pending_offset
         let frame_stream_id = ((self.reader.pending[offset + 5].to_int() & 0x7f) << 24) |
