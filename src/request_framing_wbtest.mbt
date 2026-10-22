@@ -144,3 +144,15 @@ test "non-chunked responses have no trailers" {
   assert_eq(response.read_body().unwrap(), b"ok")
   assert_eq(response.trailers().length(), 0)
 }
+
+test "bodyless responses still validate framing fields" {
+  for raw in [
+    "HTTP/1.1 304 Not Modified\r\nContent-Length: nope\r\n\r\n",
+    "HTTP/1.1 304 Not Modified\r\nContent-Length: 5\r\nContent-Length: 6\r\n\r\n",
+    "HTTP/1.0 204 No Content\r\nTransfer-Encoding: chunked;bad\r\n\r\n",
+  ] {
+    let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+    let response = codec.decode_response().unwrap()
+    assert_true(response.read_body() is Err(_))
+  }
+}

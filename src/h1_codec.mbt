@@ -1273,6 +1273,23 @@ fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
   let close_by_default = self.version == "HTTP/1.0" && !keep_alive
   self.close_after_body = self.close_after_body || close_connection || close_by_default
 
+  // Validate framing fields even for responses that cannot carry a body, so a
+  // malformed Content-Length/Transfer-Encoding is not silently pooled.
+  let transfer_encoding = match response_transfer_encoding(self.headers) {
+    Ok(value) => value
+    Err(err) => return Err(self.fail(err))
+  }
+  // Transfer-Encoding overrides Content-Length, even when the latter is
+  // malformed, so only validate Content-Length when no coding is present.
+  let content_length = match transfer_encoding {
+    TransferEncodingAbsent =>
+      match response_content_length(self.headers) {
+        Ok(value) => value
+        Err(err) => return Err(self.fail(err))
+      }
+    _ => None
+  }
+
   if self.head || self.status == 204 || self.status == 205 || self.status == 304 ||
     (self.status >= 100 && self.status < 200) {
     let reusable = !(self.status == 101 || self.close_after_body) &&
@@ -1285,10 +1302,6 @@ fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
     return Ok(())
   }
 
-  let transfer_encoding = match response_transfer_encoding(self.headers) {
-    Ok(value) => value
-    Err(err) => return Err(self.fail(err))
-  }
   match transfer_encoding {
     TransferEncodingChunked => {
       self.body_mode = BodyChunked
@@ -1300,10 +1313,6 @@ fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
       return Ok(())
     }
     TransferEncodingAbsent => ()
-  }
-  let content_length = match response_content_length(self.headers) {
-    Ok(value) => value
-    Err(err) => return Err(self.fail(err))
   }
   match content_length {
     Some(length) => {
