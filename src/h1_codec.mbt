@@ -896,14 +896,25 @@ const MAX_RESPONSE_HEADERS : Int = 200
 const MAX_RESPONSE_HEAD_BYTES : Int = 1048576
 
 fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] {
-  let response_line = match read_line(reader) {
-    Ok(Some(line)) => line
-    Ok(None) => return Err(ProtocolError("Invalid response line"))
-    Err(err) => return Err(NetworkError(err))
-  }
-  let mut head_bytes = reader.last_line_bytes
-  if head_bytes > MAX_RESPONSE_HEAD_BYTES {
-    return Err(ProtocolError("Response header section too large"))
+  // RFC 9112 §2.2 allows a client to ignore empty lines received before the
+  // response-line. Bound them with the same head budget so a peer cannot send
+  // unlimited blank lines before the status line.
+  let mut head_bytes = 0
+  let mut response_line = ""
+  while true {
+    let line = match read_line(reader) {
+      Ok(Some(line)) => line
+      Ok(None) => return Err(ProtocolError("Invalid response line"))
+      Err(err) => return Err(NetworkError(err))
+    }
+    head_bytes = head_bytes + reader.last_line_bytes
+    if head_bytes > MAX_RESPONSE_HEAD_BYTES {
+      return Err(ProtocolError("Response header section too large"))
+    }
+    if line.length() > 0 {
+      response_line = line
+      break
+    }
   }
   let first_space = match response_line.find(" ") {
     Some(index) => index
