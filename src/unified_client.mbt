@@ -543,6 +543,10 @@ fn UnifiedClient::do_request_once(
   // so caller-supplied proxy credentials must not be forwarded to the origin.
   let absolute_form = self.connector.uses_absolute_form(request.url)
   if absolute_form {
+    // The absolute-form request target names the origin, so a caller-supplied
+    // Host that disagrees with it would be ambiguous. Let the codec derive
+    // Host from the target authority, as HTTP/2 does with :authority.
+    request = request.without_header("Host")
     if request.get_header("Proxy-Authorization") is None {
       match self.connector.proxy_authorization_for(request.url) {
         Some(value) => request = request.with_header("Proxy-Authorization", value)

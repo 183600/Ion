@@ -2580,11 +2580,15 @@ test "plain HTTP through a proxy uses absolute-form and proxy auth" {
   let proxy = Proxy::new("http://user:secret@proxy.example:3128").unwrap()
   let client = client.with_proxy(proxy)
   let url = Url::parse("http://example.com/path?x=1").unwrap()
-  let response = client.request(Request::new(GET, url)).unwrap()
+  let response = client.request(
+    Request::new(GET, url).with_header("Host", "other.example"),
+  ).unwrap()
   assert_eq(response.text().unwrap(), "ok")
   assert_eq(dialer.count, 1)
   let wire = @utf8.decode(stream.output.to_bytes()[:])
   assert_true(wire.contains("GET http://example.com/path?x=1 HTTP/1.1\r\n"))
+  assert_true(wire.contains("Host: example.com\r\n"))
+  assert_true(!wire.contains("Host: other.example"))
   assert_true(wire.contains("Proxy-Authorization: Basic " + @base64.encode(@utf8.encode("user:secret"))))
 }
 
