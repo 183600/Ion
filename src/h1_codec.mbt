@@ -9,6 +9,9 @@ pub struct H1Codec {
   // Whether the most recently encoded request asked for a protocol upgrade.
   // A 101 response is only an upgrade tunnel when the request offered one.
   priv mut last_is_upgrade : Bool
+  // Valid protocols offered by the most recent upgrade request, used to make
+  // sure a 101 response actually selected one of them.
+  priv mut last_upgrade_protocols : Array[String]
   mut close_after_request : Bool
   // Set when a request head carried `Expect: 100-continue` and the body has
   // not been written yet. `decode_response` sends it after an interim 100.
@@ -60,6 +63,7 @@ fn H1Codec::make(
     last_is_head: false,
     last_is_connect: false,
     last_is_upgrade: false,
+    last_upgrade_protocols: [],
     close_after_request: false,
     deferred_pending: false,
     deferred_body_bytes: b"",
@@ -544,6 +548,7 @@ pub fn H1Codec::encode_request(
   self.last_is_head = false
   self.last_is_connect = false
   self.last_is_upgrade = false
+  self.last_upgrade_protocols = []
   self.close_after_request = false
   self.deferred_pending = false
   if !valid_url_path_chars(req.url.path) ||
@@ -589,6 +594,9 @@ pub fn H1Codec::encode_request(
     if !valid_header_name(header.name) || !valid_header_value(header.value) {
       return Err(InvalidHeader(header.name))
     }
+  }
+  if req.headers.contains("Upgrade") && upgrade_protocols(req.headers).length() == 0 {
+    return Err(InvalidHeader("Upgrade"))
   }
   let host_values = req.headers.get_all("Host")
   if host_values.length() > 1 {
@@ -721,6 +729,7 @@ pub fn H1Codec::encode_request(
       self.last_is_head = req.method == HEAD
       self.last_is_connect = is_connect
       self.last_is_upgrade = request_requests_upgrade(req.headers)
+      self.last_upgrade_protocols = upgrade_protocols(req.headers)
       self.close_after_request = headers_have_token(req.headers, "Connection", "close")
       Ok(())
     }
@@ -875,19 +884,78 @@ fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] 
   Ok(ResponseHead::{ version, status, headers })
 }
 
-/// Whether a request explicitly offered a protocol upgrade. Both the
-/// `Connection: Upgrade` nomination and a non-empty `Upgrade` field are
-/// required; otherwise a 101 response is unsolicited.
-fn request_requests_upgrade(headers : Headers) -> Bool {
+/// Whether one `Upgrade` protocol value has the RFC 9110 grammar
+/// `protocol-name [ "/" protocol-version ]`, with both parts being tokens.
+fn valid_upgrade_protocol(value : String) -> Bool {
+  let slash = match value.find("/") {
+    Some(index) => index
+    None => return value.length() > 0 && {
+      let mut valid = true
+      for ch in value {
+        if !is_header_token_char(ch) {
+          valid = false
+        }
+      }
+      valid
+    }
+  }
+  let name = value[0:slash].to_owned()
+  let version = value[slash + 1:].to_owned()
+  if name.length() == 0 || version.length() == 0 {
+    return false
+  }
+  for ch in name {
+    if !is_header_token_char(ch) {
+      return false
+    }
+  }
+  for ch in version {
+    if !is_header_token_char(ch) {
+      return false
+    }
+  }
+  true
+}
+
+/// Collect the valid protocol tokens offered by `Upgrade` headers.
+fn upgrade_protocols(headers : Headers) -> Array[String] {
+  let protocols : Array[String] = []
+  for value in headers.get_all("Upgrade") {
+    for part in split_header_list(value) {
+      let token = part.trim().to_owned().to_lower()
+      if token.length() > 0 && valid_upgrade_protocol(token) &&
+        !protocols.contains(token) {
+        protocols.push(token)
+      }
+    }
+  }
+  protocols
+}
+
+/// Whether the response headers confirm a switch to one of the protocols the
+/// request offered. Both `Connection: Upgrade` and a matching `Upgrade` field
+/// are required by RFC 9110 §7.8.
+fn response_confirms_upgrade(
+  headers : Headers,
+  requested : Array[String],
+) -> Bool {
   if !headers_have_token(headers, "Connection", "upgrade") {
     return false
   }
-  for value in headers.get_all("Upgrade") {
-    if value.trim().length() > 0 {
+  for protocol in upgrade_protocols(headers) {
+    if requested.contains(protocol) {
       return true
     }
   }
   false
+}
+
+/// Whether a request explicitly offered a protocol upgrade. Both the
+/// `Connection: Upgrade` nomination and a non-empty, valid `Upgrade` field are
+/// required; otherwise a 101 response is unsolicited.
+fn request_requests_upgrade(headers : Headers) -> Bool {
+  headers_have_token(headers, "Connection", "upgrade") &&
+  upgrade_protocols(headers).length() > 0
 }
 
 /// Decode HTTP response from HTTP/1.1 format
@@ -905,9 +973,11 @@ pub fn H1Codec::decode_response(
   let request_close = self.close_after_request
   let request_connect = self.last_is_connect
   let request_upgrade = self.last_is_upgrade
+  let request_upgrade_protocols = self.last_upgrade_protocols
   self.last_is_head = false
   self.last_is_connect = false
   self.last_is_upgrade = false
+  self.last_upgrade_protocols = []
   self.close_after_request = false
   // A deferred body belongs to the request that produced the response being
   // read now. Take it out of the codec so an error, a final response without
@@ -961,10 +1031,17 @@ pub fn H1Codec::decode_response(
       continue
     }
 
-    // A 101 response switches to the protocol named by the request's Upgrade
-    // field. A 101 without a matching offer is still returned as a bodyless
-    // response, but the connection is closed rather than pooled.
-    let upgrade_tunnel = response_head.status == 101 && request_upgrade
+    // A 101 response switches only to a protocol the request actually
+    // offered. A 101 without any offer is still returned as a bodyless
+    // response, but the connection is closed rather than pooled. A 101 that
+    // answers an offer with a different/missing protocol is malformed and
+    // must not become a tunnel.
+    let upgrade_tunnel = response_head.status == 101 && request_upgrade &&
+      response_confirms_upgrade(response_head.headers, request_upgrade_protocols)
+    if response_head.status == 101 && request_upgrade && !upgrade_tunnel {
+      let _ = self.reader.val.stream.close()
+      return Err(ProtocolError("HTTP/1.1 101 response does not confirm the requested upgrade"))
+    }
     // A successful CONNECT response switches to the tunnelled stream. It is
     // close-delimited and must not carry HTTP body framing (RFC 9110 §9.3.6).
     let connect_tunnel = request_connect &&

@@ -284,3 +284,42 @@ test "UnifiedClient keeps an HTTP/2 upgrade lease until the tunnel closes" {
   assert_false(stream.is_open)
   assert_eq(client.connector.pool.val.active.length(), 0)
 }
+
+///|
+test "HTTP/1 upgrade requires a matching confirmation from the server" {
+  let url = Url::parse("http://example.com/socket").unwrap()
+  for raw in [
+    "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: h2c\r\n\r\n",
+    "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\n\r\n",
+    "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n\r\n",
+  ] {
+    let stream = regression_mock_stream(raw, 0, 0)
+    let codec = H1Codec::new(stream)
+    codec.encode_request(
+      Request::new(GET, url).with_upgrade("websocket"),
+    ).unwrap()
+    match codec.decode_response() {
+      Ok(_) => fail("unconfirmed HTTP/1 upgrade was accepted")
+      Err(err) =>
+        assert_eq(
+          err,
+          ProtocolError("HTTP/1.1 101 response does not confirm the requested upgrade"),
+        )
+    }
+    assert_false(stream.is_open)
+  }
+}
+
+///|
+test "HTTP/1 upgrade protocols must be HTTP tokens" {
+  let url = Url::parse("http://example.com/socket").unwrap()
+  for protocol in ["bad protocol", ""] {
+    let stream = regression_mock_stream("", 0, 0)
+    let codec = H1Codec::new(stream)
+    match codec.encode_request(Request::new(GET, url).with_upgrade(protocol)) {
+      Ok(_) => fail("invalid Upgrade protocol was encoded")
+      Err(err) => assert_eq(err, InvalidHeader("Upgrade"))
+    }
+    assert_eq(stream.output.to_bytes().length(), 0)
+  }
+}
