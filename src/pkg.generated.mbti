@@ -80,6 +80,7 @@ pub struct ClientOptions {
   max_response_body_bytes : Int32
   http2 : Bool
   http2_prior_knowledge : Bool
+  http2_streaming : Bool
   default_headers : Headers
 } derive(Eq, @debug.Debug)
 pub fn ClientOptions::default_headers(Self) -> Headers
@@ -90,6 +91,7 @@ pub fn ClientOptions::with_default_headers(Self, Headers) -> Self
 pub fn ClientOptions::with_follow_redirects(Self, Bool) -> Self
 pub fn ClientOptions::with_http2(Self, Bool) -> Self
 pub fn ClientOptions::with_http2_prior_knowledge(Self, Bool) -> Self
+pub fn ClientOptions::with_http2_streaming(Self, Bool) -> Self
 pub fn ClientOptions::with_max_redirects(Self, Int32) -> Self
 pub fn ClientOptions::with_max_response_body_bytes(Self, Int32) -> Self
 pub fn ClientOptions::with_timeout(Self, Int32) -> Self
@@ -118,16 +120,20 @@ pub struct Connector {
   cookie_jar : @ref.Ref[CookieJar]
   pool : @ref.Ref[ConnectionPoolState]
 }
+pub fn Connector::active_connection_count(Self) -> Int32
 pub fn Connector::checkout(Self, Url, timeout_ms? : Int32) -> Result[(&Stream, ConnectionLease), HttpError]
 pub fn Connector::close(Self, Url) -> Result[Unit, HttpError]
 pub fn Connector::close_all(Self) -> Result[Unit, HttpError]
+pub fn Connector::close_idle(Self) -> Result[Unit, HttpError]
 pub fn Connector::connect(Self, Url) -> Result[&Stream, HttpError]
 pub fn Connector::connect_timeout(Self) -> Int32
+pub fn Connector::connection_count(Self) -> Int32
 pub fn Connector::cookie_header(Self, Url) -> String?
 pub fn Connector::cookie_jar(Self) -> CookieJar
 pub fn Connector::cookies_enabled(Self) -> Bool
 pub fn Connector::http2_enabled(Self) -> Bool
 pub fn Connector::http2_prior_knowledge(Self) -> Bool
+pub fn Connector::idle_connection_count(Self) -> Int32
 pub fn Connector::idle_timeout(Self) -> Int32
 pub fn Connector::max_connections_per_host(Self) -> Int32
 pub fn Connector::max_idle_per_host(Self) -> Int32
@@ -211,12 +217,17 @@ pub struct H2ClientConnection {
 pub fn H2ClientConnection::close(Self) -> Unit
 pub fn H2ClientConnection::new(&Stream) -> Result[Self, HttpError]
 pub fn H2ClientConnection::request(Self, Request) -> Result[Response, HttpError]
+pub fn H2ClientConnection::request_streaming(Self, Request) -> Result[Response, HttpError]
+pub fn H2ClientConnection::request_streaming_with_limit(Self, Request, Int32) -> Result[Response, HttpError]
 pub fn H2ClientConnection::request_with_limit(Self, Request, Int32) -> Result[Response, HttpError]
 pub impl HttpClient for H2ClientConnection
 
 type H2FlowState
 
 type H2Frame
+
+type H2LiveBodyStream
+pub impl Stream for H2LiveBodyStream
 
 type H2ResponseState
 
@@ -484,14 +495,18 @@ pub struct UnifiedClient {
   options : ClientOptions
   mut redirect_count : Int32
 }
+pub fn UnifiedClient::active_connection_count(Self) -> Int32
 pub fn UnifiedClient::client_options(Self) -> ClientOptions
 pub fn UnifiedClient::close(Self) -> Result[Unit, HttpError]
 pub fn UnifiedClient::close_all(Self) -> Result[Unit, HttpError]
+pub fn UnifiedClient::close_idle(Self) -> Result[Unit, HttpError]
 pub fn UnifiedClient::connect(Self, String) -> Result[Response, HttpError]
+pub fn UnifiedClient::connection_count(Self) -> Int32
 pub fn UnifiedClient::cookie_jar(Self) -> CookieJar
 pub fn UnifiedClient::delete(Self, String) -> Result[Response, HttpError]
 pub fn UnifiedClient::get(Self, String) -> Result[Response, HttpError]
 pub fn UnifiedClient::head(Self, String) -> Result[Response, HttpError]
+pub fn UnifiedClient::idle_connection_count(Self) -> Int32
 pub fn UnifiedClient::new() -> Self
 pub fn UnifiedClient::options(Self, String) -> Result[Response, HttpError]
 pub fn UnifiedClient::patch(Self, String, Bytes) -> Result[Response, HttpError]
@@ -508,6 +523,7 @@ pub fn UnifiedClient::with_default_headers(Self, Headers) -> Self
 pub fn UnifiedClient::with_follow_redirects(Self, Bool) -> Self
 pub fn UnifiedClient::with_http2(Self, Bool) -> Self
 pub fn UnifiedClient::with_http2_prior_knowledge(Self, Bool) -> Self
+pub fn UnifiedClient::with_http2_streaming(Self, Bool) -> Self
 pub fn UnifiedClient::with_idle_timeout(Self, Int32) -> Self
 pub fn UnifiedClient::with_max_connections_per_host(Self, Int32) -> Self
 pub fn UnifiedClient::with_max_idle_per_host(Self, Int32) -> Self
