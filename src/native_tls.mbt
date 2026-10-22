@@ -464,6 +464,12 @@ pub impl TlsClientCtx for OpenSslTlsClientCtx with fn connect(
       idle_steps = idle_steps + 1
       continue
     }
+    if status == -2 {
+      // The peer sent close_notify (or otherwise ended the TLS session cleanly)
+      // before the handshake completed. That is a closed connection, not a
+      // malformed or failed handshake.
+      return Err(ConnectionClosed)
+    }
     return Err(native_tls_handshake_error(tls))
   }
   Err(HandshakeFailed("TLS handshake did not converge"))

@@ -434,3 +434,21 @@ test "native TLS writes flush handshake records before reading on WANT_READ" {
   assert_eq(underlying.output[0], 0x16)
   assert_eq(underlying.output[1], 0x03)
 }
+
+///|
+#cfg(target="native")
+test "native TLS handshake reports close_notify as ConnectionClosed" {
+  let provider = OpenSslTlsProvider::new()
+  let config = TlsConfig::new("example.com").with_verify_mode(SkipVerification)
+  let ctx = provider.new_client(config).unwrap()
+  // A TLS alert record containing close_notify (warning, description 0).
+  let alert = @utf8.decode_lossy(
+    Bytes::from_array([0x15, 0x03, 0x03, 0x00, 0x02, 0x01, 0x00])[:],
+  )
+  let stream = regression_mock_stream(alert, 0, 0)
+  match ctx.connect(stream) {
+    Err(ConnectionClosed) => ()
+    Err(err) => abort("expected ConnectionClosed, got " + @debug.to_string(err))
+    Ok(_) => abort("handshake unexpectedly succeeded")
+  }
+}
