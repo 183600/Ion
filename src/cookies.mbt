@@ -498,14 +498,15 @@ fn cookie_parse_date(value : String) -> UInt64? {
   let mut year : Int32? = None
   let mut clock : (Int32, Int32, Int32)? = None
   for token in tokens {
-    if clock is None {
-      match cookie_parse_clock(token) {
-        Some(value) => {
-          clock = Some(value)
-          continue
-        }
-        None => ()
+    // RFC 6265 §5.1.1 consumes every time token in the date, even when a
+    // previous token already supplied the time. Falling through would let a
+    // second time such as `08:49:37` be misread as a day-of-month.
+    match cookie_parse_clock(token) {
+      Some(value) => {
+        clock = Some(value)
+        continue
       }
+      None => ()
     }
     if day is None {
       match cookie_leading_number(token, 1, 2) {
