@@ -786,7 +786,7 @@ pub fn gunzip(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
 /// the body itself is empty.
 fn content_coding_supported(encoding : String) -> Bool {
   match encoding.trim().to_lower() {
-    "" | "identity" | "gzip" | "x-gzip" | "deflate" => true
+    "" | "identity" | "gzip" | "x-gzip" | "deflate" | "x-deflate" => true
     _ => false
   }
 }
@@ -809,7 +809,7 @@ pub fn decode_content_encoding(
         Ok(data)
       }
     "gzip" | "x-gzip" => gunzip(data, limit)
-    "deflate" => inflate(data, limit)
+    "deflate" | "x-deflate" => inflate(data, limit)
     _ => Err(ProtocolError("unsupported Content-Encoding: " + encoding))
   }
 }

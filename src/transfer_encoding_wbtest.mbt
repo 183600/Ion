@@ -140,3 +140,37 @@ test "non-final chunked coding remains close-delimited when decoded" {
     @utf8.encode("5\r\nhello\r\n0\r\n\r\n"),
   )
 }
+
+test "read_body_decoded accepts the legacy x-deflate alias" {
+  // zlib("hello"), as produced by the historical x-deflate coding.
+  let deflate_hello = Bytes::from_array([
+    120, 218, 203, 72, 205, 201, 201, 7, 0, 6, 44, 2, 21,
+  ])
+  let encoded = Response::new(
+    200,
+    Headers::new().set("Content-Encoding", "x-deflate"),
+    response_copy_stream(deflate_hello),
+  )
+  assert_eq(encoded.read_body_decoded().unwrap(), b"hello")
+  let transfer = transfer_response_stream(
+    "HTTP/1.1 200 OK\r\nTransfer-Encoding: x-deflate, chunked\r\n\r\nd\r\n",
+    deflate_hello,
+    "\r\n0\r\n\r\n",
+  )
+  let response = H1Codec::new(transfer).decode_response().unwrap()
+  assert_eq(response.read_body_decoded().unwrap(), b"hello")
+}
+
+test "empty bodies still reject unsupported x-deflate-looking codings" {
+  let response = Response::new(
+    200,
+    Headers::new().set("Content-Encoding", "x-compress"),
+    response_copy_stream(b""),
+  )
+  match response.read_body_decoded() {
+    Ok(_) => fail("unsupported coding was accepted for an empty body")
+    Err(err) =>
+      assert_eq(err, ProtocolError("unsupported Content-Encoding: x-compress"))
+  }
+}
+

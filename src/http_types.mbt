@@ -1624,7 +1624,7 @@ fn decode_transfer_coding(
         Ok(data)
       }
     "gzip" | "x-gzip" => gunzip(data, limit)
-    "deflate" => inflate(data, limit)
+    "deflate" | "x-deflate" => inflate(data, limit)
     _ => Err(ProtocolError("unsupported Transfer-Encoding: " + coding))
   }
 }
