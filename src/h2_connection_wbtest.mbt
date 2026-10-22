@@ -770,7 +770,12 @@ test "http2 surfaces a nonzero GOAWAY error code" {
   let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
   match connection.request(request) {
     Ok(_) => fail("nonzero HTTP/2 GOAWAY error code was ignored")
-    Err(err) => assert_eq(err, ProtocolError("HTTP/2 GOAWAY error 1"))
+    Err(err) => assert_eq(
+      err,
+      ProtocolError(
+        "HTTP/2 connection closed by GOAWAY before opening a stream (error 1)",
+      ),
+    )
   }
   assert_false(connection.is_open())
 }

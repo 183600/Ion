@@ -478,7 +478,10 @@ fn request_error_is_refused(err : HttpError) -> Bool {
 fn request_error_is_unprocessed_goaway(err : HttpError) -> Bool {
   match err {
     ProtocolError(message) =>
-      message == "HTTP/2 connection closed by GOAWAY"
+      message == "HTTP/2 connection closed by GOAWAY" ||
+      message.has_prefix(
+        "HTTP/2 connection closed by GOAWAY before opening a stream",
+      )
     _ => false
   }
 }

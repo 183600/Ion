@@ -1268,7 +1268,14 @@ fn H2ClientConnection::drain_buffered_settings(
           Err(err) => return Err(err)
         }
         if error_code != 0 {
-          return Err(ProtocolError("HTTP/2 GOAWAY error " + error_code.to_string()))
+          // No stream has been opened yet, so the request is guaranteed not to
+          // have been processed. Keep the code in the message for diagnostics,
+          // but use wording the client can recognise as safe to retry.
+          return Err(ProtocolError(
+            "HTTP/2 connection closed by GOAWAY before opening a stream (error " +
+            error_code.to_string() +
+            ")",
+          ))
         }
         return Err(ProtocolError("HTTP/2 connection closed by GOAWAY"))
       }
