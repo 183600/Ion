@@ -116,7 +116,11 @@ fn env_tls_config() -> Result[TlsConfig?, HttpError] {
   if !insecure && ca_path is None && !key_log && cert_path is None {
     return Ok(None)
   }
+  // The CLI client enables HTTP/2 by default. An environment-derived TLS
+  // configuration must still advertise it, otherwise FEATHER_CA or
+  // FEATHER_INSECURE would silently downgrade every request to HTTP/1.1.
   let mut config = TlsConfig::new("")
+    .with_alpn(@list.List(["h2", "http/1.1"]))
   if insecure {
     println("WARNING: TLS certificate verification is disabled!")
     config = config.with_verify_mode(SkipVerification)
