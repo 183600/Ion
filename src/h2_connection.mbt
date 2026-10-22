@@ -584,6 +584,11 @@ fn h2_request_with_limit(
     Ok(_) => ()
     Err(err) => return Err(err)
   }
+  // Make the request visible to the peer before blocking on the response.
+  match stream.flush() {
+    Ok(_) => ()
+    Err(err) => return Err(http_error_from_net(err))
+  }
 
   let reader = StreamReader::new(stream)
   let decoder = HpackDecoder::new()
@@ -621,6 +626,12 @@ fn h2_request_with_limit(
     ) {
       Ok(_) => ()
       Err(err) => return Err(err)
+    }
+    // Flush each body frame before the loop may block waiting for a window
+    // update or a response frame.
+    match stream.flush() {
+      Ok(_) => ()
+      Err(err) => return Err(http_error_from_net(err))
     }
     sent = sent + take
     flow.connection_send_window = flow.connection_send_window - take

@@ -373,3 +373,74 @@ test "http2 request content length accepts HTTP whitespace and leading zeroes" {
     .with_body(@utf8.encode("hello"))
   assert_eq(h2_request_headers(request), Err(InvalidHeader("Content-Length")))
 }
+
+struct H2FlushGatedStream {
+  inner : H2FrameMockStream
+  mut flushed : Bool
+}
+
+fn h2_flush_gated_stream(input : Bytes) -> H2FlushGatedStream {
+  H2FlushGatedStream::{ inner: h2_frame_mock_stream(input, 0), flushed: false }
+}
+
+pub impl Stream for H2FlushGatedStream with fn read(
+  self : H2FlushGatedStream,
+  buf : Buffer,
+) -> Result[Int, NetError] {
+  if !self.flushed {
+    return Err(NetError::ReadError("read before flush"))
+  }
+  self.inner.read(buf)
+}
+
+pub impl Stream for H2FlushGatedStream with fn write(
+  self : H2FlushGatedStream,
+  buf : Buffer,
+) -> Result[Int, NetError] {
+  self.inner.write(buf)
+}
+
+pub impl Stream for H2FlushGatedStream with fn flush(
+  self : H2FlushGatedStream,
+) -> Result[Unit, NetError] {
+  self.flushed = true
+  self.inner.flush()
+}
+
+pub impl Stream for H2FlushGatedStream with fn close(
+  self : H2FlushGatedStream,
+) -> Result[Unit, NetError] {
+  self.inner.close()
+}
+
+pub impl Stream for H2FlushGatedStream with fn set_timeout(
+  self : H2FlushGatedStream,
+  timeout_ms : Int,
+) -> Result[Unit, NetError] {
+  self.inner.set_timeout(timeout_ms)
+}
+
+pub impl Stream for H2FlushGatedStream with fn peer_addr(
+  self : H2FlushGatedStream,
+) -> Result[String, NetError] {
+  self.inner.peer_addr()
+}
+
+pub impl Stream for H2FlushGatedStream with fn local_addr(
+  self : H2FlushGatedStream,
+) -> Result[String, NetError] {
+  self.inner.local_addr()
+}
+
+test "http2 flushes the request before waiting for a response" {
+  let response_headers = hpack_encode([(":status", "200")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+  ])
+  let stream = h2_flush_gated_stream(input)
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  let response = h2_request(stream, request).unwrap()
+  assert_eq(response.status, 200)
+  assert_true(stream.flushed)
+}
