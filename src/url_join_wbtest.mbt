@@ -84,3 +84,17 @@ test "Url::join keeps an asterisk-form base intact for fragment-only references"
   assert_eq(joined.fragment, "s")
   assert_eq(joined.to_string(), "http://example.com/*#s")
 }
+
+test "Url::join keeps an asterisk-form base intact for empty and query-only references" {
+  let base = Url::parse("http://example.com").unwrap().with_path("*")
+  let empty = base.join("").unwrap()
+  assert_eq(empty.path, "*")
+  assert_eq(empty.to_string(), "http://example.com/*")
+  let query = base.join("?y=2").unwrap()
+  assert_eq(query.path, "*")
+  assert_eq(query.query, "y=2")
+  assert_eq(query.to_string(), "http://example.com/*?y=2")
+  // A reference that supplies a new path still replaces the asterisk form.
+  let path = base.join("next").unwrap()
+  assert_eq(path.path, "/next")
+}
