@@ -1437,3 +1437,25 @@ test "http2 resets only the stream after a zero WINDOW_UPDATE increment" {
   assert_true(connection.is_open())
   let _ = connection.close()
 }
+
+///|
+test "http2 ignores a self-dependent priority on response HEADERS" {
+  let response_headers = hpack_encode([(":status", "204")])
+  let payload = h2_test_concat([b"\x00\x00\x00\x01\x10", response_headers])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM | H2_FLAG_PRIORITY,
+      1,
+      payload,
+    ),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  let response = connection.request(request).unwrap()
+  assert_eq(response.status, 204)
+  assert_true(connection.is_open())
+  let _ = connection.close()
+}

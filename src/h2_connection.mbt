@@ -590,7 +590,7 @@ fn H2ResponseState::handle_frame(
       if frame.stream_id != self.stream_id {
         return Err(ProtocolError("HTTP/2 HEADERS on unknown stream"))
       }
-      let block = match h2_header_block_payload(frame) {
+      let block = match h2_header_block_payload_for_connection(frame) {
         Ok(value) => value
         Err(err) => return Err(err)
       }

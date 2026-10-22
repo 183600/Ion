@@ -196,7 +196,10 @@ fn h2_settings_payload(entries : Array[(Int, Int)]) -> Bytes {
   payload.to_bytes()
 }
 
-fn h2_header_block_payload(frame : H2Frame) -> Result[Bytes, HttpError] {
+fn h2_header_block_payload_impl(
+  frame : H2Frame,
+  reject_self_dependency : Bool,
+) -> Result[Bytes, HttpError] {
   let mut start = 0
   let mut end = frame.payload.length()
   if (frame.flags & H2_FLAG_PADDED) != 0 {
@@ -214,12 +217,26 @@ fn h2_header_block_payload(frame : H2Frame) -> Result[Bytes, HttpError] {
     if start + 5 > end {
       return Err(ProtocolError("Truncated HTTP/2 priority fields"))
     }
-    if h2_priority_dependency(frame.payload, start) == frame.stream_id {
+    if reject_self_dependency &&
+      h2_priority_dependency(frame.payload, start) == frame.stream_id {
       return Err(ProtocolError("HTTP/2 stream cannot depend on itself"))
     }
     start = start + 5
   }
   Ok(frame.payload.exact_view(start=start, end=end).to_owned())
+}
+
+fn h2_header_block_payload(frame : H2Frame) -> Result[Bytes, HttpError] {
+  h2_header_block_payload_impl(frame, true)
+}
+
+/// Header block reader for the client connection. Priority information is
+/// advisory and never used here, so a self-dependent priority field can be
+/// ignored instead of failing the whole connection.
+fn h2_header_block_payload_for_connection(
+  frame : H2Frame,
+) -> Result[Bytes, HttpError] {
+  h2_header_block_payload_impl(frame, false)
 }
 
 fn h2_data_payload(frame : H2Frame) -> Result[Bytes, HttpError] {
