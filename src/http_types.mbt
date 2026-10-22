@@ -1253,6 +1253,19 @@ pub fn Response::read_body_decoded_with_limit(
       has_encoding = true
     }
   }
+  // Transfer codings are applied outside Content-Encoding, so they must be
+  // undone first. `chunked` has already been removed by the response stream;
+  // any coding before it still has to be decoded here. A response whose
+  // chunked coding is not final is close-delimited and deliberately left
+  // untouched, matching the framing behavior of `ResponseStream`.
+  let transfer_codings = match response_transfer_codings(self.headers) {
+    Ok(codings) => codings
+    Err(err) => {
+      let _ = self.body.close()
+      return Err(err)
+    }
+  }
+  let has_transfer = transfer_codings_need_decode(transfer_codings)
   // An intermediate decoding stage can legitimately be larger than the final
   // plaintext (for example the inner gzip member in `gzip(gzip(data))`). Only
   // the last stage determines the decoded output size, so allow intermediate
@@ -1264,33 +1277,145 @@ pub fn Response::read_body_decoded_with_limit(
   } else {
     limit
   }
-  let raw = if has_encoding {
-    match self.read_body_with_limit(intermediate_limit) {
-      Ok(body) => body
-      Err(err) => return Err(err)
-    }
+  let raw_limit = if has_encoding || has_transfer {
+    intermediate_limit
   } else {
-    match self.read_body_with_limit(limit) {
-      Ok(body) => body
-      Err(err) => return Err(err)
-    }
+    limit
   }
-  if raw.length() == 0 || !has_encoding {
+  let raw = match self.read_body_with_limit(raw_limit) {
+    Ok(body) => body
+    Err(err) => return Err(err)
+  }
+  if raw.length() == 0 {
     return Ok(raw)
   }
-  let decoded = match decode_encodings(
-    combined,
-    raw,
-    limit,
-    intermediate_limit,
-  ) {
-    Ok(decoded) => decoded
-    Err(err) => return Err(err)
+  let mut decoded = raw
+  if has_transfer {
+    decoded = match decode_transfer_encodings(
+      transfer_codings,
+      decoded,
+      limit,
+      intermediate_limit,
+      has_encoding,
+    ) {
+      Ok(body) => body
+      Err(err) => return Err(err)
+    }
+  }
+  if has_encoding {
+    decoded = match decode_encodings(
+      combined,
+      decoded,
+      limit,
+      intermediate_limit,
+    ) {
+      Ok(body) => body
+      Err(err) => return Err(err)
+    }
   }
   if decoded.length() > limit {
     return Err(NetworkError(ReadError("response body too large")))
   }
   Ok(decoded)
+}
+
+/// Whether the non-chunked transfer codings have to be decoded by the body
+/// reader. Only responses with `chunked` as the final coding are decoded here:
+/// the stream has already removed that framing, so the preceding codings are
+/// unambiguously available. A close-delimited response without final chunked
+/// framing is left as-is, matching the existing framing behavior.
+fn transfer_codings_need_decode(codings : Array[String]) -> Bool {
+  let mut chunked_index = -1
+  let mut index = 0
+  while index < codings.length() {
+    if codings[index] == "chunked" {
+      if chunked_index >= 0 {
+        return false
+      }
+      chunked_index = index
+    }
+    index = index + 1
+  }
+  if chunked_index != codings.length() - 1 {
+    return false
+  }
+  for coding in codings {
+    if coding != "chunked" && coding != "identity" {
+      return true
+    }
+  }
+  false
+}
+
+fn decode_transfer_coding(
+  coding : String,
+  data : Bytes,
+  max_bytes : Int,
+) -> Result[Bytes, HttpError] {
+  let limit = if max_bytes < 0 { 0 } else { max_bytes }
+  match coding.trim().to_lower() {
+    "" | "identity" =>
+      if data.length() > limit {
+        Err(NetworkError(ReadError("response body too large")))
+      } else {
+        Ok(data)
+      }
+    "gzip" | "x-gzip" => gunzip(data, limit)
+    "deflate" => inflate(data, limit)
+    _ => Err(ProtocolError("unsupported Transfer-Encoding: " + coding))
+  }
+}
+
+/// Undo the transfer codings in reverse order. `chunked` is framing and has
+/// already been consumed by the response stream. When Content-Encoding follows,
+/// every transfer stage only produces intermediate bytes, so only the final
+/// decoded content is bounded by `max_bytes`.
+fn decode_transfer_encodings(
+  codings : Array[String],
+  data : Bytes,
+  max_bytes : Int,
+  intermediate_max_bytes : Int,
+  has_content_encoding : Bool,
+) -> Result[Bytes, HttpError] {
+  if !transfer_codings_need_decode(codings) {
+    return Ok(data)
+  }
+  let filtered : Array[String] = []
+  for coding in codings {
+    if coding != "chunked" {
+      filtered.push(coding)
+    }
+  }
+  let mut final_index = -1
+  if !has_content_encoding {
+    let mut scan = 0
+    while scan < filtered.length() {
+      let token = filtered[scan].trim().to_owned()
+      if token.length() > 0 && token.to_lower() != "identity" &&
+        final_index < 0 {
+        final_index = scan
+      }
+      scan = scan + 1
+    }
+  }
+  let mut current = data
+  let mut index = filtered.length() - 1
+  while index >= 0 {
+    let token = filtered[index].trim().to_owned()
+    if token.length() > 0 && token.to_lower() != "identity" {
+      let layer_limit = if index == final_index {
+        max_bytes
+      } else {
+        intermediate_max_bytes
+      }
+      current = match decode_transfer_coding(token, current, layer_limit) {
+        Ok(decoded) => decoded
+        Err(err) => return Err(err)
+      }
+    }
+    index = index - 1
+  }
+  Ok(current)
 }
 
 /// Apply a (possibly comma-separated) `Content-Encoding` header. Encodings are

@@ -1345,6 +1345,43 @@ fn response_transfer_encoding(
   }
 }
 
+/// The transfer codings on a response, in the order they were applied. The
+/// chunked coding is included so callers can reason about whether it was the
+/// final coding; `ResponseStream` has already removed its framing by the time
+/// a decoded body is read.
+fn response_transfer_codings(
+  headers : Headers,
+) -> Result[Array[String], HttpError] {
+  let values = headers.get_all("Transfer-Encoding")
+  let codings : Array[String] = []
+  if values.length() == 0 {
+    return Ok(codings)
+  }
+  let mut chunked_seen = false
+  for value in values {
+    for part in split_header_list(value) {
+      if part.trim().length() == 0 {
+        continue
+      }
+      if !valid_transfer_coding(part) {
+        return Err(ProtocolError("invalid Transfer-Encoding"))
+      }
+      let token = transfer_coding_name(part)
+      if token == "chunked" {
+        if chunked_seen {
+          return Err(ProtocolError("invalid Transfer-Encoding"))
+        }
+        chunked_seen = true
+      }
+      codings.push(token)
+    }
+  }
+  if codings.length() == 0 {
+    return Err(ProtocolError("invalid Transfer-Encoding"))
+  }
+  Ok(codings)
+}
+
 fn response_content_length(headers : Headers) -> Result[Option[Int], NetError] {
   let mut result : Option[Int] = None
   for header in headers.iter() {
