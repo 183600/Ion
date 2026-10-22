@@ -190,8 +190,12 @@ fn hpack_string_from_bytes(data : BytesView) -> Result[String, HttpError] {
   }
 }
 
+/// Build the Huffman decode trie once per process. Rebuilding it for every
+/// string field made header decoding allocate hundreds of nodes per field.
+let hpack_huffman_tables : (Array[Array[Int]], Array[Int]) = hpack_huffman_table()
+
 fn hpack_huffman_decode(data : BytesView) -> Result[String, HttpError] {
-  let (children, symbols) = hpack_huffman_table()
+  let (children, symbols) = hpack_huffman_tables
   let output = Buffer(size_hint=data.length() * 2)
   let mut node = 0
   let mut bits_since_symbol = 0
