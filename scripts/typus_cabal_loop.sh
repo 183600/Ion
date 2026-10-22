@@ -581,19 +581,20 @@ run_inner_loop_forever() {
   trap terminate_inner INT TERM
 
   while true; do
-    echo "Running: moon check --target native && moon test"
+    echo "Running: moon check --target all && moon test && moon test --target native"
 
     local had_errexit=0
     [[ $- == *e* ]] && had_errexit=1
     set +e
 
-    # Also compile the native-only sources (net/tls FFI) so the gate covers
-    # them; `moon test` alone uses the default backend and skips them.
+    # Check every backend and run the native-only tests (FFI, sockets, TLS) as
+    # well as the default suite; plain `moon test` skips `#cfg(target="native")`
+    # files and would leave the transport layer unexercised.
     local moon_output=""
     if command -v stdbuf >/dev/null 2>&1; then
-      moon_output="$(stdbuf -oL -eL bash -c 'moon check --target native && moon test' 2>&1)"
+      moon_output="$(stdbuf -oL -eL bash -c 'moon check --target all && moon test && moon test --target native' 2>&1)"
     else
-      moon_output="$(bash -c 'moon check --target native && moon test' 2>&1)"
+      moon_output="$(bash -c 'moon check --target all && moon test && moon test --target native' 2>&1)"
     fi
 
     local moon_status=$?
