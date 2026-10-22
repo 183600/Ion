@@ -24,6 +24,12 @@ fn H2FlowState::new() -> H2FlowState {
   }
 }
 
+/// Streams opened by the client use odd identifiers. Even identifiers belong
+/// to server-initiated streams, which are invalid because push is disabled.
+fn h2_is_client_stream(stream_id : Int) -> Bool {
+  stream_id > 0 && (stream_id & 1) == 1
+}
+
 /// Largest DATA payload we may send. The peer's setting can only increase the
 /// protocol default, and our frame writer also caps at the default.
 fn h2_outbound_frame_limit(peer_max_frame_size : Int) -> Int {
@@ -478,6 +484,9 @@ fn H2ResponseState::handle_frame(
           self.ended = true
         }
       } else if frame.stream_id < self.stream_id {
+        if !h2_is_client_stream(frame.stream_id) {
+          return Err(ProtocolError("HTTP/2 DATA on a server-push stream"))
+        }
         // The stream was reset or finished earlier (for example after an early
         // response). Frames that arrive late are harmless; discard the payload
         // but still account for it in the connection-level flow-control window.
@@ -573,6 +582,8 @@ fn H2ResponseState::handle_frame(
         flow.stream_send_window = flow.stream_send_window + increment
       } else if frame.stream_id > self.stream_id {
         return Err(ProtocolError("HTTP/2 WINDOW_UPDATE on idle stream"))
+      } else if !h2_is_client_stream(frame.stream_id) {
+        return Err(ProtocolError("HTTP/2 WINDOW_UPDATE on a server-push stream"))
       }
       Ok(())
     }
@@ -603,6 +614,8 @@ fn H2ResponseState::handle_frame(
         }
       } else if frame.stream_id > self.stream_id {
         Err(ProtocolError("HTTP/2 RST_STREAM on idle stream"))
+      } else if !h2_is_client_stream(frame.stream_id) {
+        Err(ProtocolError("HTTP/2 RST_STREAM on a server-push stream"))
       } else {
         Ok(())
       }
@@ -954,6 +967,12 @@ fn H2ClientConnection::drain_buffered_connection_frames(
           (self.reader.pending[offset + 6].to_int() << 16) |
           (self.reader.pending[offset + 7].to_int() << 8) |
           self.reader.pending[offset + 8].to_int()
+        if !h2_is_client_stream(frame_stream_id) {
+          // Push was disabled, so even stream identifiers cannot belong to a
+          // legitimate response, past or future.
+          self.closed = true
+          return
+        }
         if frame_stream_id > state.stream_id {
           // Leave a frame for a future stream buffered for the next request.
           return
