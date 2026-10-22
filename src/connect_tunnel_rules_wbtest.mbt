@@ -52,3 +52,29 @@ test "CONNECT rejects an explicitly empty request body in both versions" {
     Err(InvalidHeader("CONNECT request content is not allowed")),
   )
 }
+
+///|
+test "HTTP/1 CONNECT Host must match the authority-form target" {
+  let url = Url::parse("http://example.com:443/").unwrap()
+  let mismatch = H1Codec::new(regression_mock_stream("", 0, 0))
+  assert_true(
+    mismatch.encode_request(
+      Request::new(CONNECT, url).with_header("Host", "other.example:443"),
+    ) is Err(InvalidHeader(_)),
+  )
+  let missing_port = H1Codec::new(regression_mock_stream("", 0, 0))
+  assert_true(
+    missing_port.encode_request(
+      Request::new(CONNECT, url).with_header("Host", "example.com"),
+    ) is Err(InvalidHeader(_)),
+  )
+  let matching = regression_mock_stream("", 0, 0)
+  assert_true(
+    H1Codec::new(matching).encode_request(
+      Request::new(CONNECT, url).with_header("Host", "EXAMPLE.com:443"),
+    ) is Ok(_),
+  )
+  let wire = @utf8.decode(matching.output.to_bytes()[:])
+  assert_true(wire.has_prefix("CONNECT example.com:443 HTTP/1.1\r\n"))
+  assert_true(wire.contains("Host: EXAMPLE.com:443\r\n"))
+}

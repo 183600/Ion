@@ -646,6 +646,13 @@ pub fn H1Codec::encode_request(
   if host_values.length() == 1 && !valid_host(host_values.nth(0).unwrap()) {
     return Err(InvalidHeader("Host"))
   }
+  // RFC 9110 §9.3.6 requires the Host field of a CONNECT request to be
+  // identical to the authority-form request-target. Accepting a different
+  // value would make the tunnel endpoint ambiguous for proxies.
+  if is_connect && host_values.length() == 1 &&
+    host_values.nth(0).unwrap().to_lower() != host_header_value.to_lower() {
+    return Err(InvalidHeader("Host"))
+  }
 
   let content_length = match request_content_length(req.headers) {
     Ok(value) => value
