@@ -416,6 +416,14 @@ fn drain_response(response : Response) -> Result[Unit, HttpError] {
 fn request_error_is_local(err : HttpError) -> Bool {
   match err {
     InvalidUrl(_) | InvalidHeader(_) | InvalidMethod(_) => true
+    // These checks happen after the peer's SETTINGS are known but before a
+    // stream is opened. Rejecting the request does not corrupt the session, so
+    // the connection stays available for a later, smaller request (or for a
+    // peer that raises its limits).
+    ProtocolError(message) =>
+      message == "HTTP/2 request header list too large" ||
+      message == "HTTP/2 request trailer list too large" ||
+      message == "HTTP/2 max concurrent streams is zero"
     _ => false
   }
 }
