@@ -2691,13 +2691,20 @@ pub fn h2_request_streaming_with_limit(
     Err(err) => return Err(err)
   }
   // This helper owns the connection. Close it once the body is finished or
-  // discarded, including the buffered fallback used for uploads.
+  // discarded, including the buffered fallback used for uploads, and also when
+  // the exchange fails before a body is returned.
   let completion : ((Bool) -> Unit)? = Some(fn(_reusable) {
     connection.close()
   })
-  connection.request_streaming_with_callback(
+  match connection.request_streaming_with_callback(
     request,
     max_body_bytes,
     completion,
-  )
+  ) {
+    Ok(response) => Ok(response)
+    Err(err) => {
+      connection.close()
+      Err(err)
+    }
+  }
 }

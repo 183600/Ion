@@ -462,3 +462,18 @@ test "released HTTP/2 streaming bodies do not retimeout the pooled session" {
   assert_false(response.body.read_ready())
   let _ = client.close_all()
 }
+
+///|
+test "h2_request_streaming closes its connection on a local request error" {
+  let input = h2_test_concat([h2_test_settings()])
+  let stream = h2_frame_mock_stream(input, 0)
+  let request = Request::new(
+    HttpMethod::custom("BAD METHOD").unwrap_or(GET),
+    Url::parse("https://example.com/bad").unwrap(),
+  )
+  // `HttpMethod::custom` rejects the token, so build the invalid method through
+  // the public Custom variant to exercise the wire-boundary check.
+  let request = request.with_method(Custom("BAD METHOD"))
+  assert_true(h2_request_streaming(stream, request) is Err(_))
+  assert_false(stream.is_open)
+}
