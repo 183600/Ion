@@ -1413,6 +1413,13 @@ pub fn Response::copy_body_to(
       }
     }
   } else {
+    match first_unsupported_transfer_coding(transfer_codings) {
+      Some(coding) => {
+        let _ = self.body.close()
+        return Err(ProtocolError("unsupported Transfer-Encoding: " + coding))
+      }
+      None => ()
+    }
     let mut total = 0
     while true {
       let chunk = Buffer(size_hint=8192)
@@ -1509,6 +1516,19 @@ pub fn Response::read_body_decoded_with_limit(
     }
   }
   let has_transfer = transfer_codings_need_decode(transfer_codings)
+  // A non-final `chunked` coding makes the payload opaque, so it cannot be
+  // decoded. Its remaining coding names still have to be understood: silently
+  // returning bytes whose declared encoding is unknown would violate the
+  // contract of this method.
+  if !has_transfer {
+    match first_unsupported_transfer_coding(transfer_codings) {
+      Some(coding) => {
+        let _ = self.body.close()
+        return Err(ProtocolError("unsupported Transfer-Encoding: " + coding))
+      }
+      None => ()
+    }
+  }
   // An intermediate decoding stage can legitimately be larger than the final
   // plaintext (for example the inner gzip member in `gzip(gzip(data))`). Only
   // the last stage determines the decoded output size, so allow intermediate
@@ -1608,6 +1628,22 @@ fn transfer_codings_need_decode(codings : Array[String]) -> Bool {
     }
   }
   false
+}
+
+/// The first transfer coding this client cannot decode, if any. Opaque
+/// close-delimited payloads are not decoded, but declaring a coding the client
+/// does not understand is still an error rather than silently returning bytes
+/// whose encoding is unknown.
+fn first_unsupported_transfer_coding(codings : Array[String]) -> String? {
+  for coding in codings {
+    let token = coding.trim().to_owned()
+    let lower = token.to_lower()
+    if lower.length() > 0 && lower != "identity" && lower != "chunked" &&
+      !content_coding_supported(lower) {
+      return Some(token)
+    }
+  }
+  None
 }
 
 fn decode_transfer_coding(
