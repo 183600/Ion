@@ -347,6 +347,27 @@ pub fn UnifiedClient::close_all(self : UnifiedClient) -> Result[Unit, HttpError]
   self.connector.close_all()
 }
 
+/// Close only idle pooled connections, leaving checked-out response or tunnel
+/// streams untouched.
+pub fn UnifiedClient::close_idle(self : UnifiedClient) -> Result[Unit, HttpError] {
+  self.connector.close_idle()
+}
+
+/// Number of idle connections currently retained for reuse.
+pub fn UnifiedClient::idle_connection_count(self : UnifiedClient) -> Int {
+  self.connector.idle_connection_count()
+}
+
+/// Number of connections currently checked out by this client.
+pub fn UnifiedClient::active_connection_count(self : UnifiedClient) -> Int {
+  self.connector.active_connection_count()
+}
+
+/// Total number of live connections owned by this client.
+pub fn UnifiedClient::connection_count(self : UnifiedClient) -> Int {
+  self.connector.connection_count()
+}
+
 /// Cap the number of simultaneously open connections per host. A value below 1
 /// means unlimited (the default).
 pub fn UnifiedClient::with_max_connections_per_host(

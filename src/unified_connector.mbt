@@ -274,6 +274,15 @@ fn ConnectionPoolState::trim_idle(self : ConnectionPoolState) -> Unit {
   }
 }
 
+/// Number of idle (pooled, reusable) connections across every origin.
+fn ConnectionPoolState::idle_count(self : ConnectionPoolState) -> Int {
+  let mut total = 0
+  for _key, entries in self.idle.iter2() {
+    total = total + entries.length()
+  }
+  total
+}
+
 /// Connector handles the connection establishment logic
 pub struct Connector {
   dialer : &Dialer
@@ -1766,6 +1775,41 @@ pub fn Connector::close(self : Connector, url : Url) -> Result[Unit, HttpError] 
     }
   }
   self.pool.val.active = self.pool.val.active.filter(fn(entry) { entry.key != key })
+  Ok(())
+}
+
+/// Number of idle connections currently retained for reuse.
+pub fn Connector::idle_connection_count(self : Connector) -> Int {
+  self.pool.val.idle_count()
+}
+
+/// Number of connections currently checked out by a caller.
+pub fn Connector::active_connection_count(self : Connector) -> Int {
+  self.pool.val.active.length()
+}
+
+/// Total number of live connections owned by this connector, both checked out
+/// and idle. Connections that failed a liveness probe are not counted after
+/// the next pool operation sweeps them.
+pub fn Connector::connection_count(self : Connector) -> Int {
+  self.idle_connection_count() + self.active_connection_count()
+}
+
+/// Close every idle pooled connection while leaving checked-out connections
+/// alone. This is useful before forking or when an application has finished a
+/// burst of requests but still owns streaming bodies.
+pub fn Connector::close_idle(self : Connector) -> Result[Unit, HttpError] {
+  for _conn_key, entries in self.pool.val.idle.iter2() {
+    for entry in entries {
+      match entry.h2 {
+        Some(connection) => connection.close()
+        None => {
+          let _ = entry.stream.close()
+        }
+      }
+    }
+  }
+  self.pool.val.idle = Map([])
   Ok(())
 }
 
