@@ -1069,9 +1069,11 @@ pub fn Connector::max_connections_per_host(self : Connector) -> Int {
   self.max_connections_per_host
 }
 
-/// Advertise HTTP/2 through ALPN when no explicit TLS configuration is set.
-/// An explicit `with_tls_config` value is respected as-is, so callers that
-/// want HTTP/2 with shared credentials must include `h2` in its ALPN list.
+/// Advertise HTTP/2 through ALPN. A shared configuration that keeps the
+/// default `["http/1.1"]` ALPN list still enables HTTP/2 under this policy, so
+/// supplying a CA bundle or client certificate does not downgrade the client.
+/// A custom ALPN list is respected as-is; use it (or disable HTTP/2) to force
+/// HTTP/1.1.
 pub fn Connector::with_http2(self : Connector, enabled : Bool) -> Connector {
   // Disabling HTTP/2 also disables cleartext prior knowledge; enabling it
   // leaves the existing prior-knowledge policy untouched.
@@ -1136,9 +1138,27 @@ fn tls_server_name_for_url(url : Url) -> String {
   }
 }
 
+/// Whether a shared TLS configuration still carries `TlsConfig::new`'s
+/// default ALPN list. Such a config was tuned for trust or client credentials,
+/// not for a specific protocol version, so the connector's HTTP/2 policy
+/// still applies. Any other ALPN list is an explicit protocol choice.
+fn tls_config_uses_default_alpn(config : TlsConfig) -> Bool {
+  let alpn = config.alpn.to_array()
+  alpn.length() == 1 && alpn[0] == "http/1.1"
+}
+
 fn Connector::origin_tls_config(self : Connector, host : String) -> TlsConfig {
   match self.tls_config {
-    Some(config) => config.with_server_name(host)
+    Some(config) =>
+      if self.http2 && tls_config_uses_default_alpn(config) {
+        // Adding a CA bundle, client certificate, or verification override
+        // must not silently downgrade an HTTP/2-enabled client to HTTP/1.1.
+        // Callers that really want HTTP/1.1 set a custom ALPN list or disable
+        // HTTP/2 through `with_http2(false)`.
+        config.with_server_name(host).with_alpn(@list.List(["h2", "http/1.1"]))
+      } else {
+        config.with_server_name(host)
+      }
     None => {
       let config = TlsConfig::new(host)
       if self.http2 {
