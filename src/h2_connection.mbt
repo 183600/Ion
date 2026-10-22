@@ -861,6 +861,13 @@ fn h2_request_headers_with_protocol(
     !valid_url_query_chars(request.url.query) {
     return Err(InvalidUrl("Invalid request target"))
   }
+  // HTTP/2 carries upgrades through extended CONNECT. A caller-supplied
+  // Upgrade field without the HTTP/1 Connection nomination is malformed and
+  // must not be silently dropped as if it were an ordinary header.
+  if request.headers.contains("Upgrade") &&
+    h2_upgrade_protocol(request) is None {
+    return Err(InvalidHeader("Upgrade"))
+  }
   let resolved_method = canonical_http_method(request.method)
   let extended_connect = extended_protocol is Some(_)
   if extended_connect && resolved_method != GET && resolved_method != CONNECT {

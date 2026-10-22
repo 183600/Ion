@@ -636,7 +636,13 @@ pub fn H1Codec::encode_request(
       return Err(InvalidHeader(header.name))
     }
   }
-  if req.headers.contains("Upgrade") && upgrade_protocols(req.headers).length() == 0 {
+  // RFC 9110 §7.8: an Upgrade field is only meaningful when the request also
+  // nominates `upgrade` in Connection. A lone Upgrade field would be ignored
+  // by conforming peers, so reject it instead of sending contradictory
+  // framing.
+  if req.headers.contains("Upgrade") &&
+    (!headers_have_token(req.headers, "Connection", "upgrade") ||
+      upgrade_protocols(req.headers).length() == 0) {
     return Err(InvalidHeader("Upgrade"))
   }
   let host_values = req.headers.get_all("Host")

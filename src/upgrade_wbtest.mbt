@@ -324,6 +324,26 @@ test "HTTP/1 upgrade protocols must be HTTP tokens" {
   }
 }
 
+test "Upgrade requires a Connection upgrade nomination" {
+  let url = Url::parse("http://example.com/socket").unwrap()
+  let request = Request::new(GET, url).with_header("Upgrade", "websocket")
+  let stream = regression_mock_stream("", 0, 0)
+  match H1Codec::new(stream).encode_request(request) {
+    Ok(_) => fail("HTTP/1 Upgrade without a Connection nomination was sent")
+    Err(err) => assert_eq(err, InvalidHeader("Upgrade"))
+  }
+  assert_eq(stream.output.to_bytes().length(), 0)
+
+  let request = Request::new(
+    GET,
+    Url::parse("https://example.com/socket").unwrap(),
+  ).with_header("Upgrade", "websocket")
+  match h2_request_headers(request) {
+    Ok(_) => fail("HTTP/2 Upgrade without a Connection nomination was sent")
+    Err(err) => assert_eq(err, InvalidHeader("Upgrade"))
+  }
+}
+
 test "HTTP/2 rejects an Upgrade protocol it cannot express" {
   let request = Request::new(
     GET,
