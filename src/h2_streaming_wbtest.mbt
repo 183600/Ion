@@ -366,3 +366,38 @@ test "streaming body keeps the session after a stream-scoped window reset" {
   assert_true(connection.is_open())
   let _ = connection.close()
 }
+
+///|
+test "streaming body drains buffered connection frames after END_STREAM" {
+  let headers = hpack_encode([(":status", "200"), ("content-length", "2")])
+  let ping = b"\x01\x02\x03\x04\x05\x06\x07\x08"
+  let goaway = h2_test_frame(
+    H2_FRAME_GOAWAY,
+    0,
+    0,
+    b"\x00\x00\x00\x01\x00\x00\x00\x00",
+  )
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, headers),
+    h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, b"ok"),
+    h2_test_frame(H2_FRAME_PING, 0, 0, ping),
+    goaway,
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/drain").unwrap())
+  let response = connection.request_streaming(request).unwrap()
+  assert_eq(response.text().unwrap(), "ok")
+  let mut saw_ping_ack = false
+  for frame in h2_test_client_frames(stream) {
+    if frame.frame_type == H2_FRAME_PING && (frame.flags & H2_FLAG_ACK) != 0 &&
+      frame.payload == ping {
+      saw_ping_ack = true
+    }
+  }
+  assert_true(saw_ping_ack)
+  // The buffered GOAWAY must retire the session instead of pooling it.
+  assert_false(connection.is_open())
+  let _ = connection.close()
+}

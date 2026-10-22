@@ -1207,6 +1207,20 @@ fn H2LiveBodyStream::finish(self : H2LiveBodyStream, reusable : Bool) -> Unit {
   if self.completed {
     return
   }
+  let mut keep = reusable
+  // Once the response has ended, consume any complete connection frames that
+  // were already buffered with it. This acknowledges PING/SETTINGS and notices
+  // a GOAWAY before the session is offered to the pool, matching the buffered
+  // response path.
+  if keep && self.state.ended {
+    match self.connection.drain_buffered_connection_frames(self.state, self.flow) {
+      Ok(_) => ()
+      Err(_) => self.connection.closed = true
+    }
+    if self.connection.closed {
+      keep = false
+    }
+  }
   self.completed = true
   if self.state.ended {
     self.trailers.val = self.state.trailers
@@ -1214,13 +1228,14 @@ fn H2LiveBodyStream::finish(self : H2LiveBodyStream, reusable : Bool) -> Unit {
     // another stream on the connection. Do not let the lease pool it.
     if self.state.goaway_last_stream_id is Some(_) {
       self.connection.closed = true
+      keep = false
     }
   }
   match self.on_complete {
-    Some(callback) => callback(reusable)
+    Some(callback) => callback(keep)
     None => ()
   }
-  if !reusable {
+  if !keep {
     self.connection.close()
   }
 }
