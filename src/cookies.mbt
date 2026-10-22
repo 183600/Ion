@@ -572,11 +572,13 @@ fn cookie_from_set_cookie(
         // the cookie instead of creating a domain-scoped or host-only cookie.
         return None
       }
-      if !candidate.contains(".") && candidate != host {
+      let single_label = !candidate.contains(".")
+      if single_label && candidate != host {
         // A single-label Domain such as "com" is a public suffix, not a
         // domain the request host can control. Reject it so a site cannot
         // set a supercookie for every host under that label. A single-label
-        // request host itself (for example "localhost") remains usable.
+        // request host itself (for example "localhost") remains usable, but
+        // must still become a host-only cookie.
         return None
       }
       let numeric_host = is_ipv4_literal(host) || is_ipv6_literal_with_zone(host)
@@ -584,9 +586,10 @@ fn cookie_from_set_cookie(
         (host == candidate ||
           (!numeric_host && host.has_suffix("." + candidate))) {
         domain = candidate
-        // RFC 6265bis: a Domain attribute for an IP address host is ignored,
+        // RFC 6265bis: a Domain attribute for an IP address host, or for a
+        // public-suffix label identical to the request host, is ignored,
         // leaving the cookie host-only instead of domain-scoped.
-        host_only = numeric_host
+        host_only = numeric_host || single_label
       } else {
         // A Domain attribute that does not cover the request host must not be
         // stored, otherwise a response could set cookies for other sites.

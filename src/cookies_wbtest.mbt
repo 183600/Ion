@@ -525,6 +525,12 @@ test "a single-label Domain attribute cannot target a public suffix" {
     jar.cookie_header_at(cookie_test_url("http://localhost/"), 1000),
     Some("local=1"),
   )
+  // A single-label Domain identical to the request host is still a public
+  // suffix, so the cookie must remain host-only and not leak to subdomains.
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://sub.localhost/"), 1000),
+    None,
+  )
 }
 
 test "a trailing-dot Domain attribute invalidates the cookie" {
