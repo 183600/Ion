@@ -1243,6 +1243,8 @@ pub impl Stream for BufferedStream with fn local_addr(self : BufferedStream) -> 
 fn buffer_one_shot_response(
   client : UnifiedClient,
   result : Result[Response, HttpError],
+  connect? : Bool,
+  upgrade? : Bool,
 ) -> Result[Response, HttpError] {
   let response = match result {
     Ok(response) => response
@@ -1250,6 +1252,25 @@ fn buffer_one_shot_response(
       let _ = client.close_all()
       return Err(err)
     }
+  }
+  // A switched protocol (HTTP/1.1 101), a successful CONNECT, or a successful
+  // RFC 8441 extended CONNECT is an interactive byte stream, not a response
+  // body. Buffering it would block until the peer closes the tunnel.
+  let h1 = response.version.has_prefix("HTTP/1.")
+  let tunnel = (connect.unwrap_or(false) &&
+    response.status >= 200 && response.status < 300) ||
+    (upgrade.unwrap_or(false) &&
+      (if h1 {
+        response.status == 101
+      } else {
+        response.status >= 200 && response.status < 300
+      }))
+  if tunnel {
+    let _ = response.body.close()
+    let _ = client.close_all()
+    return Err(ProtocolError(
+      "one-shot request cannot buffer a switched protocol or tunnel",
+    ))
   }
   let body = match response.read_body() {
     Ok(body) => body
@@ -1290,7 +1311,11 @@ fn one_shot_request(
     Some(body) => request.with_body(body)
     None => request
   }
-  buffer_one_shot_response(client, client.request(request))
+  buffer_one_shot_response(
+    client,
+    client.request(request),
+    connect=canonical_http_method(verb) == CONNECT,
+  )
 }
 
 fn one_shot_custom_request(
@@ -1304,7 +1329,9 @@ fn one_shot_custom_request(
       return Err(err)
     }
   }
-  buffer_one_shot_response(client, client.request(request))
+  let connect = canonical_http_method(request.method) == CONNECT
+  let upgrade = request_requests_upgrade(request.headers)
+  buffer_one_shot_response(client, client.request(request), connect~, upgrade~)
 }
 
 /// Send a request with a one-shot default client, choosing HTTP or HTTPS
