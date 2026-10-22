@@ -54,7 +54,11 @@ extern "C" fn feather_tls_alpn(tls : NativeTlsHandle, buffer : Bytes, capacity :
 extern "C" fn feather_tls_last_error_message(tls : NativeTlsHandle, buffer : Bytes, capacity : Int) -> Int = "feather_tls_last_error_message"
 
 const NATIVE_TLS_BUFFER_SIZE : Int = 16384
-const NATIVE_TLS_HANDSHAKE_STEPS : Int = 64
+// A handshake may legitimately need more I/O steps than there are bytes in a
+// single read (slow or byte-fragmented peers). The idle cap catches a peer
+// that never makes progress; the total cap bounds the whole exchange.
+const NATIVE_TLS_HANDSHAKE_IDLE_STEPS : Int = 64
+const NATIVE_TLS_HANDSHAKE_TOTAL_STEPS : Int = 65536
 
 fn native_tls_error_message(tls : NativeTlsHandle) -> String {
   let buffer = Bytes::new(512)
@@ -422,9 +426,11 @@ pub impl TlsClientCtx for OpenSslTlsClientCtx with fn connect(
     let _ = feather_tls_capture_keylog(tls, 1)
   }
 
-  let mut steps = 0
-  while steps < NATIVE_TLS_HANDSHAKE_STEPS {
-    steps = steps + 1
+  let mut total_steps = 0
+  let mut idle_steps = 0
+  while total_steps < NATIVE_TLS_HANDSHAKE_TOTAL_STEPS &&
+    idle_steps < NATIVE_TLS_HANDSHAKE_IDLE_STEPS {
+    total_steps = total_steps + 1
     let status = feather_tls_handshake(tls)
     native_tls_drain_keylog(tls, key_log)
     match native_tls_flush(tls, underlying) {
@@ -445,11 +451,17 @@ pub impl TlsClientCtx for OpenSslTlsClientCtx with fn connect(
     }
     if status == 0 {
       match native_tls_feed(tls, underlying) {
-        TlsIoData => continue
+        TlsIoData => {
+          idle_steps = 0
+          continue
+        }
         result => return Err(native_tls_feed_error(result))
       }
     }
     if status == 2 {
+      // WANT_WRITE is expected to make progress via the flush above; only a
+      // long run of write-only steps is treated as a stuck handshake.
+      idle_steps = idle_steps + 1
       continue
     }
     return Err(native_tls_handshake_error(tls))
