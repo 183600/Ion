@@ -830,3 +830,67 @@ test "http2 reports REFUSED_STREAM distinctly" {
   }
   assert_false(connection.is_open())
 }
+
+test "http2 honors a zero max concurrent streams setting before opening a stream" {
+  let input = h2_test_concat([
+    h2_test_frame(
+      H2_FRAME_SETTINGS,
+      0,
+      0,
+      h2_settings_payload([(H2_SETTINGS_MAX_CONCURRENT_STREAMS, 0)]),
+    ),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match h2_request(stream, request) {
+    Ok(_) => fail("HTTP/2 stream was opened with zero max concurrent streams")
+    Err(err) => assert_eq(err, ProtocolError("HTTP/2 max concurrent streams is zero"))
+  }
+  let frames = h2_test_client_frames(stream)
+  for frame in frames {
+    assert_true(frame.frame_type != H2_FRAME_HEADERS)
+  }
+}
+
+test "http2 honors a small max header list setting" {
+  let input = h2_test_concat([
+    h2_test_frame(
+      H2_FRAME_SETTINGS,
+      0,
+      0,
+      h2_settings_payload([(H2_SETTINGS_MAX_HEADER_LIST_SIZE, 32)]),
+    ),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match h2_request(stream, request) {
+    Ok(_) => fail("oversized HTTP/2 request header list was sent")
+    Err(err) => assert_eq(err, ProtocolError("HTTP/2 request header list too large"))
+  }
+  let frames = h2_test_client_frames(stream)
+  for frame in frames {
+    assert_true(frame.frame_type != H2_FRAME_HEADERS)
+  }
+}
+
+test "http2 applies buffered SETTINGS before sending a request body" {
+  let response_headers = hpack_encode([(":status", "200")])
+  let input = h2_test_concat([
+    h2_test_frame(
+      H2_FRAME_SETTINGS,
+      0,
+      0,
+      h2_settings_payload([(H2_SETTINGS_INITIAL_WINDOW_SIZE, 0)]),
+    ),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let request = Request::new(POST, Url::parse("https://example.com/").unwrap())
+    .with_body(@utf8.encode("hello"))
+  let response = h2_request(stream, request).unwrap()
+  assert_eq(response.status, 200)
+  let frames = h2_test_client_frames(stream)
+  for frame in frames {
+    assert_true(frame.frame_type != H2_FRAME_DATA)
+  }
+}

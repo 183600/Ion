@@ -2,11 +2,15 @@
 /// connection handles one request stream and returns a buffered response.
 
 const H2_MAX_HEADER_BLOCK_BYTES : Int = 1048576
+const H2_SETTINGS_MAX_CONCURRENT_STREAMS : Int = 0x3
 
 struct H2FlowState {
   mut connection_send_window : Int
   mut stream_send_window : Int
   mut peer_initial_window : Int
+  mut peer_max_frame_size : Int
+  mut peer_max_header_list_size : Int
+  mut peer_max_concurrent_streams : Int
 }
 
 fn H2FlowState::new() -> H2FlowState {
@@ -14,6 +18,9 @@ fn H2FlowState::new() -> H2FlowState {
     connection_send_window: H2_DEFAULT_WINDOW_SIZE,
     stream_send_window: H2_DEFAULT_WINDOW_SIZE,
     peer_initial_window: H2_DEFAULT_WINDOW_SIZE,
+    peer_max_frame_size: H2_MAX_FRAME_SIZE,
+    peer_max_header_list_size: H2_MAX_WINDOW_SIZE,
+    peer_max_concurrent_streams: H2_MAX_WINDOW_SIZE,
   }
 }
 
@@ -318,6 +325,19 @@ fn h2_apply_settings(
       if value < H2_MAX_FRAME_SIZE || value > H2_MAX_FRAME_SIZE_LIMIT {
         return Err(ProtocolError("Invalid HTTP/2 max frame size"))
       }
+      flow.peer_max_frame_size = value
+    } else if identifier == H2_SETTINGS_MAX_CONCURRENT_STREAMS {
+      flow.peer_max_concurrent_streams = if (value_high & 0x80) != 0 {
+        H2_MAX_WINDOW_SIZE
+      } else {
+        value
+      }
+    } else if identifier == H2_SETTINGS_MAX_HEADER_LIST_SIZE {
+      flow.peer_max_header_list_size = if (value_high & 0x80) != 0 {
+        H2_MAX_WINDOW_SIZE
+      } else {
+        value
+      }
     }
     offset = offset + 6
   }
@@ -541,6 +561,15 @@ fn h2_name_in_array(names : Array[String], name : String) -> Bool {
   false
 }
 
+fn h2_header_list_size(headers : Array[(String, String)]) -> Int {
+  let mut total = 0
+  for header in headers {
+    let (name, value) = header
+    total = total + hpack_entry_size(name, value)
+  }
+  total
+}
+
 fn h2_request_headers(request : Request) -> Result[Array[(String, String)], HttpError] {
   if !valid_url_path_chars(request.url.path) ||
     !valid_url_query_chars(request.url.query) {
@@ -732,6 +761,7 @@ pub struct H2ClientConnection {
   flow : H2FlowState
   mut next_stream_id : Int
   mut closed : Bool
+  mut settings_received : Bool
 }
 
 /// Create a connection and send the client preface and initial SETTINGS. The
@@ -745,6 +775,7 @@ pub fn H2ClientConnection::new(stream : &Stream) -> Result[H2ClientConnection, H
     flow: H2FlowState::new(),
     next_stream_id: 1,
     closed: false,
+    settings_received: false,
   }
   match connection.send_preface() {
     Ok(_) => Ok(connection)
@@ -815,6 +846,160 @@ fn H2ClientConnection::drain_buffered_connection_frames(
   }
 }
 
+/// Read and apply the server's initial SETTINGS frame before opening the first
+/// stream. The server connection preface always starts with SETTINGS, so this
+/// establishes its limits without guessing at defaults.
+fn H2ClientConnection::read_initial_settings(
+  self : H2ClientConnection,
+  flow : H2FlowState,
+) -> Result[Unit, HttpError] {
+  match self.stream.flush() {
+    Ok(_) => ()
+    Err(err) => {
+      self.closed = true
+      return Err(http_error_from_net(err))
+    }
+  }
+  while true {
+    let frame = match h2_read_frame(self.reader) {
+      Ok(frame) => frame
+      Err(err) => {
+        self.closed = true
+        return Err(err)
+      }
+    }
+    match frame.frame_type {
+      H2_FRAME_SETTINGS =>
+        if (frame.flags & H2_FLAG_ACK) == 0 {
+          match h2_apply_settings(frame.payload, flow) {
+            Ok(_) => ()
+            Err(err) => {
+              self.closed = true
+              return Err(err)
+            }
+          }
+          match h2_write_frame(self.stream, H2_FRAME_SETTINGS, H2_FLAG_ACK, 0, b"") {
+            Ok(_) => ()
+            Err(err) => {
+              self.closed = true
+              return Err(err)
+            }
+          }
+          match self.stream.flush() {
+            Ok(_) => ()
+            Err(err) => {
+              self.closed = true
+              return Err(http_error_from_net(err))
+            }
+          }
+          self.settings_received = true
+          return Ok(())
+        }
+      H2_FRAME_PING =>
+        if (frame.flags & H2_FLAG_ACK) == 0 {
+          match h2_write_frame(self.stream, H2_FRAME_PING, H2_FLAG_ACK, 0, frame.payload) {
+            Ok(_) => ()
+            Err(err) => {
+              self.closed = true
+              return Err(err)
+            }
+          }
+          match self.stream.flush() {
+            Ok(_) => ()
+            Err(err) => {
+              self.closed = true
+              return Err(http_error_from_net(err))
+            }
+          }
+        }
+      _ => {
+        self.closed = true
+        return Err(ProtocolError("HTTP/2 server did not start with SETTINGS"))
+      }
+    }
+  }
+  Err(ProtocolError("HTTP/2 server did not send SETTINGS"))
+}
+
+/// Apply settings and answer PING frames that are already buffered before
+/// opening a new stream. WINDOW_UPDATE is left for the body loop because it
+/// may target the stream that is about to be opened.
+fn H2ClientConnection::drain_buffered_settings(
+  self : H2ClientConnection,
+  flow : H2FlowState,
+) -> Result[Unit, HttpError] {
+  while h2_frame_is_buffered(self.reader) {
+    let frame_type = self.reader.pending[self.reader.pending_offset + 3].to_int()
+    match frame_type {
+      H2_FRAME_SETTINGS | H2_FRAME_PING | H2_FRAME_PRIORITY => ()
+      _ => return Ok(())
+    }
+    let frame = match h2_read_frame(self.reader) {
+      Ok(frame) => frame
+      Err(err) => {
+        self.closed = true
+        return Err(err)
+      }
+    }
+    match frame.frame_type {
+      H2_FRAME_SETTINGS =>
+        if (frame.flags & H2_FLAG_ACK) == 0 {
+          match h2_apply_settings(frame.payload, flow) {
+            Ok(_) => ()
+            Err(err) => {
+              self.closed = true
+              return Err(err)
+            }
+          }
+          match h2_write_frame(self.stream, H2_FRAME_SETTINGS, H2_FLAG_ACK, 0, b"") {
+            Ok(_) => ()
+            Err(err) => {
+              self.closed = true
+              return Err(err)
+            }
+          }
+          match self.stream.flush() {
+            Ok(_) => ()
+            Err(err) => {
+              self.closed = true
+              return Err(http_error_from_net(err))
+            }
+          }
+        }
+      H2_FRAME_PING =>
+        if (frame.flags & H2_FLAG_ACK) == 0 {
+          match h2_write_frame(self.stream, H2_FRAME_PING, H2_FLAG_ACK, 0, frame.payload) {
+            Ok(_) => ()
+            Err(err) => {
+              self.closed = true
+              return Err(err)
+            }
+          }
+          match self.stream.flush() {
+            Ok(_) => ()
+            Err(err) => {
+              self.closed = true
+              return Err(http_error_from_net(err))
+            }
+          }
+        }
+      H2_FRAME_GOAWAY => {
+        self.closed = true
+        let error_code = match h2_parse_goaway(frame.payload) {
+          Ok((_, code)) => code
+          Err(_) => 0
+        }
+        if error_code != 0 {
+          return Err(ProtocolError("HTTP/2 GOAWAY error " + error_code.to_string()))
+        }
+        return Err(ProtocolError("HTTP/2 connection closed by GOAWAY"))
+      }
+      _ => ()
+    }
+  }
+  Ok(())
+}
+
 /// Perform one request on this connection, reusing the client connection
 /// preface, HPACK decoder and connection-level flow-control window.
 pub fn H2ClientConnection::request_with_limit(
@@ -828,6 +1013,22 @@ pub fn H2ClientConnection::request_with_limit(
   let headers = match h2_request_headers(request) {
     Ok(headers) => headers
     Err(err) => return Err(err)
+  }
+  if !self.settings_received {
+    match self.read_initial_settings(self.flow) {
+      Ok(_) => ()
+      Err(err) => return Err(err)
+    }
+  }
+  match self.drain_buffered_settings(self.flow) {
+    Ok(_) => ()
+    Err(err) => return Err(err)
+  }
+  if self.flow.peer_max_concurrent_streams < 1 {
+    return Err(ProtocolError("HTTP/2 max concurrent streams is zero"))
+  }
+  if h2_header_list_size(headers) > self.flow.peer_max_header_list_size {
+    return Err(ProtocolError("HTTP/2 request header list too large"))
   }
   let stream_id = self.next_stream_id
   if stream_id < 1 || stream_id > H2_MAX_WINDOW_SIZE {
