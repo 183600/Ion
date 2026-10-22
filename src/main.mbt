@@ -46,7 +46,7 @@ fn print_usage() -> Unit {
   println("       FEATHER_INSECURE=1 feather             DISABLE TLS verification (unsafe)")
   println("       FEATHER_KEYLOG=1 feather               print TLS key material (debug)")
   println("       FEATHER_H2C=1 feather                  use HTTP/2 prior knowledge for http://")
-  println("Methods: get, post, put, delete, head, options, patch, trace")
+  println("Methods: get, post, put, delete, head, options, patch, trace, connect")
 }
 
 /// Prints each TLS key-log line so the captured secrets can be inspected (or

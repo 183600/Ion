@@ -5,6 +5,7 @@ pub struct H1Codec {
   // remain visible when the same codec is reused for the next exchange.
   priv reader : @ref.Ref[StreamReader]
   mut last_is_head : Bool
+  mut last_is_connect : Bool
   mut close_after_request : Bool
   max_body_bytes : Int
   on_complete : ((Bool) -> Unit)?
@@ -45,6 +46,7 @@ fn H1Codec::make(
     stream,
     reader: @ref.Ref(StreamReader::new(stream)),
     last_is_head: false,
+    last_is_connect: false,
     close_after_request: false,
     max_body_bytes: limit,
     on_complete,
@@ -508,12 +510,18 @@ pub fn H1Codec::encode_request(
   // A request replaces any framing state left by a previous encode that never
   // reached the wire; success below sets the state for this request.
   self.last_is_head = false
+  self.last_is_connect = false
   self.close_after_request = false
   if !valid_url_path_chars(req.url.path) ||
     !valid_url_query_chars(req.url.query) {
     return Err(InvalidUrl("Invalid request target"))
   }
-  let absolute = absolute_form.unwrap_or(false) && req.url.scheme.to_lower() == "http"
+  let is_connect = req.method == CONNECT
+  if is_connect && (req.url.path != "/" || req.url.query.length() > 0) {
+    return Err(InvalidUrl("CONNECT requires an authority-form target"))
+  }
+  let absolute = !is_connect && absolute_form.unwrap_or(false) &&
+    req.url.scheme.to_lower() == "http"
   let asterisk_form = req.url.path == "*"
   if asterisk_form && req.method != OPTIONS {
     return Err(InvalidUrl("Asterisk-form is only valid for OPTIONS"))
@@ -521,18 +529,25 @@ pub fn H1Codec::encode_request(
   if asterisk_form && req.url.query.length() > 0 {
     return Err(InvalidUrl("Asterisk-form cannot include a query"))
   }
-  let target = if asterisk_form {
+  let target = if is_connect {
+    req.url.connect_authority()
+  } else if asterisk_form {
     "*"
   } else if absolute {
     req.url.origin() + req.url.request_target()
   } else {
     req.url.request_target()
   }
-  if !valid_request_target(target, allow_brackets=absolute) {
+  if !valid_request_target(target, allow_brackets=absolute || is_connect) {
     return Err(InvalidUrl("Invalid request target"))
   }
-  if !valid_host(req.url.authority()) {
+  if !valid_host(if is_connect { target } else { req.url.authority() }) {
     return Err(InvalidUrl("Invalid host"))
+  }
+  let host_header_value = if is_connect {
+    target
+  } else {
+    req.url.authority()
   }
   let req_line = req.method.to_string() + " " + target + " HTTP/1.1\r\n"
 
@@ -584,6 +599,12 @@ pub fn H1Codec::encode_request(
   if req.method == TRACE && (body_length > 0 || req.trailers.length() > 0) {
     return Err(InvalidHeader("TRACE request content is not allowed"))
   }
+  // CONNECT establishes a tunnel rather than transferring request content.
+  // Rejecting framed bodies avoids sending a body the peer would interpret as
+  // the first bytes of the tunnelled protocol.
+  if is_connect && (body_length > 0 || req.trailers.length() > 0 || chunked) {
+    return Err(InvalidHeader("CONNECT request content is not allowed"))
+  }
   match content_length {
     Some(declared) => if declared != body_length {
       return Err(InvalidHeader("Content-Length"))
@@ -594,9 +615,10 @@ pub fn H1Codec::encode_request(
   // Build headers
   let mut headers_str = ""
 
-  // Add Host header if not present
+  // Add Host header if not present. CONNECT uses its authority-form target so
+  // the port is always present, matching RFC 9110 §9.3.6.
   if !req.headers.contains("Host") {
-    headers_str += "Host: " + req.url.authority() + "\r\n"
+    headers_str += "Host: " + host_header_value + "\r\n"
   }
 
   // Add Content-Length when the caller did not choose a framing mode. Methods
@@ -657,6 +679,7 @@ pub fn H1Codec::encode_request(
   match self.reader.val.stream.flush() {
     Ok(_) => {
       self.last_is_head = req.method == HEAD
+      self.last_is_connect = is_connect
       self.close_after_request = headers_have_token(req.headers, "Connection", "close")
       Ok(())
     }
@@ -824,7 +847,9 @@ pub fn H1Codec::decode_response(
   // fails. Leaving a stale HEAD/Connection flag behind would mis-frame a later
   // response when the codec is reused after an error.
   let request_close = self.close_after_request
+  let request_connect = self.last_is_connect
   self.last_is_head = false
+  self.last_is_connect = false
   self.close_after_request = false
   let mut informational_count = 0
   while true {
@@ -851,6 +876,17 @@ pub fn H1Codec::decode_response(
       continue
     }
 
+    // A successful CONNECT response switches to the tunnelled stream. It is
+    // close-delimited and must not carry HTTP body framing (RFC 9110 §9.3.6).
+    let connect_tunnel = request_connect &&
+      response_head.status >= 200 && response_head.status < 300
+    if connect_tunnel &&
+      (response_head.headers.contains("Content-Length") ||
+        response_head.headers.contains("Transfer-Encoding")) {
+      return Err(ProtocolError(
+        "Successful CONNECT response must not include framing headers",
+      ))
+    }
     let trailers = @ref.Ref(Headers::new())
     let response_stream = ResponseStream::{
       reader: self.reader,
@@ -871,6 +907,11 @@ pub fn H1Codec::decode_response(
       completed: false,
       released_to_pool: false,
       trailers,
+    }
+    if connect_tunnel {
+      response_stream.body_mode = BodyUntilEof
+      response_stream.close_after_body = true
+      response_stream.prepared = true
     }
     if self.on_complete is Some(_) {
       // Bodyless and zero-length responses can be completed before the caller

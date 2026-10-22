@@ -155,6 +155,7 @@ pub fn CookieJar::store_from_headers(Self, Url, Headers) -> Unit
 pub struct H1Codec {
   stream : &Stream
   mut last_is_head : Bool
+  mut last_is_connect : Bool
   mut close_after_request : Bool
   max_body_bytes : Int32
   on_complete : ((Bool) -> Unit)?
@@ -240,6 +241,7 @@ pub enum HttpMethod {
   OPTIONS
   PATCH
   TRACE
+  CONNECT
 } derive(Eq, @debug.Debug)
 pub fn HttpMethod::parse(String) -> Result[Self, HttpError]
 pub fn HttpMethod::to_string(Self) -> String
@@ -491,6 +493,7 @@ pub struct Url {
   bracketed : Bool
 } derive(Eq, @debug.Debug)
 pub fn Url::authority(Self) -> String
+pub fn Url::connect_authority(Self) -> String
 pub fn Url::is_secure(Self) -> Bool
 pub fn Url::join(Self, String) -> Result[Self, HttpError]
 pub fn Url::new(String, String, Int32) -> Self

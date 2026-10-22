@@ -47,6 +47,7 @@ pub enum HttpMethod {
   OPTIONS
   PATCH
   TRACE
+  CONNECT
 } derive(Eq, Debug)
 
 pub fn HttpMethod::parse(value : String) -> Result[HttpMethod, HttpError] {
@@ -59,6 +60,7 @@ pub fn HttpMethod::parse(value : String) -> Result[HttpMethod, HttpError] {
     "OPTIONS" => Ok(OPTIONS)
     "PATCH" => Ok(PATCH)
     "TRACE" => Ok(TRACE)
+    "CONNECT" => Ok(CONNECT)
     _ => Err(InvalidMethod(value))
   }
 }
@@ -73,6 +75,7 @@ pub fn HttpMethod::to_string(method : HttpMethod) -> String {
     OPTIONS => "OPTIONS"
     PATCH => "PATCH"
     TRACE => "TRACE"
+    CONNECT => "CONNECT"
   }
 }
 
@@ -570,6 +573,13 @@ pub fn Url::authority(self : Url) -> String {
   } else {
     host_text + ":" + self.port.to_string()
   }
+}
+
+/// Authority-form target used by `CONNECT`: `host:port`, always including the
+/// port and bracketing IP literals. Unlike `authority`, a default port is not
+/// omitted because it names the tunnel endpoint.
+pub fn Url::connect_authority(self : Url) -> String {
+  url_authority_host(self.host, self.bracketed) + ":" + self.port.to_string()
 }
 
 /// Scheme, authority, path, and query without the fragment.

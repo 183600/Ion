@@ -68,6 +68,7 @@ struct H2ResponseState {
   decoder : HpackDecoder
   max_body_bytes : Int
   head : Bool
+  connect : Bool
   mut status : Int
   mut status_seen : Bool
   mut headers : Headers
@@ -88,12 +89,14 @@ fn H2ResponseState::new(
   decoder : HpackDecoder,
   max_body_bytes : Int,
   head : Bool,
+  connect : Bool,
 ) -> H2ResponseState {
   H2ResponseState::{
     stream_id,
     decoder,
     max_body_bytes: if max_body_bytes < 0 { 0 } else { max_body_bytes },
     head,
+    connect,
     status: 0,
     status_seen: false,
     headers: Headers::new(),
@@ -338,9 +341,20 @@ fn H2ResponseState::apply_header_block(
   self.status = status
   self.status_seen = true
   self.headers = regular
-  // Responses to HEAD and 204/205/304 carry no payload body.
-  self.body_forbidden = self.head || status == 204 || status == 205 ||
-    status == 304
+  let connect_tunnel = self.connect && status >= 200 && status < 300
+  // A successful CONNECT response switches to an opaque tunnel; it has no
+  // HTTP message body framing. Responses to HEAD, 204, 205 and 304 otherwise
+  // carry no payload body.
+  if connect_tunnel && regular.contains("content-length") {
+    return Err(ProtocolError(
+      "Successful CONNECT response must not include Content-Length",
+    ))
+  }
+  self.body_forbidden = if connect_tunnel {
+    false
+  } else {
+    self.head || status == 204 || status == 205 || status == 304
+  }
   // Content-Length is still validated for bodyless responses so a malformed
   // field cannot be silently accepted just because no body follows it.
   let declared = match response_content_length(regular) {
@@ -357,7 +371,9 @@ fn H2ResponseState::apply_header_block(
       "HTTP/2 205 response must not have a non-zero Content-Length",
     ))
   }
-  if !self.body_forbidden {
+  if connect_tunnel {
+    self.content_length = None
+  } else if !self.body_forbidden {
     match declared {
       Some(length) => {
         if length > self.max_body_bytes {
@@ -725,7 +741,17 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
     !valid_url_query_chars(request.url.query) {
     return Err(InvalidUrl("Invalid request target"))
   }
-  if !valid_host(request.url.authority()) {
+  let is_connect = request.method == CONNECT
+  if is_connect &&
+    (request.url.path != "/" || request.url.query.length() > 0) {
+    return Err(InvalidUrl("CONNECT requires an authority-form target"))
+  }
+  let authority = if is_connect {
+    request.url.connect_authority()
+  } else {
+    request.url.authority()
+  }
+  if !valid_host(authority) {
     return Err(InvalidUrl("Invalid host"))
   }
   let asterisk_form = request.url.path == "*"
@@ -735,7 +761,9 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
   if asterisk_form && request.url.query.length() > 0 {
     return Err(InvalidUrl("Asterisk-form cannot include a query"))
   }
-  let request_target = if asterisk_form {
+  let request_target = if is_connect {
+    authority
+  } else if asterisk_form {
     "*"
   } else {
     request.url.request_target()
@@ -754,6 +782,12 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
     (body_length > 0 || request.trailers.length() > 0) {
     return Err(InvalidHeader("TRACE request content is not allowed"))
   }
+  // CONNECT establishes a tunnel; request content would be ambiguous with the
+  // first tunnelled bytes, so it is not generated here.
+  if is_connect &&
+    (body_length > 0 || request.trailers.length() > 0) {
+    return Err(InvalidHeader("CONNECT request content is not allowed"))
+  }
   let content_lengths = request.headers.get_all("Content-Length")
   // A field nominated by Connection is removed before the request is sent, so
   // it must not be validated as part of the HTTP/2 header list.
@@ -771,12 +805,17 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
     }
     None => ()
   }
-  let headers : Array[(String, String)] = [
-    (":method", request.method.to_string()),
-    (":scheme", request.url.scheme.to_lower()),
-    (":authority", request.url.authority()),
-    (":path", request_target),
-  ]
+  // CONNECT uses authority-form and has no :scheme or :path (RFC 9113 §8.5).
+  let headers : Array[(String, String)] = if is_connect {
+    [(":method", request.method.to_string()), (":authority", authority)]
+  } else {
+    [
+      (":method", request.method.to_string()),
+      (":scheme", request.url.scheme.to_lower()),
+      (":authority", authority),
+      (":path", request_target),
+    ]
+  }
   if (request.body is Some(_) || method_defines_body(request.method)) &&
     content_lengths.length() == 0 && !content_length_nominated {
     headers.push(("content-length", body_length.to_string()))
@@ -1404,6 +1443,7 @@ pub fn H2ClientConnection::request_with_limit(
     self.decoder,
     max_body_bytes,
     request.method == HEAD,
+    request.method == CONNECT,
   )
   let flow = self.flow
   let mut sent = 0

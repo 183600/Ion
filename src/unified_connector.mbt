@@ -1352,7 +1352,7 @@ fn read_connect_response(stream : &Stream) -> Result[Bytes, HttpError] {
 }
 
 fn connect_authority(url : Url) -> String {
-  url_authority_host(url.host, url.bracketed) + ":" + url.port.to_string()
+  url.connect_authority()
 }
 
 fn establish_tunnel(
