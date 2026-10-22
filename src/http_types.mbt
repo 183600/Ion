@@ -604,7 +604,7 @@ pub fn Url::join(self : Url, reference : String) -> Result[Url, HttpError] {
     }
     self.origin() + path + reference
   } else if reference.length() == 0 {
-    self.to_string()
+    self.with_fragment("").to_string()
   } else if url_has_scheme(reference) {
     // A reference that carries a scheme is an absolute URI and replaces the
     // base entirely (RFC 3986 §5.2.2). Url::parse rejects non-http(s)

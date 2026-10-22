@@ -42,6 +42,11 @@ test "Url::join resolves RFC 3986 relative references" {
   }
 }
 
+test "Url::join with an empty reference does not inherit the base fragment" {
+  let base = Url::parse("http://a/b/c/d;p?q#frag").unwrap()
+  assert_eq(base.join("").unwrap().to_string(), "http://a/b/c/d;p?q")
+}
+
 test "Url::join keeps absolute and scheme-relative references" {
   let base = Url::parse("https://example.com/dir/page?q=1").unwrap()
   assert_eq(
