@@ -392,6 +392,7 @@ test "native TLS I/O reports a closed transport as Closed" {
 struct RecordingUnderlying {
   mut output : Bytes
   mut read_calls : Int
+  mut flush_calls : Int
 }
 
 ///|
@@ -424,7 +425,7 @@ pub impl Stream for RecordingUnderlying with fn write(
 pub impl Stream for RecordingUnderlying with fn flush(
   self : RecordingUnderlying,
 ) -> Result[Unit, NetError] {
-  let _ = self
+  self.flush_calls = self.flush_calls + 1
   Ok(())
 }
 
@@ -483,12 +484,17 @@ test "native TLS writes flush handshake records before reading on WANT_READ" {
     0,
   )
   assert_eq(feather_tls_ready(tls), 1)
-  let underlying = RecordingUnderlying::{ output: b"", read_calls: 0 }
+  let underlying = RecordingUnderlying::{
+    output: b"",
+    read_calls: 0,
+    flush_calls: 0,
+  }
   let stream = NativeTlsStream::{ tls, underlying, key_log: None, is_open: true }
   let data = Buffer(size_hint=5)
   data.write_bytes(b"hello")
   assert_true(stream.write(data) is Err(NetError::Timeout))
   assert_eq(underlying.read_calls, 1)
+  assert_true(underlying.flush_calls > 0)
   assert_true(underlying.output.length() > 5)
   assert_eq(underlying.output[0], 0x16)
   assert_eq(underlying.output[1], 0x03)

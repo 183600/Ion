@@ -152,7 +152,18 @@ fn native_tls_flush(
       return TlsIoFailure(native_tls_error_message(tls))
     }
     if count == 0 {
-      return TlsIoData
+      // OpenSSL has no more records to hand over. Flush the transport as well:
+      // a buffered `Stream` implementation may still hold the records written
+      // above, and the caller may be about to block waiting for a response.
+      return match underlying.flush() {
+        Ok(_) => TlsIoData
+        Err(err) =>
+          match err {
+            Timeout => TlsIoTimeout
+            Closed => TlsIoClosed
+            _ => TlsIoFailure("TLS flush failed")
+          }
+      }
     }
     let data = buffer.exact_view(start=0, end=count).to_owned()
     match write_all(underlying, data) {
@@ -397,8 +408,11 @@ pub impl Stream for NativeTlsStream with fn flush(
   if !self.is_open {
     return Err(NetError::Closed)
   }
+  // `native_tls_flush` also flushes the underlying transport once OpenSSL has
+  // no more pending records, so records buffered by a custom stream are not
+  // left waiting for a later read.
   match native_tls_flush(self.tls, self.underlying) {
-    TlsIoData => self.underlying.flush()
+    TlsIoData => Ok(())
     TlsIoTimeout => Err(NetError::Timeout)
     TlsIoClosed => Err(NetError::Closed)
     _ => Err(NetError::WriteError("TLS flush failed"))
