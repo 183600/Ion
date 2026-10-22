@@ -736,3 +736,43 @@ test "http2 surfaces a nonzero GOAWAY error code" {
   }
   assert_false(connection.is_open())
 }
+
+test "http2 consumes a GOAWAY buffered after the response" {
+  let response_headers = hpack_encode([(":status", "200")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+    h2_test_frame(H2_FRAME_GOAWAY, 0, 0, b"\x00\x00\x00\x01\x00\x00\x00\x00"),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  let response = connection.request(request).unwrap()
+  assert_eq(response.status, 200)
+  assert_false(connection.is_open())
+}
+
+test "http2 acknowledges a PING buffered after the response" {
+  let response_headers = hpack_encode([(":status", "200")])
+  let ping = b"\x01\x02\x03\x04\x05\x06\x07\x08"
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+    h2_test_frame(H2_FRAME_PING, 0, 0, ping),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  let _ = connection.request(request).unwrap()
+  assert_true(connection.is_open())
+
+  let frames = h2_test_client_frames(stream)
+  let mut acknowledged = false
+  for frame in frames {
+    if frame.frame_type == H2_FRAME_PING && (frame.flags & H2_FLAG_ACK) != 0 {
+      assert_eq(frame.payload, ping)
+      acknowledged = true
+    }
+  }
+  assert_true(acknowledged)
+}

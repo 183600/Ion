@@ -51,6 +51,21 @@ fn h2_parse_window_update(payload : Bytes) -> Result[Int, HttpError] {
   Ok(increment)
 }
 
+/// Whether a whole frame is already buffered by the reader. Draining only
+/// complete frames lets a completed response consume trailing connection
+/// frames without blocking for more network input.
+fn h2_frame_is_buffered(reader : StreamReader) -> Bool {
+  let available = reader.pending.length() - reader.pending_offset
+  if available < 9 {
+    return false
+  }
+  let offset = reader.pending_offset
+  let length = (reader.pending[offset].to_int() << 16) |
+    (reader.pending[offset + 1].to_int() << 8) |
+    reader.pending[offset + 2].to_int()
+  available >= 9 + length
+}
+
 fn h2_read_frame(reader : StreamReader) -> Result[H2Frame, HttpError] {
   let header : Array[Byte] = []
   match reader.read_exact(9, header) {

@@ -735,6 +735,57 @@ pub fn H2ClientConnection::close(self : H2ClientConnection) -> Unit {
   let _ = self.stream.close()
 }
 
+/// Consume connection-level frames that were already buffered when the
+/// response ended. A GOAWAY or malformed trailing frame makes the session
+/// unusable for another request; SETTINGS and PING are acknowledged.
+fn H2ClientConnection::drain_buffered_connection_frames(
+  self : H2ClientConnection,
+  state : H2ResponseState,
+  flow : H2FlowState,
+) -> Unit {
+  while h2_frame_is_buffered(self.reader) {
+    let frame_type = self.reader.pending[self.reader.pending_offset + 3].to_int()
+    match frame_type {
+      H2_FRAME_SETTINGS
+      | H2_FRAME_PING
+      | H2_FRAME_WINDOW_UPDATE
+      | H2_FRAME_GOAWAY
+      | H2_FRAME_PRIORITY => ()
+      _ => return
+    }
+    let frame = match h2_read_frame(self.reader) {
+      Ok(frame) => frame
+      Err(_) => {
+        self.closed = true
+        return
+      }
+    }
+    match frame.frame_type {
+      H2_FRAME_SETTINGS | H2_FRAME_PING | H2_FRAME_WINDOW_UPDATE =>
+        match state.handle_frame(frame, flow, self.stream) {
+          Ok(_) => ()
+          Err(_) => {
+            self.closed = true
+            return
+          }
+        }
+      H2_FRAME_GOAWAY => {
+        match h2_parse_goaway(frame.payload) {
+          Ok((last_stream_id, _)) => state.goaway_last_stream_id = Some(last_stream_id)
+          Err(_) => ()
+        }
+        self.closed = true
+        return
+      }
+      H2_FRAME_PRIORITY => ()
+      _ => {
+        self.closed = true
+        return
+      }
+    }
+  }
+}
+
 /// Perform one request on this connection, reusing the client connection
 /// preface, HPACK decoder and connection-level flow-control window.
 pub fn H2ClientConnection::request_with_limit(
@@ -860,10 +911,11 @@ pub fn H2ClientConnection::request_with_limit(
       }
     }
   }
+  self.drain_buffered_connection_frames(state, flow)
   // An early final response (for example 413 or 401) leaves the request side
   // of this stream half-open. Reset the stream instead of returning the
   // connection to the pool with an unfinished upload.
-  if sent < body.length() {
+  if sent < body.length() && !self.closed {
     match h2_write_frame(
       self.stream,
       H2_FRAME_RST_STREAM,
