@@ -867,7 +867,11 @@ fn valid_chunk_extensions(value : String) -> Bool {
     if index == name_start {
       return false
     }
+    let name_end = index
     index = skip_chunk_ext_ows(value, index)
+    if index == length && index > name_end {
+      return false
+    }
     if index < length && value.get_char(index) == Some('=') {
       index = skip_chunk_ext_ows(value, index + 1)
       if index >= length {
@@ -909,7 +913,11 @@ fn valid_chunk_extensions(value : String) -> Bool {
           return false
         }
       }
+      let value_end = index
       index = skip_chunk_ext_ows(value, index)
+      if index == length && index > value_end {
+        return false
+      }
     }
     if index < length && value.get_char(index) != Some(';') {
       return false
