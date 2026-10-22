@@ -398,8 +398,20 @@ fn UnifiedClient::do_request_once(
     return Err(ProtocolError("Unsupported negotiated ALPN protocol: " + protocol))
   }
   let is_http2 = negotiated_protocol == Some("h2")
+  let h2_connection = lease.h2_connection()
   let response_result = if is_http2 {
-    h2_request_with_limit(stream, request, self.options.max_response_body_bytes)
+    match h2_connection {
+      Some(connection) =>
+        connection.request_with_limit(
+          request,
+          self.options.max_response_body_bytes,
+        )
+      None => h2_request_with_limit(
+        stream,
+        request,
+        self.options.max_response_body_bytes,
+      )
+    }
   } else {
     let codec = H1Codec::new_with_limit_and_completion(
       stream,
@@ -419,17 +431,16 @@ fn UnifiedClient::do_request_once(
     Ok(response) => response
     Err(err) => {
       lease.release(false)
-      if !is_http2 && allow_retry && lease.reused &&
-        request_can_be_retried(request.method) {
+      if allow_retry && lease.reused && request_can_be_retried(request.method) {
         return self.do_request_once(req, false)
       }
       return Err(normalize_http_error(err))
     }
   }
   if is_http2 {
-    // The HTTP/2 exchange buffers the body, so the connection is no longer
-    // needed even though the caller may read the body later.
-    lease.release(false)
+    // The HTTP/2 exchange buffers the body, so the session can be returned to
+    // the pool for the next sequential request immediately.
+    lease.release(true)
   }
 
   // Persist cookies before following a redirect so the next hop sees them.

@@ -74,12 +74,14 @@ struct ActiveConnection {
   id : Int
   key : String
   stream : &Stream
+  h2 : H2ClientConnection?
 }
 
 struct IdleConnection {
   stream : &Stream
   last_used_ms : UInt64
   negotiated_protocol : String?
+  h2 : H2ClientConnection?
 }
 
 /// Default maximum idle time for a pooled connection (90 seconds).
@@ -142,6 +144,38 @@ fn ConnectionPoolState::cache_idle_with_protocol(
   now_ms : UInt64,
   negotiated_protocol : String?,
 ) -> Unit {
+  self.cache_idle_connection(
+    key,
+    stream,
+    now_ms,
+    negotiated_protocol,
+    None,
+  )
+}
+
+fn ConnectionPoolState::cache_idle_h2(
+  self : ConnectionPoolState,
+  key : String,
+  connection : H2ClientConnection,
+  now_ms : UInt64,
+) -> Unit {
+  self.cache_idle_connection(
+    key,
+    connection.stream,
+    now_ms,
+    Some("h2"),
+    Some(connection),
+  )
+}
+
+fn ConnectionPoolState::cache_idle_connection(
+  self : ConnectionPoolState,
+  key : String,
+  stream : &Stream,
+  now_ms : UInt64,
+  negotiated_protocol : String?,
+  h2 : H2ClientConnection?,
+) -> Unit {
   let idle = match self.idle.get(key) {
     Some(streams) => streams
     None => @list.List([])
@@ -150,6 +184,7 @@ fn ConnectionPoolState::cache_idle_with_protocol(
     stream,
     last_used_ms: now_ms,
     negotiated_protocol,
+    h2,
   })
   while updated.length() > self.max_idle {
     match updated.last() {
@@ -213,6 +248,7 @@ pub struct ConnectionLease {
   priv key : String
   priv stream : &Stream
   priv negotiated_protocol : String?
+  priv h2 : H2ClientConnection?
   priv reused : Bool
   priv mut released : Bool
   priv pool : @ref.Ref[ConnectionPoolState]
@@ -227,22 +263,33 @@ pub fn ConnectionLease::release(self : ConnectionLease, reusable : Bool) -> Unit
   self.released = true
   let id = self.id
   self.pool.val.active = self.pool.val.active.filter(fn(entry) { entry.id != id })
-  // A single HTTP/2 exchange consumes the connection preface and stream, so
-  // the stream cannot be reused by another request with this client.
-  if reusable && self.negotiated_protocol != Some("h2") {
-    match self.stream.peer_addr() {
-      Ok(_) => self.pool.val.cache_idle_with_protocol(
-        self.key,
-        self.stream,
-        @env.now(),
-        self.negotiated_protocol,
-      )
-      Err(_) => {
+  match self.h2 {
+    Some(connection) =>
+      if reusable {
+        if connection.is_open() {
+          self.pool.val.cache_idle_h2(self.key, connection, @env.now())
+        } else {
+          let _ = self.stream.close()
+        }
+      } else {
+        connection.close()
+      }
+    None =>
+      if reusable {
+        match self.stream.peer_addr() {
+          Ok(_) => self.pool.val.cache_idle_with_protocol(
+            self.key,
+            self.stream,
+            @env.now(),
+            self.negotiated_protocol,
+          )
+          Err(_) => {
+            let _ = self.stream.close()
+          }
+        }
+      } else {
         let _ = self.stream.close()
       }
-    }
-  } else {
-    let _ = self.stream.close()
   }
 }
 
@@ -258,7 +305,9 @@ fn take_idle_connection_at(
   pool : @ref.Ref[ConnectionPoolState],
   key : String,
   now_ms : UInt64,
-) -> Option[(&Stream, String?)] {
+  accept_h2? : Bool,
+) -> Option[(&Stream, String?, H2ClientConnection?)] {
+  let accept_h2 = accept_h2.unwrap_or(true)
   let entries = match pool.val.idle.get(key) {
     Some(entries) => entries
     None => return None
@@ -274,8 +323,13 @@ fn take_idle_connection_at(
         } else {
           false
         }
+        let usable_h2 = if entry.h2 is Some(connection) {
+          accept_h2 && connection.is_open()
+        } else {
+          true
+        }
         let alive = if expired { false } else { entry.stream.peer_addr() is Ok(_) }
-        if expired || !alive {
+        if expired || !alive || !usable_h2 {
           let _ = entry.stream.close()
           if rest.length() == 0 {
             let _ = pool.val.idle.remove(key)
@@ -290,7 +344,7 @@ fn take_idle_connection_at(
         } else {
           pool.val.idle.set(key, rest)
         }
-        return Some((entry.stream, entry.negotiated_protocol))
+        return Some((entry.stream, entry.negotiated_protocol, entry.h2))
       }
       None => {
         let _ = pool.val.idle.remove(key)
@@ -899,8 +953,8 @@ fn establish_tunnel(
 /// `checkout`, which returns a lease that recycles the stream when the
 /// exchange finishes.
 pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpError] {
-  match self.connect_impl(url, true) {
-    Ok((stream, _, _)) => Ok(stream)
+  match self.connect_impl(url, true, false) {
+    Ok((stream, _, _, _)) => Ok(stream)
     Err(err) => Err(err)
   }
 }
@@ -909,7 +963,8 @@ fn Connector::connect_impl(
   self : Connector,
   url : Url,
   cache_new : Bool,
-) -> Result[(&Stream, Bool, String?), HttpError] {
+  accept_h2_pool : Bool,
+) -> Result[(&Stream, Bool, String?, H2ClientConnection?), HttpError] {
   let scheme = url.scheme.to_lower()
   let host = url.host
   let port = url.port
@@ -971,10 +1026,17 @@ fn Connector::connect_impl(
     )))
   }
 
-  // Check if we have a cached connection
-  match take_idle_connection_at(self.pool, conn_key, @env.now()) {
-    Some((stream, negotiated_protocol)) => {
-      return Ok((stream, true, negotiated_protocol))
+  // Check if we have a cached connection. A plain `connect` cannot take an
+  // HTTP/2 session because the caller would issue a fresh preface; that path
+  // skips and closes cached sessions, then dials a fresh connection.
+  match take_idle_connection_at(
+    self.pool,
+    conn_key,
+    @env.now(),
+    accept_h2=accept_h2_pool,
+  ) {
+    Some((stream, negotiated_protocol, h2)) => {
+      return Ok((stream, true, negotiated_protocol, h2))
     }
     None => ()
   }
@@ -1088,13 +1150,13 @@ fn Connector::connect_impl(
         negotiated_protocol,
       )
     }
-    Ok((tls_stream, false, negotiated_protocol))
+    Ok((tls_stream, false, negotiated_protocol, None))
   } else {
     // For plain HTTP, use the proxy stream (raw or TLS-to-proxy) directly.
     if cache_new {
       self.pool.val.cache_idle(conn_key, proxy_stream, @env.now())
     }
-    Ok((proxy_stream, false, None))
+    Ok((proxy_stream, false, None, None))
   }
 }
 
@@ -1103,14 +1165,33 @@ pub fn Connector::checkout(
   url : Url,
 ) -> Result[(&Stream, ConnectionLease), HttpError] {
   let conn_key = self.connection_key(url)
-  let (stream, reused, negotiated_protocol) = match self.connect_impl(url, false) {
+  let (stream, reused, negotiated_protocol, h2) = match self.connect_impl(
+    url,
+    false,
+    true,
+  ) {
     Ok(connection) => connection
     Err(err) => return Err(err)
+  }
+  let h2 = match h2 {
+    Some(connection) => Some(connection)
+    None =>
+      if negotiated_protocol == Some("h2") {
+        match H2ClientConnection::new(stream) {
+          Ok(connection) => Some(connection)
+          Err(err) => {
+            let _ = stream.close()
+            return Err(err)
+          }
+        }
+      } else {
+        None
+      }
   }
   let id = self.pool.val.next_id
   self.pool.val.next_id = id + 1
   self.pool.val.active = self.pool.val.active.prepend(
-    ActiveConnection::{ id, key: conn_key, stream },
+    ActiveConnection::{ id, key: conn_key, stream, h2 },
   )
   Ok((
     stream,
@@ -1119,11 +1200,18 @@ pub fn Connector::checkout(
       key: conn_key,
       stream,
       negotiated_protocol,
+      h2,
       reused,
       released: false,
       pool: self.pool,
     },
   ))
+}
+
+/// The persistent HTTP/2 connection associated with this lease, if the
+/// negotiated protocol is `h2`.
+fn ConnectionLease::h2_connection(self : ConnectionLease) -> H2ClientConnection? {
+  self.h2
 }
 
 /// Close a connection and remove from pool
@@ -1133,7 +1221,12 @@ pub fn Connector::close(self : Connector, url : Url) -> Result[Unit, HttpError] 
   match self.pool.val.idle.get(conn_key) {
     Some(entries) => {
       for entry in entries {
-        let _ = entry.stream.close()
+        match entry.h2 {
+          Some(connection) => connection.close()
+          None => {
+            let _ = entry.stream.close()
+          }
+        }
       }
       let _ = self.pool.val.idle.remove(conn_key)
     }
@@ -1142,7 +1235,12 @@ pub fn Connector::close(self : Connector, url : Url) -> Result[Unit, HttpError] 
   let key = conn_key
   for entry in self.pool.val.active {
     if entry.key == key {
-      let _ = entry.stream.close()
+      match entry.h2 {
+        Some(connection) => connection.close()
+        None => {
+          let _ = entry.stream.close()
+        }
+      }
     }
   }
   self.pool.val.active = self.pool.val.active.filter(fn(entry) { entry.key != key })
@@ -1152,11 +1250,21 @@ pub fn Connector::close(self : Connector, url : Url) -> Result[Unit, HttpError] 
 pub fn Connector::close_all(self : Connector) -> Result[Unit, HttpError] {
   for _conn_key, entries in self.pool.val.idle.iter2() {
     for entry in entries {
-      let _ = entry.stream.close()
+      match entry.h2 {
+        Some(connection) => connection.close()
+        None => {
+          let _ = entry.stream.close()
+        }
+      }
     }
   }
   for entry in self.pool.val.active {
-    let _ = entry.stream.close()
+    match entry.h2 {
+      Some(connection) => connection.close()
+      None => {
+        let _ = entry.stream.close()
+      }
+    }
   }
   self.pool.val.idle = Map([])
   self.pool.val.active = @list.List([])
