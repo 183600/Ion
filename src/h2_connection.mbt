@@ -2154,6 +2154,15 @@ fn H2ClientConnection::drain_buffered_settings(
                 flow.pending_stream_window = 0
                 return Err(ProtocolError("HTTP/2 stream WINDOW_UPDATE increment is zero"))
               } else if frame.stream_id < self.next_stream_id {
+                if !h2_is_client_stream(frame.stream_id) {
+                  // Server push is disabled, so an even stream id can never
+                  // have existed. Reject a malformed update for it instead of
+                  // treating it like a harmless update for a closed stream.
+                  self.closed = true
+                  return Err(ProtocolError(
+                    "HTTP/2 WINDOW_UPDATE on a server-push stream",
+                  ))
+                }
                 // The stream has already ended; the update has no effect.
                 continue
               }
@@ -2181,6 +2190,14 @@ fn H2ClientConnection::drain_buffered_settings(
         } else if frame.stream_id > self.next_stream_id {
           self.closed = true
           return Err(ProtocolError("HTTP/2 WINDOW_UPDATE on idle stream"))
+        } else if !h2_is_client_stream(frame.stream_id) {
+          // An update for an even stream id is invalid because server push is
+          // disabled and no such stream can exist, even after it would have
+          // been closed. Do not silently ignore it as a stale update.
+          self.closed = true
+          return Err(ProtocolError(
+            "HTTP/2 WINDOW_UPDATE on a server-push stream",
+          ))
         }
       }
       H2_FRAME_GOAWAY => {
