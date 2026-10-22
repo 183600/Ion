@@ -1045,16 +1045,109 @@ fn buffer_one_shot_response(
   )
 }
 
+fn one_shot_request(
+  verb : HttpMethod,
+  url : String,
+  body : Bytes?,
+) -> Result[Response, HttpError] {
+  let client = default_client()
+  let request = match Request::from_url(verb, url) {
+    Ok(request) => request
+    Err(err) => {
+      let _ = client.close_all()
+      return Err(err)
+    }
+  }
+  let request = match body {
+    Some(body) => request.with_body(body)
+    None => request
+  }
+  buffer_one_shot_response(client, client.request(request))
+}
+
+fn one_shot_custom_request(
+  request : Result[Request, HttpError],
+) -> Result[Response, HttpError] {
+  let client = default_client()
+  let request = match request {
+    Ok(request) => request
+    Err(err) => {
+      let _ = client.close_all()
+      return Err(err)
+    }
+  }
+  buffer_one_shot_response(client, client.request(request))
+}
+
+/// Send a request with a one-shot default client, choosing HTTP or HTTPS
+/// automatically from the URL scheme. The response body is buffered before the
+/// client's connections are closed.
+pub fn request(request : Request) -> Result[Response, HttpError] {
+  one_shot_custom_request(Ok(request))
+}
+
 /// Send a GET request with a one-shot default client, choosing HTTP or HTTPS
 /// automatically from the URL scheme.
 pub fn get(url : String) -> Result[Response, HttpError] {
-  let client = default_client()
-  buffer_one_shot_response(client, client.get(url))
+  one_shot_request(GET, url, None)
 }
 
-/// Send a POST request with a one-shot default client, choosing HTTP or HTTPS
-/// automatically from the URL scheme.
+/// Send a POST request with a one-shot default client.
 pub fn post(url : String, body : Bytes) -> Result[Response, HttpError] {
-  let client = default_client()
-  buffer_one_shot_response(client, client.post(url, body))
+  one_shot_request(POST, url, Some(body))
+}
+
+/// Send a PUT request with a one-shot default client.
+pub fn put(url : String, body : Bytes) -> Result[Response, HttpError] {
+  one_shot_request(PUT, url, Some(body))
+}
+
+/// Send a DELETE request with a one-shot default client.
+pub fn delete(url : String) -> Result[Response, HttpError] {
+  one_shot_request(DELETE, url, None)
+}
+
+/// Send a HEAD request with a one-shot default client.
+pub fn head(url : String) -> Result[Response, HttpError] {
+  one_shot_request(HEAD, url, None)
+}
+
+/// Send an OPTIONS request with a one-shot default client.
+pub fn options(url : String) -> Result[Response, HttpError] {
+  one_shot_request(OPTIONS, url, None)
+}
+
+/// Send a PATCH request with a one-shot default client.
+pub fn patch(url : String, body : Bytes) -> Result[Response, HttpError] {
+  one_shot_request(PATCH, url, Some(body))
+}
+
+/// Send a TRACE request with a one-shot default client.
+pub fn trace(url : String) -> Result[Response, HttpError] {
+  one_shot_request(TRACE, url, None)
+}
+
+/// Send a form-encoded POST with a one-shot default client.
+pub fn post_form(
+  url : String,
+  fields : Array[(String, String)],
+) -> Result[Response, HttpError] {
+  let request = match Request::from_url(POST, url) {
+    Ok(request) => Ok(request.with_form(fields))
+    Err(err) => Err(err)
+  }
+  one_shot_custom_request(request)
+}
+
+/// Send a multipart/form-data POST with a one-shot default client.
+pub fn post_multipart(
+  url : String,
+  fields : Array[(String, String)],
+  files : Array[MultipartFile],
+) -> Result[Response, HttpError] {
+  let request = match Request::from_url(POST, url) {
+    Ok(request) => Ok(request.with_multipart(fields, files))
+    Err(err) => Err(err)
+  }
+  one_shot_custom_request(request)
 }

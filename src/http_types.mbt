@@ -1210,6 +1210,12 @@ fn Response::with_max_body_bytes(
   }
 }
 
+/// The stream that yields the response body. For HTTP/1.1 this is a streaming
+/// reader over the live connection; other protocols may buffer it first.
+pub fn Response::body_stream(self : Response) -> &Stream {
+  self.body
+}
+
 /// Headers from the chunked trailer section. They are populated once the
 /// response body has been read to completion.
 pub fn Response::trailers(self : Response) -> Headers {

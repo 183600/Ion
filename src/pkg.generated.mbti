@@ -17,11 +17,15 @@ pub fn default_dialer() -> UnavailableTcpDialer
 
 pub fn default_tls_provider() -> UnavailableTlsProvider
 
+pub fn delete(String) -> Result[Response, HttpError]
+
 pub fn get(String) -> Result[Response, HttpError]
 
 pub fn gunzip(Bytes, Int32) -> Result[Bytes, HttpError]
 
 pub fn h2_request(&Stream, Request) -> Result[Response, HttpError]
+
+pub fn head(String) -> Result[Response, HttpError]
 
 pub fn hpack_encode(Array[(String, String)]) -> Bytes
 
@@ -29,7 +33,21 @@ pub fn hpack_encode_header(@buffer.Buffer, String, String) -> Unit
 
 pub fn inflate(Bytes, Int32) -> Result[Bytes, HttpError]
 
+pub fn options(String) -> Result[Response, HttpError]
+
+pub fn patch(String, Bytes) -> Result[Response, HttpError]
+
 pub fn post(String, Bytes) -> Result[Response, HttpError]
+
+pub fn post_form(String, Array[(String, String)]) -> Result[Response, HttpError]
+
+pub fn post_multipart(String, Array[(String, String)], Array[MultipartFile]) -> Result[Response, HttpError]
+
+pub fn put(String, Bytes) -> Result[Response, HttpError]
+
+pub fn request(Request) -> Result[Response, HttpError]
+
+pub fn trace(String) -> Result[Response, HttpError]
 
 // Errors
 
@@ -345,6 +363,7 @@ pub struct Response {
   max_body_bytes : Int32
   // private fields
 }
+pub fn Response::body_stream(Self) -> &Stream
 pub fn Response::charset(Self) -> String?
 pub fn Response::get_header(Self, String) -> String?
 pub fn Response::get_header_all(Self, String) -> @list.List[String]
