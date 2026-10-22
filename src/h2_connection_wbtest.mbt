@@ -1131,26 +1131,31 @@ test "http2 rejects an oversized buffered frame after the response" {
   let response_headers = hpack_encode([(":status", "200")])
   // A DATA frame header that declares the maximum 24-bit length but has no
   // payload. The frame-size violation must be noticed while draining the
-  // already-buffered bytes, not left for the next request.
-  let oversized = Bytes::from_array([
-    b'\xff', b'\xff', b'\xff', b'\x00', b'\x00', b'\x00', b'\x00', b'\x00', b'\x01',
-  ][:])
-  let input = h2_test_concat([
-    h2_test_settings(),
-    h2_test_frame(
-      H2_FRAME_HEADERS,
-      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
-      1,
-      response_headers,
-    ),
-    oversized,
-  ])
-  let stream = h2_frame_mock_stream(input, 0)
-  let connection = H2ClientConnection::new(stream).unwrap()
-  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
-  let response = connection.request(request).unwrap()
-  assert_eq(response.status, 200)
-  assert_false(connection.is_open())
+  // already-buffered bytes, not left for the next request. Check both the
+  // just-completed stream and an idle future stream.
+  for stream_id in [1, 3] {
+    let header : Array[Byte] = [
+      b'\xff', b'\xff', b'\xff', b'\x00', b'\x00', b'\x00', b'\x00', b'\x00',
+      b'\x01',
+    ]
+    header[8] = stream_id.to_byte()
+    let input = h2_test_concat([
+      h2_test_settings(),
+      h2_test_frame(
+        H2_FRAME_HEADERS,
+        H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+        1,
+        response_headers,
+      ),
+      Bytes::from_array(header[:]),
+    ])
+    let stream = h2_frame_mock_stream(input, 0)
+    let connection = H2ClientConnection::new(stream).unwrap()
+    let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+    let response = connection.request(request).unwrap()
+    assert_eq(response.status, 200)
+    assert_false(connection.is_open())
+  }
 }
 
 test "http2 ignores WINDOW_UPDATE for a stream that already ended" {

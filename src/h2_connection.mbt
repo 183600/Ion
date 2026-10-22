@@ -1720,6 +1720,17 @@ fn H2ClientConnection::drain_buffered_connection_frames(
   flow : H2FlowState,
 ) -> Result[Unit, HttpError] {
   while h2_frame_is_buffered(self.reader) {
+    let header = self.reader.pending_offset
+    let frame_length = (self.reader.pending[header].to_int() << 16) |
+      (self.reader.pending[header + 1].to_int() << 8) |
+      self.reader.pending[header + 2].to_int()
+    // h2_frame_is_buffered treats an oversized header as available so the
+    // error is noticed now. Reject it before the DATA/stream-id fast paths,
+    // which could otherwise leave a future-stream frame buffered for reuse.
+    if frame_length > H2_MAX_FRAME_SIZE {
+      self.closed = true
+      return Ok(())
+    }
     let frame_type = self.reader.pending[self.reader.pending_offset + 3].to_int()
     match frame_type {
       H2_FRAME_SETTINGS
