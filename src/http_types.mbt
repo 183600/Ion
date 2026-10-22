@@ -1358,6 +1358,10 @@ pub fn Response::copy_body_to(
   self : Response,
   sink : &Stream,
 ) -> Result[Int, HttpError] {
+  // A response may wrap a stream that was created with a smaller cap (for
+  // example a streaming HTTP/1.1 body). Authorize this response's own limit
+  // before the first read, matching `read_body_with_limit`.
+  self.body.set_body_limit(self.max_body_bytes)
   let mut total = 0
   while true {
     let chunk = Buffer(size_hint=8192)
