@@ -847,13 +847,14 @@ fn h2_request_headers_with_protocol(
     !valid_url_query_chars(request.url.query) {
     return Err(InvalidUrl("Invalid request target"))
   }
+  let resolved_method = canonical_http_method(request.method)
   let extended_connect = extended_protocol is Some(_)
-  if extended_connect && request.method != GET && request.method != CONNECT {
+  if extended_connect && resolved_method != GET && resolved_method != CONNECT {
     return Err(ProtocolError(
       "Extended CONNECT requires a GET or CONNECT request",
     ))
   }
-  let is_connect = request.method == CONNECT && !extended_connect
+  let is_connect = resolved_method == CONNECT && !extended_connect
   if is_connect &&
     (request.url.path != "/" || request.url.query.length() > 0) {
     return Err(InvalidUrl("CONNECT requires an authority-form target"))
@@ -867,7 +868,7 @@ fn h2_request_headers_with_protocol(
     return Err(InvalidUrl("Invalid host"))
   }
   let asterisk_form = request.url.path == "*"
-  if asterisk_form && request.method != OPTIONS {
+  if asterisk_form && resolved_method != OPTIONS {
     return Err(InvalidUrl("Asterisk-form is only valid for OPTIONS"))
   }
   if asterisk_form && request.url.query.length() > 0 {
@@ -893,7 +894,7 @@ fn h2_request_headers_with_protocol(
     None => 0
   }
   // RFC 9110 §9.3.8: a client MUST NOT generate content in a TRACE request.
-  if request.method == TRACE &&
+  if resolved_method == TRACE &&
     (body_length > 0 || request.trailers.length() > 0) {
     return Err(InvalidHeader("TRACE request content is not allowed"))
   }
@@ -924,7 +925,7 @@ fn h2_request_headers_with_protocol(
   if (is_connect || extended_connect) && content_length is Some(_) {
     return Err(InvalidHeader("CONNECT request content is not allowed"))
   }
-  let verb = request.method.to_string()
+  let verb = resolved_method.to_string()
   // The public `Custom` variant can be built without `HttpMethod::custom`, so
   // reject invalid tokens at the HTTP/2 wire boundary too.
   if !valid_header_name(verb) {
@@ -953,7 +954,7 @@ fn h2_request_headers_with_protocol(
       (":path", request_target),
     ]
   }
-  if (request.body is Some(_) || method_defines_body(request.method)) &&
+  if (request.body is Some(_) || method_defines_body(resolved_method)) &&
     content_lengths.length() == 0 && !content_length_nominated {
     headers.push(("content-length", body_length.to_string()))
   }
@@ -1869,7 +1870,8 @@ fn H2ClientConnection::request_with_limit_and_callback(
     }
     None => None
   }
-  let tunnel = request.method == CONNECT || extended_protocol is Some(_)
+  let resolved_method = canonical_http_method(request.method)
+  let tunnel = resolved_method == CONNECT || extended_protocol is Some(_)
   let headers = match h2_request_headers_with_protocol(request, extended_protocol) {
     Ok(headers) => headers
     Err(err) => return Err(err)
@@ -1940,7 +1942,7 @@ fn H2ClientConnection::request_with_limit_and_callback(
     stream_id,
     self.decoder,
     max_body_bytes,
-    request.method == HEAD,
+    resolved_method == HEAD,
     tunnel,
   )
   let flow = self.flow

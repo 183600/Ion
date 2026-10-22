@@ -53,3 +53,48 @@ test "strict method parsing still rejects extension methods" {
   assert_true(HttpMethod::parse("PROPFIND") is Err(InvalidMethod(_)))
   assert_eq(HttpMethod::custom("proppatch").unwrap().to_string(), "proppatch")
 }
+
+test "uppercase standard Custom methods keep H1 framing semantics" {
+  let url = Url::parse("http://example.com/").unwrap()
+  let head_stream = regression_mock_stream(
+    "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello",
+    4096,
+    4096,
+  )
+  let head_codec = H1Codec::new(head_stream)
+  head_codec.encode_request(Request::new(Custom("HEAD"), url)).unwrap()
+  assert_eq(head_codec.decode_response().unwrap().read_body().unwrap(), b"")
+
+  let connect_stream = regression_mock_stream("", 0, 0)
+  let connect_codec = H1Codec::new(connect_stream)
+  connect_codec.encode_request(Request::new(Custom("CONNECT"), url)).unwrap()
+  let wire = @utf8.decode_lossy(connect_stream.output.to_bytes()[:])
+  assert_true(wire.has_prefix("CONNECT example.com:80 HTTP/1.1\r\n"))
+
+  let with_path = Url::parse("http://example.com/tunnel").unwrap()
+  let codec = H1Codec::new(regression_mock_stream("", 0, 0))
+  assert_true(
+    codec.encode_request(Request::new(Custom("CONNECT"), with_path))
+      is Err(InvalidUrl(_)),
+  )
+}
+
+test "uppercase standard Custom methods keep H2 pseudo-header semantics" {
+  let connect = h2_request_headers(
+    Request::new(
+      Custom("CONNECT"),
+      Url::parse("https://example.com:443/").unwrap(),
+    ),
+  ).unwrap()
+  assert_eq(h2_test_header_value(connect, ":method"), Some("CONNECT"))
+  assert_eq(h2_test_header_value(connect, ":authority"), Some("example.com:443"))
+  assert_eq(h2_test_header_value(connect, ":scheme"), None)
+  assert_eq(h2_test_header_value(connect, ":path"), None)
+  let options = h2_request_headers(
+    Request::new(
+      Custom("OPTIONS"),
+      Url::parse("https://example.com").unwrap().with_path("*"),
+    ),
+  ).unwrap()
+  assert_eq(h2_test_header_value(options, ":path"), Some("*"))
+}

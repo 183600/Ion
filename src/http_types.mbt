@@ -103,6 +103,29 @@ pub fn HttpMethod::to_string(verb : HttpMethod) -> String {
   }
 }
 
+/// `Custom` is public, so callers can build it directly. An exactly uppercase
+/// standard method is indistinguishable from its dedicated variant on the
+/// wire; treat it as that variant for framing and method semantics while
+/// leaving genuinely case-sensitive extension tokens untouched.
+fn canonical_http_method(verb : HttpMethod) -> HttpMethod {
+  match verb {
+    Custom(token) =>
+      match token {
+        "GET" => GET
+        "POST" => POST
+        "PUT" => PUT
+        "DELETE" => DELETE
+        "HEAD" => HEAD
+        "OPTIONS" => OPTIONS
+        "PATCH" => PATCH
+        "TRACE" => TRACE
+        "CONNECT" => CONNECT
+        _ => verb
+      }
+    _ => verb
+  }
+}
+
 /// HTTP header
 pub struct Header {
   name : String

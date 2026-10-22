@@ -451,7 +451,7 @@ fn request_is_chunked(headers : Headers) -> Result[Bool, HttpError] {
 /// Methods for which an absent body still has a defined meaning, so an explicit
 /// `Content-Length: 0` should be sent when the caller did not frame the body.
 fn method_defines_body(verb : HttpMethod) -> Bool {
-  match verb {
+  match canonical_http_method(verb) {
     POST => true
     PUT => true
     PATCH => true
@@ -551,17 +551,18 @@ pub fn H1Codec::encode_request(
   self.last_upgrade_protocols = []
   self.close_after_request = false
   self.deferred_pending = false
+  let resolved_method = canonical_http_method(req.method)
   if !valid_url_path_chars(req.url.path) ||
     !valid_url_query_chars(req.url.query) {
     return Err(InvalidUrl("Invalid request target"))
   }
-  let is_connect = req.method == CONNECT
+  let is_connect = resolved_method == CONNECT
   if is_connect && (req.url.path != "/" || req.url.query.length() > 0) {
     return Err(InvalidUrl("CONNECT requires an authority-form target"))
   }
   let absolute = !is_connect && absolute_form.unwrap_or(false)
   let asterisk_form = req.url.path == "*"
-  if asterisk_form && req.method != OPTIONS {
+  if asterisk_form && resolved_method != OPTIONS {
     return Err(InvalidUrl("Asterisk-form is only valid for OPTIONS"))
   }
   if asterisk_form && req.url.query.length() > 0 {
@@ -587,7 +588,7 @@ pub fn H1Codec::encode_request(
   } else {
     req.url.authority()
   }
-  let verb = req.method.to_string()
+  let verb = resolved_method.to_string()
   // `HttpMethod::Custom` is public, so validate the token again at the wire
   // boundary instead of relying only on the constructor.
   if !valid_header_name(verb) {
@@ -643,7 +644,7 @@ pub fn H1Codec::encode_request(
     None => 0
   }
   // RFC 9110 §9.3.8: a client MUST NOT generate content in a TRACE request.
-  if req.method == TRACE && (body_length > 0 || req.trailers.length() > 0) {
+  if resolved_method == TRACE && (body_length > 0 || req.trailers.length() > 0) {
     return Err(InvalidHeader("TRACE request content is not allowed"))
   }
   // CONNECT establishes a tunnel rather than transferring request content.
@@ -672,7 +673,7 @@ pub fn H1Codec::encode_request(
   // Add Content-Length when the caller did not choose a framing mode. Methods
   // that define a body send an explicit zero length when none was supplied so
   // servers and intermediaries never have to guess (RFC 9112 §6.3).
-  if (req.body is Some(_) || method_defines_body(req.method)) &&
+  if (req.body is Some(_) || method_defines_body(resolved_method)) &&
     content_length is None && !chunked {
     headers_str += "Content-Length: " + body_length.to_string() + "\r\n"
   }
@@ -731,7 +732,7 @@ pub fn H1Codec::encode_request(
   // Flush the stream
   match self.reader.val.stream.flush() {
     Ok(_) => {
-      self.last_is_head = req.method == HEAD
+      self.last_is_head = resolved_method == HEAD
       self.last_is_connect = is_connect
       self.last_is_upgrade = request_requests_upgrade(req.headers)
       self.last_upgrade_protocols = upgrade_protocols(req.headers)
@@ -2031,7 +2032,7 @@ pub fn H1Codec::request(
     Ok(_) => ()
     Err(err) => return Err(err)
   }
-  self.decode_response(head=request.method == HEAD)
+  self.decode_response(head=canonical_http_method(request.method) == HEAD)
 }
 
 /// Run HTTP/1.1 exchanges on an already established stream. The codec keeps
@@ -2046,7 +2047,7 @@ pub impl HttpClient for H1Codec with fn request(
     Ok(_) => ()
     Err(err) => return Err(err)
   }
-  self.decode_response(head=request.method == HEAD)
+  self.decode_response(head=canonical_http_method(request.method) == HEAD)
 }
 
 /// Encode one HTTP/1.1 request and decode its response on an already

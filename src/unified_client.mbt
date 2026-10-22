@@ -520,6 +520,7 @@ fn same_request_target(first : Url, second : Url) -> Bool {
 
 fn redirect_method(status : Int, verb : HttpMethod) -> (HttpMethod, Bool) {
   // Returns the method for the next request and whether the body is kept.
+  let verb = canonical_http_method(verb)
   match status {
     303 =>
       if verb == HEAD {
@@ -618,7 +619,7 @@ fn request_error_is_unprocessed_goaway(err : HttpError) -> Bool {
 }
 
 fn request_can_be_retried(verb : HttpMethod) -> Bool {
-  match verb {
+  match canonical_http_method(verb) {
     GET => true
     HEAD => true
     PUT => true
@@ -739,7 +740,8 @@ fn UnifiedClient::do_request_once(
   // protocol upgrade) becomes a streaming tunnel. Keep the lease checked out
   // until the tunnel body is exhausted or closed.
   let h2_tunnel_request = is_http2 &&
-    (request.method == CONNECT || request_requests_upgrade(request.headers))
+    (canonical_http_method(request.method) == CONNECT ||
+      request_requests_upgrade(request.headers))
   let connect_completion : (() -> Unit)? = if h2_tunnel_request {
     Some(fn() { lease.release(false) })
   } else {
@@ -767,7 +769,10 @@ fn UnifiedClient::do_request_once(
       fn(reusable) { lease.release(reusable) },
     )
     match codec.encode_request(request, absolute_form~) {
-      Ok(_) => codec.decode_response(head=request.method == HEAD)
+      Ok(_) =>
+        codec.decode_response(
+          head=canonical_http_method(request.method) == HEAD,
+        )
       // Leave lease handling to the common error path below. A write can fail
       // on a stale keep-alive connection before the peer processes anything,
       // so an idempotent request is safe to retry exactly like a failed read.
@@ -831,7 +836,7 @@ fn UnifiedClient::do_request_once(
     // or a POST 301/302 pointing at the same path must still issue its GET.
     let (next_method, keep_body) = redirect_method(response.status, request.method)
     if same_request_target(parsed_url, request.url) &&
-      next_method == request.method &&
+      next_method == canonical_http_method(request.method) &&
       (keep_body || request.body is None) {
       return Ok(response)
     }

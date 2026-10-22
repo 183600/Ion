@@ -1480,3 +1480,23 @@ test "http2 ignores a zero WINDOW_UPDATE after the response ended" {
   assert_true(connection.is_open())
   let _ = connection.close()
 }
+
+test "http2 treats an uppercase Custom HEAD as a bodyless request" {
+  let response_headers = hpack_encode([(":status", "200"), ("content-length", "5")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
+  ])
+  let request = Request::new(
+    Custom("HEAD"),
+    Url::parse("https://example.com/").unwrap(),
+  )
+  let response = h2_request(h2_frame_mock_stream(input, 0), request).unwrap()
+  assert_eq(response.status, 200)
+  assert_eq(response.read_body().unwrap(), b"")
+}
