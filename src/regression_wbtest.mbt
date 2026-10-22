@@ -2554,6 +2554,18 @@ test "proxy basic auth preserves percent-decoded credential bytes" {
   assert_eq(proxy.authorization(), Some("Basic dXNlcv86cGFzcw=="))
 }
 
+test "proxy credentials reject a colon in the username" {
+  assert_true(
+    Proxy::new("http://us%3Aer:pass@proxy.example") is Err(InvalidUrl(_)),
+  )
+  assert_true(
+    Proxy::new_with_basic_auth("127.0.0.1", 8080, "us:er", "pass") is Err(InvalidUrl(_)),
+  )
+  assert_true(
+    Proxy::new("http://user:pa%3Ass@proxy.example") is Ok(_),
+  )
+}
+
 test "plain HTTP through a proxy uses absolute-form and proxy auth" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
   let stream = regression_mock_stream(raw, 4096, 4096)

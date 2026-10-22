@@ -26,7 +26,7 @@ fn proxy_userinfo(url : String) -> String? {
   }
 }
 
-fn proxy_basic_authorization(userinfo : String) -> String {
+fn proxy_basic_authorization(userinfo : String) -> Result[String, HttpError] {
   let (user, password) = match userinfo.find(":") {
     Some(index) => (
       userinfo[0:index].to_owned(),
@@ -34,11 +34,17 @@ fn proxy_basic_authorization(userinfo : String) -> String {
     )
     None => (userinfo, "")
   }
+  let user = percent_decode_bytes(user)
+  // Basic authentication splits decoded credentials at the first colon, so a
+  // colon in the user-id would silently authenticate a different account.
+  if bytes_contain_byte(user, b':') {
+    return Err(InvalidUrl("Invalid username in proxy credentials"))
+  }
   let credentials = Buffer(size_hint=user.length() + password.length() + 1)
-  credentials.write_bytes(percent_decode_bytes(user))
+  credentials.write_bytes(user)
   credentials.write_byte(b':')
   credentials.write_bytes(percent_decode_bytes(password))
-  @base64.encode(credentials.to_bytes())
+  Ok(@base64.encode(credentials.to_bytes()))
 }
 
 fn proxy_from_url(url : String, scheme : String) -> Result[Proxy, HttpError] {
@@ -60,7 +66,11 @@ fn proxy_from_url(url : String, scheme : String) -> Result[Proxy, HttpError] {
   let authorization = match proxy_userinfo(url) {
     Some(userinfo) =>
       if userinfo.length() > 0 {
-        Some("Basic " + proxy_basic_authorization(userinfo))
+        let encoded = match proxy_basic_authorization(userinfo) {
+          Ok(value) => value
+          Err(err) => return Err(err)
+        }
+        Some("Basic " + encoded)
       } else {
         None
       }
@@ -95,6 +105,9 @@ pub fn Proxy::new_with_basic_auth(
   }
   if !valid_tcp_port(url.port) {
     return Err(InvalidUrl("Invalid proxy port"))
+  }
+  if bytes_contain_byte(@utf8.encode(username), b':') {
+    return Err(InvalidUrl("Invalid username in proxy credentials"))
   }
   let encoded = @base64.encode(@utf8.encode(username + ":" + password))
   Ok(Proxy::{ url, authorization: Some("Basic " + encoded) })
