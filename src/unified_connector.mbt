@@ -794,7 +794,13 @@ fn is_numeric_dotted_host(value : String) -> Bool {
   saw_digit && saw_dot
 }
 
-fn proxy_bypass_matches(pattern : String, host : String, port : Int) -> Bool {
+fn proxy_bypass_matches(
+  pattern : String,
+  host : String,
+  port : Int,
+  bracketed? : Bool,
+) -> Bool {
+  let bracketed = bracketed.unwrap_or(false)
   let trimmed = pattern.trim().to_lower()
   if trimmed.length() == 0 {
     return false
@@ -832,6 +838,19 @@ fn proxy_bypass_matches(pattern : String, host : String, port : Int) -> Bool {
   if pattern_port is Some(expected_port) && expected_port != port {
     return false
   }
+  // Bracketed patterns denote IP literals. A bracketed IPvFuture literal has
+  // DNS-looking text, so it must not match the same text used as a DNS name
+  // (and vice versa), mirroring the authority distinction used elsewhere.
+  let pattern_bracketed = candidate.has_prefix("[")
+  if pattern_bracketed && !is_ip_literal(raw_pattern_host) {
+    return false
+  }
+  if pattern_bracketed && !bracketed && is_ipvfuture_literal(raw_pattern_host) {
+    return false
+  }
+  if bracketed && !pattern_bracketed && is_ipvfuture_literal(host) {
+    return false
+  }
   let mut pattern_host = raw_pattern_host.to_lower()
   let explicit_domain = pattern_host.has_prefix("*.") ||
     pattern_host.has_prefix(".")
@@ -863,7 +882,7 @@ fn proxy_bypass_matches(pattern : String, host : String, port : Int) -> Bool {
 
 fn Connector::proxy_is_bypassed(self : Connector, url : Url) -> Bool {
   for pattern in self.proxy_bypass {
-    if proxy_bypass_matches(pattern, url.host, url.port) {
+    if proxy_bypass_matches(pattern, url.host, url.port, bracketed=url.bracketed) {
       return true
     }
   }

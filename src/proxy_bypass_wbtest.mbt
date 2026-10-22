@@ -195,3 +195,33 @@ test "explicit wildcard entries match single-label subdomains" {
   )
   assert_true(connector.proxy_for_url(Url::parse("http://other.example/").unwrap()) is Some(_))
 }
+
+///|
+test "bracketed bypass literals stay distinct from DNS names" {
+  let stream = regression_mock_stream("", 0, 0)
+  let literal_only = bypass_test_connector(RegressionMockDialer::{ stream, count: 0 }, [
+    "[v1.foo]",
+  ])
+  assert_true(
+    literal_only.proxy_for_url(Url::parse("http://[v1.foo]/").unwrap()) is None,
+  )
+  assert_true(
+    literal_only.proxy_for_url(Url::parse("http://v1.foo/").unwrap()) is Some(_),
+  )
+
+  let dns_only = bypass_test_connector(RegressionMockDialer::{ stream, count: 0 }, [
+    "v1.foo",
+  ])
+  assert_true(dns_only.proxy_for_url(Url::parse("http://v1.foo/").unwrap()) is None)
+  assert_true(
+    dns_only.proxy_for_url(Url::parse("http://[v1.foo]/").unwrap()) is Some(_),
+  )
+
+  // Bracketed patterns must contain an IP literal, not an arbitrary host name.
+  let malformed = bypass_test_connector(RegressionMockDialer::{ stream, count: 0 }, [
+    "[example.com]",
+  ])
+  assert_true(
+    malformed.proxy_for_url(Url::parse("http://example.com/").unwrap()) is Some(_),
+  )
+}
