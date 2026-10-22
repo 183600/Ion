@@ -766,3 +766,12 @@ test "cookie jar enforces __Host- prefix" {
   jar.store_at(ip, "__Host-ip=2; Secure; Domain=127.0.0.1; Path=/", 1000)
   assert_eq(jar.cookie_header_at(ip, 1000), Some("__Host-ip=1"))
 }
+
+///|
+test "cookie jar accessors expose the live jar" {
+  let client = UnifiedClient::new().with_cookies()
+  let url = cookie_test_url("http://example.com/")
+  client.cookie_jar().store(url, "sid=live; Path=/")
+  assert_eq(client.cookie_jar().length(), 1)
+  assert_eq(client.cookie_jar().cookie_header(url), Some("sid=live"))
+}
