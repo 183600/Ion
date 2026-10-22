@@ -246,6 +246,34 @@ fn valid_url_component_chars(value : String) -> Bool {
   true
 }
 
+/// Paths use their own component validator because `?` and `#` start the
+/// query and fragment; they cannot be part of a path even if the URL was built
+/// programmatically with `Url::with_path`.
+fn valid_url_path_chars(value : String) -> Bool {
+  if !valid_url_component_chars(value) {
+    return false
+  }
+  for ch in value {
+    if ch == '?' || ch == '#' {
+      return false
+    }
+  }
+  true
+}
+
+/// The query may contain `?`, but `#` still starts the fragment.
+fn valid_url_query_chars(value : String) -> Bool {
+  if !valid_url_component_chars(value) {
+    return false
+  }
+  for ch in value {
+    if ch == '#' {
+      return false
+    }
+  }
+  true
+}
+
 fn valid_url_fragment_chars(value : String) -> Bool {
   if !valid_url_component_chars(value) {
     return false
@@ -472,7 +500,7 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
     }
   }
 
-  if !valid_url_component_chars(path) || !valid_url_component_chars(query) ||
+  if !valid_url_path_chars(path) || !valid_url_query_chars(query) ||
     !valid_url_fragment_chars(fragment) {
     return Err(InvalidUrl("Invalid URL characters"))
   }

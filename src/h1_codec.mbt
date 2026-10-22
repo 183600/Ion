@@ -458,8 +458,8 @@ pub fn H1Codec::encode_request(
   req : Request,
   absolute_form? : Bool,
 ) -> Result[Unit, HttpError] {
-  if !valid_url_component_chars(req.url.path) ||
-    !valid_url_component_chars(req.url.query) {
+  if !valid_url_path_chars(req.url.path) ||
+    !valid_url_query_chars(req.url.query) {
     return Err(InvalidUrl("Invalid request target"))
   }
   let absolute = absolute_form.unwrap_or(false) && req.url.scheme.to_lower() == "http"

@@ -509,8 +509,8 @@ fn h2_name_in_array(names : Array[String], name : String) -> Bool {
 }
 
 fn h2_request_headers(request : Request) -> Result[Array[(String, String)], HttpError] {
-  if !valid_url_component_chars(request.url.path) ||
-    !valid_url_component_chars(request.url.query) {
+  if !valid_url_path_chars(request.url.path) ||
+    !valid_url_query_chars(request.url.query) {
     return Err(InvalidUrl("Invalid request target"))
   }
   if !valid_host(request.url.authority()) {

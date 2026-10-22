@@ -658,3 +658,13 @@ test "http2 validates Content-Length on bodyless responses" {
     Err(err) => assert_eq(err, ProtocolError("Invalid HTTP/2 Content-Length"))
   }
 }
+
+test "http2 rejects ambiguous path and query delimiters" {
+  let url = Url::parse("https://example.com/").unwrap()
+  for path in ["/a?b", "/a#b"] {
+    let request = Request::new(GET, url.with_path(path))
+    assert_eq(h2_request_headers(request), Err(InvalidUrl("Invalid request target")))
+  }
+  let request = Request::new(GET, url.with_query("a#b"))
+  assert_eq(h2_request_headers(request), Err(InvalidUrl("Invalid request target")))
+}

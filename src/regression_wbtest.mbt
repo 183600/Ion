@@ -1724,7 +1724,7 @@ test "URL validates userinfo characters" {
 ///|
 test "request encoding rejects malformed targets" {
   let url = Url::parse("http://example.com/").unwrap()
-  for path in ["/a%zz", "/a\\b", "/a[b", "/a]b"] {
+  for path in ["/a%zz", "/a\\b", "/a[b", "/a]b", "/a?b", "/a#b"] {
     let stream = regression_mock_stream("", 0, 0)
     let codec = H1Codec::new(stream)
     let request = Request::new(GET, url.with_path(path))
