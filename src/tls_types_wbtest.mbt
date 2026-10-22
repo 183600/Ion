@@ -42,6 +42,14 @@ test "TLS validation rejects oversized ALPN protocol names" {
   assert_true(config.validate() is Err(InvalidConfig(_)))
 }
 ///|
+test "TLS validation accepts ALPN protocols containing commas" {
+  let config = TlsConfig::new("example.com").with_alpn(
+    @list.List(["h2,foo"]),
+  )
+  assert_true(config.validate() is Ok(_))
+}
+
+///|
 test "TLS validation rejects ALPN lists that exceed the wire limit" {
   let protocols : Array[String] = []
   let protocol = "a".repeat(255)

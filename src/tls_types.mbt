@@ -121,7 +121,7 @@ fn valid_alpn_protocol(value : String) -> Bool {
     return false
   }
   for ch in value {
-    if ch <= ' ' || ch == '\u{7f}' || ch == ',' {
+    if ch <= ' ' || ch == '\u{7f}' {
       return false
     }
   }
