@@ -623,7 +623,11 @@ fn H2ResponseState::handle_frame(
           Ok(value) => value
           Err(err) => return Err(err)
         }
-        if error_code == 7 {
+        // REFUSED_STREAM only guarantees that the server did not process the
+        // request when no response head was received. Seeing response headers
+        // first means a retry could duplicate side effects, so surface it as a
+        // generic reset instead of the safely-retryable refusal marker.
+        if error_code == 7 && !self.status_seen {
           Err(ProtocolError("HTTP/2 stream refused"))
         } else {
           Err(ProtocolError("HTTP/2 stream reset by server"))
@@ -648,19 +652,29 @@ fn H2ResponseState::handle_frame(
         None => ()
       }
       self.goaway_last_stream_id = Some(last_stream_id)
+      // A graceful GOAWAY may be sent before the server has finished the
+      // streams it already accepted. Those responses are still valid; only
+      // streams newer than the advertised id must fail.
+      if last_stream_id < self.stream_id {
+        if !self.status_seen {
+          // The advertised id excludes our stream, so the request was not
+          // processed. Use the marker that the client recognizes as safe to
+          // retry, even when the GOAWAY also carries a non-zero error code.
+          return Err(ProtocolError("HTTP/2 connection closed by GOAWAY"))
+        }
+        // The server already sent response headers for this stream, so it did
+        // process the request despite the contradictory GOAWAY id. Retrying
+        // could duplicate side effects.
+        return Err(
+          ProtocolError("HTTP/2 connection closed by GOAWAY after response headers"),
+        )
+      }
       if error_code != 0 {
         return Err(
           ProtocolError("HTTP/2 GOAWAY error " + error_code.to_string()),
         )
       }
-      // A graceful GOAWAY may be sent before the server has finished the
-      // streams it already accepted. Those responses are still valid; only
-      // streams newer than the advertised id must fail.
-      if last_stream_id < self.stream_id {
-        Err(ProtocolError("HTTP/2 connection closed by GOAWAY"))
-      } else {
-        Ok(())
-      }
+      Ok(())
     }
     H2_FRAME_PUSH_PROMISE => {
       Err(ProtocolError("HTTP/2 server push is disabled"))
