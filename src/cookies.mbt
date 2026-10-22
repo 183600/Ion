@@ -924,8 +924,13 @@ pub fn CookieJar::cookie_header_at(
     "/" + url.path
   }
   let secure = url.is_secure()
-  let literal_host = url.bracketed || is_ipv4_literal(url.host) ||
-    is_ipv6_literal_with_zone(url.host)
+  // Classify literals from the canonical host so a trailing root dot cannot
+  // make an IP address look like a DNS name. Otherwise a domain cookie that
+  // was legitimately set from a DNS name such as `foo.127.0.0.1` could be
+  // replayed to the literal address `127.0.0.1.`.
+  let host = cookie_canonical_host(url.host)
+  let literal_host = url.bracketed || is_ipv4_literal(host) ||
+    is_ipv6_literal_with_zone(host)
   let candidates : Array[Cookie] = []
   let mut alive = @list.List([])
   for cookie in self.cookies {
@@ -933,7 +938,7 @@ pub fn CookieJar::cookie_header_at(
       continue
     }
     alive = alive.prepend(cookie)
-    if cookie_domain_matches(cookie, url.host, literal_host, url.bracketed) &&
+    if cookie_domain_matches(cookie, host, literal_host, url.bracketed) &&
       cookie_path_matches(cookie.path, request_path) &&
       (!cookie.secure || secure) {
       candidates.push(cookie)

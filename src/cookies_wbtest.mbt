@@ -1104,3 +1104,14 @@ test "replacing a connector cookie jar does not mutate shared jars" {
   assert_eq(derived.cookie_jar().cookie_header(url), None)
   assert_true(derived.cookies_enabled())
 }
+
+///|
+test "domain cookies do not leak to a trailing-dot IP literal" {
+  let jar = CookieJar::new()
+  let dns = Url::parse("http://foo.127.0.0.1/").unwrap()
+  jar.store_at(dns, "id=secret; Domain=127.0.0.1", 1000)
+  let bare = Url::parse("http://127.0.0.1/").unwrap()
+  assert_eq(jar.cookie_header_at(bare, 1000), None)
+  let dotted = Url::parse("http://127.0.0.1./").unwrap()
+  assert_eq(jar.cookie_header_at(dotted, 1000), None)
+}
