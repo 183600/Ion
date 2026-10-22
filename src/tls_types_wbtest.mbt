@@ -63,6 +63,21 @@ test "TLS validation rejects ALPN lists that exceed the wire limit" {
 }
 
 ///|
+test "TLS validation reserves the ALPN list length prefix" {
+  let protocols : Array[String] = []
+  let protocol = "a".repeat(254)
+  let mut index = 0
+  // 257 entries of 255 wire octets each = 65535, two more than the list
+  // length prefix leaves available.
+  while index < 257 {
+    protocols.push(protocol)
+    index = index + 1
+  }
+  let config = TlsConfig::new("example.com").with_alpn(@list.List(protocols[:]))
+  assert_true(config.validate() is Err(InvalidConfig(_)))
+}
+
+///|
 test "TLS validation rejects oversized server names" {
   let config = TlsConfig::new("a".repeat(256))
   assert_true(config.validate() is Err(InvalidConfig(_)))

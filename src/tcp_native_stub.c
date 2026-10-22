@@ -11,6 +11,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#include <time.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 
@@ -94,6 +95,38 @@ static int feather_set_timeout(int fd, int32_t timeout_ms) {
   return 0;
 }
 
+static int64_t feather_monotonic_ms(void) {
+  struct timespec ts;
+  if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
+    return -1;
+  }
+  return (int64_t)ts.tv_sec * 1000 + (int64_t)ts.tv_nsec / 1000000;
+}
+
+// Remaining time for a dial, treating a non-positive timeout as unlimited.
+// Returns -1 for an unlimited wait.
+static int feather_remaining_timeout_ms(int64_t deadline_ms, int32_t timeout_ms) {
+  if (timeout_ms <= 0) {
+    return -1;
+  }
+  if (deadline_ms <= 0) {
+    // The clock is unavailable; retain the per-address timeout as a fallback.
+    return timeout_ms;
+  }
+  int64_t now = feather_monotonic_ms();
+  if (now < 0) {
+    return timeout_ms;
+  }
+  int64_t remaining = deadline_ms - now;
+  if (remaining <= 0) {
+    return 0;
+  }
+  if (remaining > INT32_MAX) {
+    return INT32_MAX;
+  }
+  return (int)remaining;
+}
+
 MOONBIT_FFI_EXPORT
 int32_t feather_tcp_connect(moonbit_bytes_t host, int32_t port, int32_t timeout_ms) {
   int32_t host_len = Moonbit_array_length(host);
@@ -125,7 +158,20 @@ int32_t feather_tcp_connect(moonbit_bytes_t host, int32_t port, int32_t timeout_
 
   int last_error = EHOSTUNREACH;
   int fd = -1;
+  int64_t deadline_ms = 0;
+  if (timeout_ms > 0) {
+    int64_t now = feather_monotonic_ms();
+    if (now >= 0) {
+      deadline_ms = now + (int64_t)timeout_ms;
+    }
+  }
   for (struct addrinfo *entry = result; entry != NULL; entry = entry->ai_next) {
+    // The timeout bounds the whole dial, not each resolved address.
+    if (timeout_ms > 0 && deadline_ms > 0 &&
+        feather_remaining_timeout_ms(deadline_ms, timeout_ms) == 0) {
+      last_error = ETIMEDOUT;
+      break;
+    }
     fd = socket(entry->ai_family, entry->ai_socktype, entry->ai_protocol);
     if (fd < 0) {
       last_error = errno;
@@ -156,10 +202,17 @@ int32_t feather_tcp_connect(moonbit_bytes_t host, int32_t port, int32_t timeout_
       pfd.fd = fd;
       pfd.events = POLLOUT;
       pfd.revents = 0;
-      int poll_timeout = timeout_ms > 0 ? timeout_ms : -1;
+      int poll_timeout = feather_remaining_timeout_ms(deadline_ms, timeout_ms);
       int ready;
       do {
         ready = poll(&pfd, 1, poll_timeout);
+        if (ready < 0 && errno == EINTR) {
+          poll_timeout = feather_remaining_timeout_ms(deadline_ms, timeout_ms);
+          if (poll_timeout == 0) {
+            ready = 0;
+            break;
+          }
+        }
       } while (ready < 0 && errno == EINTR);
       if (ready == 0) {
         last_error = ETIMEDOUT;

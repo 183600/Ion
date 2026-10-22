@@ -786,6 +786,15 @@ fn raw_url_userinfo(value : String) -> String? {
   }
 }
 
+fn bytes_contain_byte(data : Bytes, target : Byte) -> Bool {
+  for byte in data {
+    if byte == target {
+      return true
+    }
+  }
+  false
+}
+
 fn basic_authorization(username : Bytes, password : Bytes) -> String {
   let credentials = Buffer(size_hint=username.length() + password.length() + 1)
   credentials.write_bytes(username)
@@ -829,8 +838,16 @@ pub fn Request::from_url(
           )
           None => (userinfo, "")
         }
+        let username = percent_decode_bytes(user)
+        // RFC 7617 §2 defines user-id as TEXT excluding ":", and the server
+        // splits the decoded credentials at the first colon. A percent-encoded
+        // colon in the username would therefore silently authenticate as a
+        // different user, so reject the ambiguous URL instead.
+        if bytes_contain_byte(username, b':') {
+          return Err(InvalidUrl("Invalid username in URL credentials"))
+        }
         request = request.with_basic_auth_bytes(
-          percent_decode_bytes(user),
+          username,
           percent_decode_bytes(password),
         )
       }

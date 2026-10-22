@@ -222,9 +222,10 @@ pub fn UnifiedClient::with_max_connections_per_host(
   self : UnifiedClient,
   max_connections : Int,
 ) -> UnifiedClient {
-  let _ = self.connector.with_max_connections_per_host(max_connections)
+  let connector = self.connector.detached()
+  let _ = connector.with_max_connections_per_host(max_connections)
   UnifiedClient::{
-    connector: self.connector,
+    connector,
     options: self.options,
     redirect_count: 0,
   }
@@ -236,9 +237,10 @@ pub fn UnifiedClient::with_idle_timeout(
   self : UnifiedClient,
   idle_timeout_ms : Int,
 ) -> UnifiedClient {
-  let _ = self.connector.with_idle_timeout(idle_timeout_ms)
+  let connector = self.connector.detached()
+  let _ = connector.with_idle_timeout(idle_timeout_ms)
   UnifiedClient::{
-    connector: self.connector,
+    connector,
     options: self.options,
     redirect_count: 0,
   }
@@ -249,9 +251,10 @@ pub fn UnifiedClient::with_max_idle_per_host(
   self : UnifiedClient,
   max_idle : Int,
 ) -> UnifiedClient {
-  let _ = self.connector.with_max_idle_per_host(max_idle)
+  let connector = self.connector.detached()
+  let _ = connector.with_max_idle_per_host(max_idle)
   UnifiedClient::{
-    connector: self.connector,
+    connector,
     options: self.options,
     redirect_count: 0,
   }
@@ -261,9 +264,10 @@ pub fn UnifiedClient::with_max_idle_per_host(
 /// replayed on later requests that match their domain, path and security
 /// attributes.
 pub fn UnifiedClient::with_cookies(self : UnifiedClient) -> UnifiedClient {
-  let _ = self.connector.with_cookies(true)
+  let connector = self.connector.detached()
+  let _ = connector.with_cookies(true)
   UnifiedClient::{
-    connector: self.connector,
+    connector,
     options: self.options,
     redirect_count: 0,
   }
@@ -274,9 +278,13 @@ pub fn UnifiedClient::with_cookie_jar(
   self : UnifiedClient,
   jar : CookieJar,
 ) -> UnifiedClient {
-  let _ = self.connector.with_cookie_jar(jar)
+  let connector = Connector::{
+    ..self.connector.detached(),
+    cookies_enabled: true,
+    cookie_jar: @ref.Ref(jar),
+  }
   UnifiedClient::{
-    connector: self.connector,
+    connector,
     options: self.options,
     redirect_count: 0,
   }
@@ -650,6 +658,11 @@ fn UnifiedClient::do_request_once(
         .remove("Content-Encoding")
         .remove("Content-Language")
         .remove("Content-Location")
+        .remove("Content-Range")
+        .remove("Content-MD5")
+        .remove("Content-Digest")
+        .remove("Repr-Digest")
+        .remove("Digest")
         .remove("Expect")
         .remove("Trailer")
     }

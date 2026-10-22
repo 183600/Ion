@@ -84,3 +84,16 @@ test "URL credentials work with form posts" {
   assert_true(wire.contains("Authorization: Basic dXNlcjpwYXNz\r\n"))
   assert_true(wire.contains("a=b"))
 }
+
+///|
+test "a percent-encoded colon in the username is rejected" {
+  // Basic authentication cannot represent a colon in the user-id: the server
+  // would split the decoded value and authenticate a different user.
+  assert_true(
+    Request::from_url(GET, "http://us%3Aer:pass@example.com/") is Err(InvalidUrl(_)),
+  )
+  // A colon in the password remains valid.
+  assert_true(
+    Request::from_url(GET, "http://user:pa%3Ass@example.com/") is Ok(_),
+  )
+}

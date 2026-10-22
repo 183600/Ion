@@ -183,7 +183,9 @@ pub fn TlsConfig::validate(self : TlsConfig) -> Result[Unit, TlsError] {
     }
     alpn_wire_bytes = alpn_wire_bytes + 1 + length
   }
-  if alpn_wire_bytes > 65535 {
+  // The ProtocolNameList is itself length-prefixed with two octets, so at
+  // most 65533 octets of protocol entries fit in the extension data.
+  if alpn_wire_bytes > 65533 {
     return Err(InvalidConfig("Invalid ALPN protocol list"))
   }
   match self.client_auth {

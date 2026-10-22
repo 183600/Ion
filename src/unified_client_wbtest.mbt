@@ -199,3 +199,22 @@ test "client timeout builders do not mutate the source client" {
   assert_eq(original.client_options().timeout_ms, 30000)
   assert_eq(original.connector.timeout(), 30000)
 }
+
+///|
+test "pool and cookie builders do not mutate the source client" {
+  let original = UnifiedClient::new()
+  let tuned = original
+    .with_max_idle_per_host(3)
+    .with_idle_timeout(1234)
+    .with_max_connections_per_host(2)
+    .with_cookies()
+  assert_eq(tuned.connector.max_idle_per_host(), 3)
+  assert_eq(tuned.connector.idle_timeout(), 1234)
+  assert_eq(tuned.connector.max_connections_per_host(), 2)
+  assert_true(tuned.connector.cookies_enabled())
+
+  assert_eq(original.connector.max_idle_per_host(), 8)
+  assert_eq(original.connector.idle_timeout(), 90000)
+  assert_eq(original.connector.max_connections_per_host(), 0)
+  assert_false(original.connector.cookies_enabled())
+}

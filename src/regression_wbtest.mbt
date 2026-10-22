@@ -846,6 +846,9 @@ test "same-origin redirect changes POST to GET and drops body" {
   let request = Request::new(POST, url)
     .with_header("Authorization", "Bearer token")
     .with_header("Content-Type", "text/plain")
+    .with_header("Digest", "sha-256=old")
+    .with_header("Content-MD5", "old")
+    .with_header("Content-Range", "bytes 0-6/7")
     .with_body(@utf8.encode("payload"))
   let response = client.request(request).unwrap()
   assert_eq(response.status, 200)
@@ -860,6 +863,9 @@ test "same-origin redirect changes POST to GET and drops body" {
   assert_true(second_request.contains("Authorization: Bearer token"))
   assert_true(!second_request.contains("Content-Length"))
   assert_true(!second_request.contains("Content-Type"))
+  assert_true(!second_request.contains("Digest"))
+  assert_true(!second_request.contains("Content-MD5"))
+  assert_true(!second_request.contains("Content-Range"))
   assert_true(!second_request.contains("payload"))
 }
 
@@ -2286,6 +2292,31 @@ test "failed HEAD encoding does not change response framing" {
   let url = Url::parse("http://example.com/").unwrap()
   let invalid = Request::new(HEAD, url).with_header("X-Test", "bad\r\nvalue")
   assert_true(codec.encode_request(invalid) is Err(_))
+  let response = codec.decode_response().unwrap()
+  assert_eq(response.text().unwrap(), "hello")
+}
+
+///|
+test "a failed encode after HEAD does not leave HEAD framing behind" {
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"
+  let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+  let url = Url::parse("http://example.com/").unwrap()
+  assert_true(codec.encode_request(Request::new(HEAD, url)) is Ok(_))
+  let invalid = Request::new(GET, url).with_header("X-Test", "bad\r\nvalue")
+  assert_true(codec.encode_request(invalid) is Err(_))
+  let response = codec.decode_response().unwrap()
+  assert_eq(response.text().unwrap(), "hello")
+}
+
+///|
+test "a failed response decode clears HEAD framing state" {
+  let raw = "BAD\r\nHTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"
+  let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
+  let url = Url::parse("http://example.com/").unwrap()
+  assert_true(codec.encode_request(Request::new(HEAD, url)) is Ok(_))
+  assert_true(codec.decode_response() is Err(_))
+  // The malformed response still consumes the preceding HEAD framing: the
+  // next response must be decoded as a normal GET response with a body.
   let response = codec.decode_response().unwrap()
   assert_eq(response.text().unwrap(), "hello")
 }

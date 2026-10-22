@@ -394,11 +394,17 @@ fn request_is_chunked(headers : Headers) -> Result[Bool, HttpError] {
   if values.length() == 0 {
     return Ok(false)
   }
-  if values.length() > 1 {
-    return Err(InvalidHeader("Transfer-Encoding"))
+  // Repeated field lines are equivalent to one comma-separated list in the
+  // order they appear (RFC 9110 §5.3), so combine them before parsing.
+  let mut combined = ""
+  for value in values {
+    if combined.length() > 0 {
+      combined = combined + ", "
+    }
+    combined = combined + value
   }
   let mut seen = false
-  for part in split_header_list(values.nth(0).unwrap()) {
+  for part in split_header_list(combined) {
     if part.trim().length() == 0 {
       continue
     }
@@ -497,6 +503,10 @@ pub fn H1Codec::encode_request(
   req : Request,
   absolute_form? : Bool,
 ) -> Result[Unit, HttpError] {
+  // A request replaces any framing state left by a previous encode that never
+  // reached the wire; success below sets the state for this request.
+  self.last_is_head = false
+  self.close_after_request = false
   if !valid_url_path_chars(req.url.path) ||
     !valid_url_query_chars(req.url.query) {
     return Err(InvalidUrl("Invalid request target"))
@@ -795,6 +805,12 @@ pub fn H1Codec::decode_response(
     Some(value) => value
     None => self.last_is_head
   }
+  // This response consumes the state set by encode_request, even if decoding
+  // fails. Leaving a stale HEAD/Connection flag behind would mis-frame a later
+  // response when the codec is reused after an error.
+  let request_close = self.close_after_request
+  self.last_is_head = false
+  self.close_after_request = false
   let mut informational_count = 0
   while true {
     let response_head = match read_response_head(self.reader) {
@@ -832,7 +848,7 @@ pub fn H1Codec::decode_response(
       remaining: 0,
       total_read: 0,
       chunk_state: ChunkSize,
-      close_after_body: self.close_after_request,
+      close_after_body: request_close,
       prepared: false,
       error: None,
       is_open: true,
@@ -851,8 +867,6 @@ pub fn H1Codec::decode_response(
     }
     let response_stream : &Stream = response_stream
 
-    self.last_is_head = false
-    self.close_after_request = false
     return Ok(
       Response::new_with_version(
         response_head.version,

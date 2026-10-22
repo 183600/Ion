@@ -410,6 +410,25 @@ pub fn Connector::new(dialer : &Dialer, tls_provider : &TlsProvider) -> Connecto
   }
 }
 
+/// A connector that inherits this one's configuration but owns an empty pool.
+/// Builder methods use it so deriving a tuned client does not reconfigure the
+/// source client's pool or close its in-flight/idle connections.
+fn Connector::detached(self : Connector) -> Connector {
+  Connector::{
+    dialer: self.dialer,
+    tls_provider: self.tls_provider,
+    tls_config: self.tls_config,
+    proxy: self.proxy,
+    proxy_bypass: self.proxy_bypass,
+    timeout_ms: self.timeout_ms,
+    max_connections_per_host: self.max_connections_per_host,
+    http2: self.http2,
+    cookies_enabled: self.cookies_enabled,
+    cookie_jar: self.cookie_jar,
+    pool: @ref.Ref(self.pool.val.empty_with_settings()),
+  }
+}
+
 /// Set the timeout applied to newly dialed connections and TLS handshakes.
 pub fn Connector::with_timeout(self : Connector, timeout_ms : Int) -> Connector {
   self.timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
@@ -922,6 +941,18 @@ pub fn Connector::http2_enabled(self : Connector) -> Bool {
   self.http2
 }
 
+/// The name passed to the TLS provider for a URL. Bracketed IPvFuture
+/// literals must keep their brackets so the provider treats them as IP
+/// literals instead of DNS names; bracketed IPv6 addresses are already
+/// understood without brackets.
+fn tls_server_name_for_url(url : Url) -> String {
+  if url.bracketed && !is_ipv6_literal_with_zone(url.host) {
+    "[" + url.host + "]"
+  } else {
+    url.host
+  }
+}
+
 fn Connector::origin_tls_config(self : Connector, host : String) -> TlsConfig {
   match self.tls_config {
     Some(config) => config.with_server_name(host)
@@ -1017,12 +1048,13 @@ fn Connector::connection_key(self : Connector, url : Url) -> String {
 /// that advertises `h2`). Client certificates are origin credentials and are
 /// deliberately not sent to the proxy.
 fn Connector::proxy_tls_config(self : Connector, proxy : Proxy) -> TlsConfig {
+  let server_name = tls_server_name_for_url(proxy.url)
   let base = match self.tls_config {
     Some(config) => config
-    None => TlsConfig::new(proxy.url.host)
+    None => TlsConfig::new(server_name)
   }
   TlsConfig::{
-    server_name: proxy.url.host,
+    server_name,
     alpn: @list.List(["http/1.1"]),
     root_store: base.root_store,
     client_auth: None,
@@ -1256,11 +1288,7 @@ fn Connector::connect_impl(
   // A bracketed IPvFuture literal is not a DNS name. Keep its brackets when
   // handing it to the TLS provider so SNI is not attempted for it. Bracketed
   // IPv6 addresses keep the raw host form understood by every provider.
-  let tls_host = if url.bracketed && !is_ipv6_literal_with_zone(host) {
-    "[" + host + "]"
-  } else {
-    host
-  }
+  let tls_host = tls_server_name_for_url(url)
 
   // Validate proxy settings before opening any socket.
   match proxy {

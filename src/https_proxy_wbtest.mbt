@@ -29,6 +29,14 @@ test "Proxy::new_https accepts HTTPS proxies" {
   assert_true(Proxy::new_https("https://proxy.example/path") is Err(_))
 }
 
+test "an HTTPS proxy keeps bracketed IPvFuture literals as literals" {
+  let connector = Connector::new(TcpDialer::new(), MockTlsProvider::new("test"))
+  let proxy = Proxy::new_https("https://[v1.proxy]:8443").unwrap()
+  let config = connector.proxy_tls_config(proxy)
+  assert_eq(config.server_name, "[v1.proxy]")
+  assert_true(config.validate() is Ok(_))
+}
+
 test "with_proxy_url selects HTTPS for an https proxy URL" {
   let client = UnifiedClient::new()
   assert_true(client.with_proxy_url("https://proxy.example:8443") is Ok(_))
