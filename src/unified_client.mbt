@@ -12,6 +12,7 @@ pub struct ClientOptions {
   follow_redirects : Bool
   max_redirects : Int
   max_response_body_bytes : Int
+  http2 : Bool
 } derive(Eq, Debug)
 
 pub fn ClientOptions::new() -> ClientOptions {
@@ -21,6 +22,7 @@ pub fn ClientOptions::new() -> ClientOptions {
     follow_redirects: true,
     max_redirects: 10,
     max_response_body_bytes: DEFAULT_MAX_BODY_BYTES,
+    http2: true,
   }
 }
 
@@ -38,6 +40,11 @@ pub fn ClientOptions::with_follow_redirects(self : ClientOptions, follow_redirec
 
 pub fn ClientOptions::with_max_redirects(self : ClientOptions, max_redirects : Int) -> ClientOptions {
   ClientOptions::{ ..self, max_redirects: if max_redirects < 0 { 0 } else { max_redirects } }
+}
+
+/// Enable or disable HTTP/2 negotiation through ALPN. Enabled by default.
+pub fn ClientOptions::with_http2(self : ClientOptions, enabled : Bool) -> ClientOptions {
+  ClientOptions::{ ..self, http2: enabled }
 }
 
 /// Cap the number of body bytes read from a single response. A value below 1 is
@@ -77,7 +84,9 @@ pub fn UnifiedClient::new() -> UnifiedClient {
   let options = ClientOptions::new()
   let dialer = default_client_dialer(options.timeout_ms)
   let tls_provider = default_client_tls_provider()
-  let connector = Connector::new(dialer, tls_provider).with_timeout(options.timeout_ms)
+  let connector = Connector::new(dialer, tls_provider)
+    .with_timeout(options.timeout_ms)
+    .with_http2(options.http2)
 
   UnifiedClient::{
     connector,
@@ -90,7 +99,9 @@ pub fn UnifiedClient::new() -> UnifiedClient {
 pub fn UnifiedClient::with_options(options : ClientOptions) -> UnifiedClient {
   let dialer = default_client_dialer(options.timeout_ms)
   let tls_provider = default_client_tls_provider()
-  let connector = Connector::new(dialer, tls_provider).with_timeout(options.timeout_ms)
+  let connector = Connector::new(dialer, tls_provider)
+    .with_timeout(options.timeout_ms)
+    .with_http2(options.http2)
 
   UnifiedClient::{
     connector,
@@ -106,7 +117,9 @@ pub fn UnifiedClient::with_transport(
   options : ClientOptions,
 ) -> UnifiedClient {
   UnifiedClient::{
-    connector: Connector::new(dialer, tls_provider).with_timeout(options.timeout_ms),
+    connector: Connector::new(dialer, tls_provider)
+      .with_timeout(options.timeout_ms)
+      .with_http2(options.http2),
     options,
     redirect_count: 0,
   }
@@ -344,13 +357,6 @@ fn UnifiedClient::do_request_once(
     }
   }
 
-  // Create codec
-  let codec = H1Codec::new_with_limit_and_completion(
-    stream,
-    self.options.max_response_body_bytes,
-    fn(reusable) { lease.release(reusable) },
-  )
-
   // Add User-Agent header if not present
   let mut request = req
   let explicit_cookie = request.get_header("Cookie")
@@ -385,29 +391,45 @@ fn UnifiedClient::do_request_once(
     request = request.without_header("Proxy-Authorization")
   }
 
-  // Encode and send request
-  match codec.encode_request(request, absolute_form~) {
-    Ok(_) => ()
+  let negotiated_protocol = lease.negotiated_protocol()
+  if negotiated_protocol is Some(protocol) &&
+    protocol != "h2" && protocol != "http/1.1" {
+    lease.release(false)
+    return Err(ProtocolError("Unsupported negotiated ALPN protocol: " + protocol))
+  }
+  let is_http2 = negotiated_protocol == Some("h2")
+  let response_result = if is_http2 {
+    h2_request(stream, request)
+  } else {
+    let codec = H1Codec::new_with_limit_and_completion(
+      stream,
+      self.options.max_response_body_bytes,
+      fn(reusable) { lease.release(reusable) },
+    )
+    match codec.encode_request(request, absolute_form~) {
+      Ok(_) => codec.decode_response(head=request.method == HEAD)
+      Err(err) => {
+        lease.release(false)
+        Err(normalize_http_error(err))
+      }
+    }
+  }
+
+  let response = match response_result {
+    Ok(response) => response
     Err(err) => {
       lease.release(false)
-      if allow_retry && lease.reused && request_can_be_retried(request.method) &&
-        err is NetworkError(_) {
+      if !is_http2 && allow_retry && lease.reused &&
+        request_can_be_retried(request.method) {
         return self.do_request_once(req, false)
       }
       return Err(normalize_http_error(err))
     }
   }
-
-  // Decode response
-  let response = match codec.decode_response(head=request.method == HEAD) {
-    Ok(response) => response
-    Err(err) => {
-      lease.release(false)
-      if allow_retry && lease.reused && request_can_be_retried(request.method) {
-        return self.do_request_once(req, false)
-      }
-      return Err(normalize_http_error(err))
-    }
+  if is_http2 {
+    // The HTTP/2 exchange buffers the body, so the connection is no longer
+    // needed even though the caller may read the body later.
+    lease.release(false)
   }
 
   // Persist cookies before following a redirect so the next hop sees them.

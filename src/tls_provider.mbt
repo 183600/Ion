@@ -11,6 +11,13 @@ pub trait TlsClientCtx {
 
   // Server name configured for this client context
   fn server_name(Self) -> String
+
+  // ALPN protocol selected during the handshake, if any
+  fn negotiated_alpn(Self) -> String? = _
+}
+
+impl TlsClientCtx with fn negotiated_alpn(_self) {
+  None
 }
 
 /// Mock TLS Provider (placeholder for actual implementation)

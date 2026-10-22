@@ -365,12 +365,19 @@ pub impl Stream for NativeTlsStream with fn local_addr(
 pub struct OpenSslTlsClientCtx {
   config : TlsConfig
   mut is_connected : Bool
+  mut negotiated_alpn : String?
 }
 
 pub impl TlsClientCtx for OpenSslTlsClientCtx with fn server_name(
   self : OpenSslTlsClientCtx,
 ) -> String {
   self.config.server_name
+}
+
+pub impl TlsClientCtx for OpenSslTlsClientCtx with fn negotiated_alpn(
+  self : OpenSslTlsClientCtx,
+) -> String? {
+  self.negotiated_alpn
 }
 
 pub impl TlsClientCtx for OpenSslTlsClientCtx with fn connect(
@@ -428,10 +435,9 @@ pub impl TlsClientCtx for OpenSslTlsClientCtx with fn connect(
       let alpn_buffer = Bytes::new(256)
       let alpn_length = feather_tls_alpn(tls, alpn_buffer, 256)
       if alpn_length > 0 {
-        let negotiated = @utf8.decode_lossy(alpn_buffer.exact_view(start=0, end=alpn_length))
-        if negotiated != "http/1.1" {
-          return Err(ProtocolError("Unsupported negotiated ALPN protocol: " + negotiated))
-        }
+        self.negotiated_alpn = Some(
+          @utf8.decode_lossy(alpn_buffer.exact_view(start=0, end=alpn_length)),
+        )
       }
       self.is_connected = true
       let stream = NativeTlsStream::{ tls, underlying, key_log, is_open: true }
@@ -467,6 +473,10 @@ pub impl TlsProvider for OpenSslTlsProvider with fn new_client(
     Ok(_) => ()
     Err(err) => return Err(err)
   }
-  let ctx = OpenSslTlsClientCtx::{ config, is_connected: false }
+  let ctx = OpenSslTlsClientCtx::{
+    config,
+    is_connected: false,
+    negotiated_alpn: None,
+  }
   Ok(ctx)
 }

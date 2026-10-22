@@ -55,9 +55,11 @@ pub struct ClientOptions {
   follow_redirects : Bool
   max_redirects : Int32
   max_response_body_bytes : Int32
+  http2 : Bool
 } derive(Eq, @debug.Debug)
 pub fn ClientOptions::new() -> Self
 pub fn ClientOptions::with_follow_redirects(Self, Bool) -> Self
+pub fn ClientOptions::with_http2(Self, Bool) -> Self
 pub fn ClientOptions::with_max_redirects(Self, Int32) -> Self
 pub fn ClientOptions::with_max_response_body_bytes(Self, Int32) -> Self
 pub fn ClientOptions::with_timeout(Self, Int32) -> Self
@@ -66,6 +68,7 @@ pub fn ClientOptions::with_user_agent(Self, String) -> Self
 pub struct ConnectionLease {
   // private fields
 }
+pub fn ConnectionLease::negotiated_protocol(Self) -> String?
 pub fn ConnectionLease::release(Self, Bool) -> Unit
 
 type ConnectionPoolState
@@ -78,6 +81,7 @@ pub struct Connector {
   proxy_bypass : Array[String]
   timeout_ms : Int32
   mut max_connections_per_host : Int32
+  http2 : Bool
   mut cookies_enabled : Bool
   cookie_jar : @ref.Ref[CookieJar]
   pool : @ref.Ref[ConnectionPoolState]
@@ -89,6 +93,7 @@ pub fn Connector::connect(Self, Url) -> Result[&Stream, HttpError]
 pub fn Connector::cookie_header(Self, Url) -> String?
 pub fn Connector::cookie_jar(Self) -> CookieJar
 pub fn Connector::cookies_enabled(Self) -> Bool
+pub fn Connector::http2_enabled(Self) -> Bool
 pub fn Connector::idle_timeout(Self) -> Int32
 pub fn Connector::max_connections_per_host(Self) -> Int32
 pub fn Connector::max_idle_per_host(Self) -> Int32
@@ -101,6 +106,7 @@ pub fn Connector::store_cookies(Self, Url, Headers) -> Unit
 pub fn Connector::uses_absolute_form(Self, Url) -> Bool
 pub fn Connector::with_cookie_jar(Self, CookieJar) -> Self
 pub fn Connector::with_cookies(Self, Bool) -> Self
+pub fn Connector::with_http2(Self, Bool) -> Self
 pub fn Connector::with_idle_timeout(Self, Int32) -> Self
 pub fn Connector::with_max_connections_per_host(Self, Int32) -> Self
 pub fn Connector::with_max_idle_per_host(Self, Int32) -> Self
@@ -487,6 +493,7 @@ pub trait Stream {
 pub trait TlsClientCtx {
   fn connect(Self, &Stream) -> Result[&Stream, TlsError]
   fn server_name(Self) -> String
+  fn negotiated_alpn(Self) -> String?
 }
 
 pub trait TlsProvider {

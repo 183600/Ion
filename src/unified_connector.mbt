@@ -79,6 +79,7 @@ struct ActiveConnection {
 struct IdleConnection {
   stream : &Stream
   last_used_ms : UInt64
+  negotiated_protocol : String?
 }
 
 /// Default maximum idle time for a pooled connection (90 seconds).
@@ -131,11 +132,25 @@ fn ConnectionPoolState::cache_idle(
   stream : &Stream,
   now_ms : UInt64,
 ) -> Unit {
+  self.cache_idle_with_protocol(key, stream, now_ms, None)
+}
+
+fn ConnectionPoolState::cache_idle_with_protocol(
+  self : ConnectionPoolState,
+  key : String,
+  stream : &Stream,
+  now_ms : UInt64,
+  negotiated_protocol : String?,
+) -> Unit {
   let idle = match self.idle.get(key) {
     Some(streams) => streams
     None => @list.List([])
   }
-  let mut updated = idle.prepend(IdleConnection::{ stream, last_used_ms: now_ms })
+  let mut updated = idle.prepend(IdleConnection::{
+    stream,
+    last_used_ms: now_ms,
+    negotiated_protocol,
+  })
   while updated.length() > self.max_idle {
     match updated.last() {
       Some(evicted) => {
@@ -187,6 +202,7 @@ pub struct Connector {
   proxy_bypass : Array[String]
   timeout_ms : Int
   mut max_connections_per_host : Int
+  http2 : Bool
   mut cookies_enabled : Bool
   cookie_jar : @ref.Ref[CookieJar]
   pool : @ref.Ref[ConnectionPoolState]
@@ -196,6 +212,7 @@ pub struct ConnectionLease {
   priv id : Int
   priv key : String
   priv stream : &Stream
+  priv negotiated_protocol : String?
   priv reused : Bool
   priv mut released : Bool
   priv pool : @ref.Ref[ConnectionPoolState]
@@ -210,9 +227,16 @@ pub fn ConnectionLease::release(self : ConnectionLease, reusable : Bool) -> Unit
   self.released = true
   let id = self.id
   self.pool.val.active = self.pool.val.active.filter(fn(entry) { entry.id != id })
-  if reusable {
+  // A single HTTP/2 exchange consumes the connection preface and stream, so
+  // the stream cannot be reused by another request with this client.
+  if reusable && self.negotiated_protocol != Some("h2") {
     match self.stream.peer_addr() {
-      Ok(_) => self.pool.val.cache_idle(self.key, self.stream, @env.now())
+      Ok(_) => self.pool.val.cache_idle_with_protocol(
+        self.key,
+        self.stream,
+        @env.now(),
+        self.negotiated_protocol,
+      )
       Err(_) => {
         let _ = self.stream.close()
       }
@@ -222,14 +246,19 @@ pub fn ConnectionLease::release(self : ConnectionLease, reusable : Bool) -> Unit
   }
 }
 
+/// The ALPN protocol selected for this leased connection, if known.
+pub fn ConnectionLease::negotiated_protocol(self : ConnectionLease) -> String? {
+  self.negotiated_protocol
+}
+
 /// Remove and return an idle connection for `key`. Entries whose last use is
 /// older than the configured idle timeout are closed and skipped; the search
 /// stops at the first live entry because `idle` is ordered by recency.
-fn take_idle_stream_at(
+fn take_idle_connection_at(
   pool : @ref.Ref[ConnectionPoolState],
   key : String,
   now_ms : UInt64,
-) -> Option[&Stream] {
+) -> Option[(&Stream, String?)] {
   let entries = match pool.val.idle.get(key) {
     Some(entries) => entries
     None => return None
@@ -261,7 +290,7 @@ fn take_idle_stream_at(
         } else {
           pool.val.idle.set(key, rest)
         }
-        return Some(entry.stream)
+        return Some((entry.stream, entry.negotiated_protocol))
       }
       None => {
         let _ = pool.val.idle.remove(key)
@@ -270,13 +299,6 @@ fn take_idle_stream_at(
     }
   }
   None
-}
-
-fn take_idle_stream(
-  pool : @ref.Ref[ConnectionPoolState],
-  key : String,
-) -> Option[&Stream] {
-  take_idle_stream_at(pool, key, @env.now())
 }
 
 pub fn Connector::new(dialer : &Dialer, tls_provider : &TlsProvider) -> Connector {
@@ -288,6 +310,7 @@ pub fn Connector::new(dialer : &Dialer, tls_provider : &TlsProvider) -> Connecto
     proxy_bypass: [],
     timeout_ms: 30000,
     max_connections_per_host: 0,
+    http2: false,
     cookies_enabled: false,
     cookie_jar: @ref.Ref(CookieJar::new()),
     pool: @ref.Ref(ConnectionPoolState::new()),
@@ -314,6 +337,7 @@ pub fn Connector::with_tls_config(self : Connector, config : TlsConfig) -> Conne
     proxy_bypass: self.proxy_bypass,
     timeout_ms: self.timeout_ms,
     max_connections_per_host: self.max_connections_per_host,
+    http2: self.http2,
     cookies_enabled: self.cookies_enabled,
     cookie_jar: self.cookie_jar,
     pool,
@@ -333,6 +357,7 @@ pub fn Connector::with_proxy(self : Connector, proxy : Proxy) -> Connector {
     proxy_bypass: self.proxy_bypass,
     timeout_ms: self.timeout_ms,
     max_connections_per_host: self.max_connections_per_host,
+    http2: self.http2,
     cookies_enabled: self.cookies_enabled,
     cookie_jar: self.cookie_jar,
     pool,
@@ -563,6 +588,32 @@ pub fn Connector::with_max_connections_per_host(
 /// The current per-host connection cap; `0` means unlimited.
 pub fn Connector::max_connections_per_host(self : Connector) -> Int {
   self.max_connections_per_host
+}
+
+/// Advertise HTTP/2 through ALPN when no explicit TLS configuration is set.
+/// An explicit `with_tls_config` value is respected as-is, so callers that
+/// want HTTP/2 with shared credentials must include `h2` in its ALPN list.
+pub fn Connector::with_http2(self : Connector, enabled : Bool) -> Connector {
+  Connector::{ ..self, http2: enabled }
+}
+
+/// Whether default TLS configurations advertise HTTP/2.
+pub fn Connector::http2_enabled(self : Connector) -> Bool {
+  self.http2
+}
+
+fn Connector::origin_tls_config(self : Connector, host : String) -> TlsConfig {
+  match self.tls_config {
+    Some(config) => config.with_server_name(host)
+    None => {
+      let config = TlsConfig::new(host)
+      if self.http2 {
+        config.with_alpn(@list.List(["h2", "http/1.1"]))
+      } else {
+        config
+      }
+    }
+  }
 }
 
 /// Discard pooled connections that have been idle for longer than
@@ -849,7 +900,7 @@ fn establish_tunnel(
 /// exchange finishes.
 pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpError] {
   match self.connect_impl(url, true) {
-    Ok((stream, _)) => Ok(stream)
+    Ok((stream, _, _)) => Ok(stream)
     Err(err) => Err(err)
   }
 }
@@ -858,7 +909,7 @@ fn Connector::connect_impl(
   self : Connector,
   url : Url,
   cache_new : Bool,
-) -> Result[(&Stream, Bool), HttpError] {
+) -> Result[(&Stream, Bool, String?), HttpError] {
   let scheme = url.scheme.to_lower()
   let host = url.host
   let port = url.port
@@ -894,10 +945,7 @@ fn Connector::connect_impl(
   // Validate TLS settings before opening a socket. The connection host
   // overrides any server name from the shared configuration.
   if scheme == "https" {
-    let tls_config = match self.tls_config {
-      Some(config) => config.with_server_name(host)
-      None => TlsConfig::new(host)
-    }
+    let tls_config = self.origin_tls_config(host)
     match tls_config.validate() {
       Ok(_) => ()
       Err(err) => return Err(TlsError(err))
@@ -916,8 +964,10 @@ fn Connector::connect_impl(
   }
 
   // Check if we have a cached connection
-  match take_idle_stream(self.pool, conn_key) {
-    Some(stream) => return Ok((stream, true))
+  match take_idle_connection_at(self.pool, conn_key, @env.now()) {
+    Some((stream, negotiated_protocol)) => {
+      return Ok((stream, true, negotiated_protocol))
+    }
     None => ()
   }
 
@@ -984,10 +1034,7 @@ fn Connector::connect_impl(
   // If HTTPS, wrap with TLS
   if scheme == "https" {
     // Use the shared configuration when present, otherwise secure defaults.
-    let tls_config = match self.tls_config {
-      Some(config) => config.with_server_name(host)
-      None => TlsConfig::new(host)
-    }
+    let tls_config = self.origin_tls_config(host)
     let tls_config = match tls_config.validate() {
       Ok(_) => tls_config
       Err(err) => {
@@ -1024,16 +1071,22 @@ fn Connector::connect_impl(
       }
     }
 
-    if cache_new {
-      self.pool.val.cache_idle(conn_key, tls_stream, @env.now())
+    let negotiated_protocol = tls_ctx.negotiated_alpn()
+    if cache_new && negotiated_protocol != Some("h2") {
+      self.pool.val.cache_idle_with_protocol(
+        conn_key,
+        tls_stream,
+        @env.now(),
+        negotiated_protocol,
+      )
     }
-    Ok((tls_stream, false))
+    Ok((tls_stream, false, negotiated_protocol))
   } else {
     // For plain HTTP, use the proxy stream (raw or TLS-to-proxy) directly.
     if cache_new {
       self.pool.val.cache_idle(conn_key, proxy_stream, @env.now())
     }
-    Ok((proxy_stream, false))
+    Ok((proxy_stream, false, None))
   }
 }
 
@@ -1042,7 +1095,7 @@ pub fn Connector::checkout(
   url : Url,
 ) -> Result[(&Stream, ConnectionLease), HttpError] {
   let conn_key = self.connection_key(url)
-  let (stream, reused) = match self.connect_impl(url, false) {
+  let (stream, reused, negotiated_protocol) = match self.connect_impl(url, false) {
     Ok(connection) => connection
     Err(err) => return Err(err)
   }
@@ -1057,6 +1110,7 @@ pub fn Connector::checkout(
       id,
       key: conn_key,
       stream,
+      negotiated_protocol,
       reused,
       released: false,
       pool: self.pool,
