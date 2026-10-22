@@ -147,6 +147,9 @@ fn H2ResponseState::apply_header_block(
         (name == "te" && value.trim().to_lower() != "trailers") {
         return Err(ProtocolError("Connection-specific HTTP/2 response header"))
       }
+      if trailers_mode && is_forbidden_trailer_field(name) {
+        return Err(ProtocolError("Invalid HTTP/2 trailer field"))
+      }
       regular = regular.add(name, value)
     }
   }

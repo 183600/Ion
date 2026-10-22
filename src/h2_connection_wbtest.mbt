@@ -263,3 +263,21 @@ test "http2 fragments oversized request header blocks" {
   assert_eq(h2_test_header_value(fields, "x-large").unwrap().length(), 20000)
 }
 
+test "http2 rejects forbidden trailer fields" {
+  let response_headers = hpack_encode([(":status", "200")])
+  let trailers = hpack_encode([("content-length", "5")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, response_headers),
+    h2_test_frame(H2_FRAME_DATA, 0, 1, @utf8.encode("hello")),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, trailers),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match h2_request(stream, request) {
+    Ok(_) => fail("HTTP/2 framing trailer field was accepted")
+    Err(err) => assert_eq(err, ProtocolError("Invalid HTTP/2 trailer field"))
+  }
+}
+
+
