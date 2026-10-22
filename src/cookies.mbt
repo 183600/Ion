@@ -222,13 +222,80 @@ fn cookie_expired(cookie : Cookie, now_ms : UInt64) -> Bool {
   }
 }
 
+/// Format the canonical (RFC 5952) text of one IPv6 address. Keeping a single
+/// spelling is important for cookie identity: the same address may be written
+/// in expanded, uppercase, or compressed form by different requests.
+fn cookie_format_ipv6(address : Bytes) -> String {
+  let groups = Array::make(8, 0)
+  let mut index = 0
+  while index < 8 {
+    groups[index] = (address[index * 2].to_int() << 8) |
+      address[index * 2 + 1].to_int()
+    index = index + 1
+  }
+  let mut best_start = 0
+  let mut best_len = 0
+  let mut run_start = 0
+  let mut run_len = 0
+  index = 0
+  while index < 8 {
+    if groups[index] == 0 {
+      if run_len == 0 {
+        run_start = index
+      }
+      run_len = run_len + 1
+      if run_len > best_len {
+        best_start = run_start
+        best_len = run_len
+      }
+    } else {
+      run_len = 0
+    }
+    index = index + 1
+  }
+  if best_len < 2 {
+    best_start = 8
+    best_len = 0
+  }
+  let output = Buffer(size_hint=40)
+  let mut needs_separator = false
+  index = 0
+  while index < 8 {
+    if index == best_start {
+      output.write_bytes(@utf8.encode("::"))
+      index = index + best_len
+      needs_separator = false
+      continue
+    }
+    if needs_separator {
+      output.write_byte(b':')
+    }
+    output.write_bytes(@utf8.encode(groups[index].to_string(radix=16)))
+    needs_separator = true
+    index = index + 1
+  }
+  @utf8.decode_lossy(output.to_bytes()[:])
+}
+
 ///|
 fn cookie_canonical_host(host : String) -> String {
   let host = host.to_lower()
-  if host.length() > 1 && host.has_suffix(".") {
+  let host = if host.length() > 1 && host.has_suffix(".") {
     host[0:host.length() - 1].to_owned()
   } else {
     host
+  }
+  if !is_ipv6_literal_with_zone(host) {
+    return host
+  }
+  let address = match bypass_ipv6_bytes(host) {
+    Some(bytes) => bytes
+    None => return host
+  }
+  let canonical = cookie_format_ipv6(address)
+  match host.find("%") {
+    Some(index) => canonical + host[index:].to_owned()
+    None => canonical
   }
 }
 
