@@ -1142,7 +1142,7 @@ test "inflate dynamic huffman streams" {
   assert_eq(@utf8.decode_lossy(gzip[:]), expected)
 }
 
-fn inflate_test_hex(text : String) -> Bytes {
+fn inflate_window_violation_hex(text : String) -> Bytes {
   let output = @buffer.new(size_hint=text.length() / 2)
   let digits = "0123456789abcdef".to_array()
   let mut high = -1
@@ -1186,7 +1186,7 @@ test "zlib window violations do not fall back to raw DEFLATE" {
     }
     index = index + 1
   }
-  data.write_bytes(inflate_test_hex(
+  data.write_bytes(inflate_window_violation_hex(
     "2b7df2644fd71a9127c727db5aa9af3265583bb9c32c7bbec315c14ddeea3dff0c9e85b13e68ce3fa27b20faabc2c9c573120c22ec05993fb677b086d9fe3b6affeffc8d338fd76f9392de3fe99eefe45fa7d8fa7f6dff12e8b64c7362c7ac5b018f4375dea8ac353c9aee6436fdcddd03a2ac699b3c426effdbd12d7fe54383c24ab93e3e4765fde8dff39226fc935d9ef1b2fe689e50f7e186cfc7a6decef3e066ab09fa7efe94d2e3af9b593ad32eff7d7af5a57840f7e4936b372f0f8a5058b6799f73ec8d277b27d8fc91fbeeb6ecf9a7edfbb3deb07afcf528ad529eff6b815aafe99c74dd430c1caf9e5ebf2630ef639475ecec1f07a2670a9d79e011e1e5c3c476f38f6e4ce4b1d7866b39f674d945aed2bfe1a0ee54b26d76aebead8ce8b5fd675cb85d1413ba391e4ea991da5632f7d07aef27fb7b6fd6ee7f513a1a5644871500",
   ))
   for _ in 0..<4 {
