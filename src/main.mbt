@@ -46,7 +46,8 @@ fn print_usage() -> Unit {
   println("       FEATHER_INSECURE=1 feather             DISABLE TLS verification (unsafe)")
   println("       FEATHER_KEYLOG=1 feather               print TLS key material (debug)")
   println("       FEATHER_H2C=1 feather                  use HTTP/2 prior knowledge for http://")
-  println("Methods: get, post, put, delete, head, options, patch, trace, connect")
+  println("Methods: get, post, put, delete, head, options, patch, trace, connect,")
+  println("         or any valid extension token such as PROPFIND")
 }
 
 /// Prints each TLS key-log line so the captured secrets can be inspected (or
@@ -309,7 +310,13 @@ fn parse_cli_request(args : Array[String]) -> (String, String, String) {
     if lower.has_prefix("http://") || lower.has_prefix("https://") {
       url = first
     } else {
-      method_text = lower
+      // Standard methods are case-insensitive and normalized to lower case for
+      // the CLI's convenience. Extension methods are case-sensitive tokens, so
+      // preserve their original spelling for `HttpMethod::custom`.
+      method_text = match HttpMethod::parse(lower) {
+        Ok(_) => lower
+        Err(_) => first
+      }
       if index + 1 < args.length() {
         url = args[index + 1].trim().to_owned()
         if index + 2 < args.length() {
@@ -352,7 +359,7 @@ fn main {
   let verb = if method_text.length() == 0 {
     GET
   } else {
-    match HttpMethod::parse(method_text) {
+    match HttpMethod::custom(method_text) {
       Ok(verb) => verb
       Err(_) => {
         println("error: unsupported method '" + method_text + "'")

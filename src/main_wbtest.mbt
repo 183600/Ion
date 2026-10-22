@@ -23,6 +23,20 @@ test "CLI accepts a method, URL, and optional body" {
 }
 
 ///|
+test "CLI preserves extension method spelling" {
+  let (method, url, body) = parse_cli_request([
+    "/usr/bin/feather",
+    "PROPFIND",
+    "https://example.com/dav",
+    "depth",
+  ])
+  assert_eq(method, "PROPFIND")
+  assert_eq(url, "https://example.com/dav")
+  assert_eq(body, "depth")
+  assert_eq(HttpMethod::custom(method).unwrap(), Custom("PROPFIND"))
+}
+
+///|
 test "CLI handles the no-argument case" {
   let (method, url, body) = parse_cli_request([])
   assert_eq(method, "")
