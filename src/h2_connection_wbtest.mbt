@@ -608,10 +608,13 @@ test "http2 completes an accepted stream after a graceful GOAWAY" {
     0,
     b"\x00\x00\x00\x01\x00\x00\x00\x00",
   )
+  // The response head was already in flight when the GOAWAY arrived, so the
+  // accepted stream still completes even though no new stream may be opened.
   let input = h2_test_concat([
     h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, response_headers),
     goaway,
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+    h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, b"ok"),
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let connection = H2ClientConnection::new(stream).unwrap()
@@ -619,6 +622,7 @@ test "http2 completes an accepted stream after a graceful GOAWAY" {
   let response = connection.request(request).unwrap()
   assert_eq(response.status, 200)
   assert_eq(response.headers.get("x-graceful"), Some("yes"))
+  assert_eq(response.text().unwrap(), "ok")
   // The server will not accept another stream, even though this response was
   // delivered successfully.
   assert_false(connection.is_open())
@@ -630,9 +634,11 @@ test "http2 GOAWAY last stream ids must not increase" {
   let response_headers = hpack_encode([(":status", "200")])
   let input = h2_test_concat([
     h2_test_settings(),
+    // Keep a response head ahead of the GOAWAYs so the request opens its
+    // stream first and both GOAWAY frames are processed in order.
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, response_headers),
     h2_test_frame(H2_FRAME_GOAWAY, 0, 0, b"\x00\x00\x00\x01\x00\x00\x00\x00"),
     h2_test_frame(H2_FRAME_GOAWAY, 0, 0, b"\x00\x00\x00\x03\x00\x00\x00\x00"),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let connection = H2ClientConnection::new(stream).unwrap()
@@ -1005,6 +1011,27 @@ test "http2 honors a buffered GOAWAY before writing request headers" {
   assert_false(connection.is_open())
 }
 
+test "http2 does not open a stream after a buffered GOAWAY with a later id" {
+  // A GOAWAY still forbids new streams when its last-stream-id covers the
+  // would-be stream (RFC 9113 §6.8); the id only describes what was accepted
+  // before the GOAWAY was sent.
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_GOAWAY, 0, 0, b"\x7f\xff\xff\xff\x00\x00\x00\x00"),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match connection.request(request) {
+    Ok(_) => fail("a stream was opened after a buffered GOAWAY")
+    Err(err) => assert_eq(err, ProtocolError("HTTP/2 connection closed by GOAWAY"))
+  }
+  for frame in h2_test_client_frames(stream) {
+    assert_true(frame.frame_type != H2_FRAME_HEADERS)
+  }
+  assert_false(connection.is_open())
+}
+
 test "http2 processes SETTINGS buffered behind a WINDOW_UPDATE" {
   let input = h2_test_concat([
     h2_test_settings(),
@@ -1121,30 +1148,37 @@ test "http2 ignores WINDOW_UPDATE for a stream that already ended" {
   assert_true(connection.is_open())
 }
 
-test "http2 rejects duplicate settings identifiers" {
-  let response_headers = hpack_encode([(":status", "200")])
-  for payload in [
-    h2_settings_payload([
-      (H2_SETTINGS_MAX_FRAME_SIZE, H2_MAX_FRAME_SIZE),
-      (H2_SETTINGS_MAX_FRAME_SIZE, H2_MAX_FRAME_SIZE + 1),
-    ]),
-    h2_settings_payload([(0x99, 1), (0x99, 2)]),
-  ] {
-    let input = h2_test_concat([
-      h2_test_frame(H2_FRAME_SETTINGS, 0, 0, payload),
-      h2_test_frame(
-        H2_FRAME_HEADERS,
-        H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
-        1,
-        response_headers,
-      ),
-    ])
-    let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
-    match h2_request(h2_frame_mock_stream(input, 0), request) {
-      Ok(_) => fail("duplicate HTTP/2 setting was accepted")
-      Err(err) => assert_eq(err, ProtocolError("Duplicate HTTP/2 setting"))
-    }
+test "http2 applies the last duplicate setting and ignores unknown ones" {
+  let flow = H2FlowState::new()
+  let known = h2_settings_payload([
+    (H2_SETTINGS_MAX_FRAME_SIZE, H2_MAX_FRAME_SIZE),
+    (H2_SETTINGS_MAX_FRAME_SIZE, H2_MAX_FRAME_SIZE + 1),
+    (0x99, 1),
+    (0x99, 2),
+  ])
+  match h2_apply_settings(known, flow) {
+    Ok(_) => ()
+    Err(err) => fail("valid repeated HTTP/2 settings were rejected: " + @debug.to_string(err))
   }
+  // The second occurrence is the value that remains in effect.
+  assert_eq(flow.peer_max_frame_size, H2_MAX_FRAME_SIZE + 1)
+
+  let unknown_only = h2_settings_payload([(0x99, 1), (0x99, 2)])
+  assert_true(h2_apply_settings(unknown_only, flow) is Ok(_))
+
+  let response_headers = hpack_encode([(":status", "200")])
+  let input = h2_test_concat([
+    h2_test_frame(H2_FRAME_SETTINGS, 0, 0, known),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
+  ])
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  let response = h2_request(h2_frame_mock_stream(input, 0), request).unwrap()
+  assert_eq(response.status, 200)
 }
 
 test "http2 server preface must not begin with a settings acknowledgement" {

@@ -368,32 +368,19 @@ fn H2ResponseState::apply_header_block(
   Ok(())
 }
 
-fn h2_int_in_array(values : Array[Int], target : Int) -> Bool {
-  for value in values {
-    if value == target {
-      return true
-    }
-  }
-  false
-}
-
 fn h2_apply_settings(
   payload : Bytes,
   flow : H2FlowState,
 ) -> Result[Unit, HttpError] {
-  let seen : Array[Int] = []
   let mut offset = 0
   while offset < payload.length() {
     if offset + 6 > payload.length() {
       return Err(ProtocolError("Invalid HTTP/2 SETTINGS length"))
     }
     let identifier = (payload[offset].to_int() << 8) | payload[offset + 1].to_int()
-    // RFC 9113 §6.5: a SETTINGS frame containing the same parameter more than
-    // once is a connection error. This applies to unknown identifiers too.
-    if h2_int_in_array(seen, identifier) {
-      return Err(ProtocolError("Duplicate HTTP/2 setting"))
-    }
-    seen.push(identifier)
+    // RFC 9113 §6.5: settings are processed in order and each parameter
+    // replaces any previous value, so a repeated identifier is legal and the
+    // last value wins. Unknown identifiers are ignored.
     let value_high = payload[offset + 2].to_int()
     let value = (value_high << 24) |
       (payload[offset + 3].to_int() << 16) |
@@ -1137,18 +1124,10 @@ fn H2ClientConnection::drain_buffered_settings(
       // it buffered for the body loop, which resets the stream window first.
       return Ok(())
     }
-    if frame_type == H2_FRAME_GOAWAY &&
-      self.reader.pending.length() - offset >= 13 {
-      let last_stream_id = ((self.reader.pending[offset + 9].to_int() & 0x7f) << 24) |
-        (self.reader.pending[offset + 10].to_int() << 16) |
-        (self.reader.pending[offset + 11].to_int() << 8) |
-        self.reader.pending[offset + 12].to_int()
-      if last_stream_id >= self.next_stream_id {
-        // The next stream was accepted before the peer sent GOAWAY. Leave
-        // both the GOAWAY and its response for the response loop.
-        return Ok(())
-      }
-    }
+    // A received GOAWAY forbids opening any further stream on this connection
+    // (RFC 9113 §6.8), regardless of the last-stream-id it advertises. Let the
+    // frame be consumed below so the request fails and can be retried on a
+    // fresh connection instead of writing HEADERS onto a closing session.
     match frame_type {
       H2_FRAME_SETTINGS
       | H2_FRAME_PING
