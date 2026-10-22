@@ -128,3 +128,40 @@ test "http2 CONNECT tunnel body forwards writes as DATA" {
   response.body.close().unwrap()
   assert_false(stream.is_open)
 }
+
+///|
+test "http2 CONNECT keeps its request side open for tunnel data" {
+  let headers = hpack_encode([(":status", "200")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, headers),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let response = h2_request(
+    stream,
+    Request::new(CONNECT, Url::parse("http://example.com:80/").unwrap()),
+  ).unwrap()
+  let mut request_headers_seen = false
+  for frame in h2_test_client_frames(stream) {
+    if frame.frame_type == H2_FRAME_HEADERS && frame.stream_id == 1 {
+      request_headers_seen = true
+      // END_STREAM would prevent the DATA frame written below from being a
+      // valid part of the CONNECT stream.
+      assert_eq(frame.flags & H2_FLAG_END_STREAM, 0)
+    }
+  }
+  assert_true(request_headers_seen)
+  let payload = Buffer(size_hint=4)
+  payload.write_bytes(b"ping")
+  assert_eq(response.body.write(payload).unwrap(), 4)
+  let mut data_seen = false
+  for frame in h2_test_client_frames(stream) {
+    if frame.frame_type == H2_FRAME_DATA && frame.stream_id == 1 {
+      assert_eq(frame.payload, b"ping")
+      data_seen = true
+    }
+  }
+  assert_true(data_seen)
+  response.body.close().unwrap()
+  assert_false(stream.is_open)
+}

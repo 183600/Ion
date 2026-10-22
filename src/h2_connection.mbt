@@ -1687,8 +1687,13 @@ fn H2ClientConnection::request_with_limit_and_callback(
     None => b""
   }
   // A request with trailers must leave the stream open until the trailing
-  // HEADERS frame is written, even when the body itself is empty.
-  let end_stream = body.length() == 0 && !has_trailers
+  // HEADERS frame is written, even when the body itself is empty. A CONNECT
+  // request is different: after a 2xx response the same stream carries the
+  // tunnelled bytes, so its request side must stay open for later DATA frames
+  // even when there is no initial body. Sending END_STREAM on the CONNECT
+  // HEADERS would make every subsequent tunnel write a stream error.
+  let end_stream = body.length() == 0 && !has_trailers &&
+    request.method != CONNECT
   // A new stream starts with the peer's current initial window plus any
   // WINDOW_UPDATE that arrived before the stream was opened.
   if self.flow.peer_initial_window >
@@ -1832,8 +1837,11 @@ fn H2ClientConnection::request_with_limit_and_callback(
   self.drain_buffered_connection_frames(state, flow)
   // An early final response (for example 413 or 401) leaves the request side
   // of this stream half-open. Reset the stream instead of returning the
-  // connection to the pool with an unfinished upload.
-  let request_finished = sent == body.length() && trailers_sent
+  // connection to the pool with an unfinished upload. A failed CONNECT is the
+  // same case: its request side was deliberately left open for tunnel DATA,
+  // but no tunnel was established.
+  let request_finished = sent == body.length() && trailers_sent &&
+    request.method != CONNECT
   if !request_finished && !self.closed {
     match h2_write_frame(
       self.stream,
