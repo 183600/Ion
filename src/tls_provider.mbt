@@ -83,6 +83,16 @@ pub impl Stream for TlsStream with fn read_ready(self : TlsStream) -> Bool {
   self.underlying.read_ready()
 }
 
+pub impl Stream for TlsStream with fn wait_readable(
+  self : TlsStream,
+  timeout_ms : Int,
+) -> Result[Bool, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  self.underlying.wait_readable(timeout_ms)
+}
+
 pub impl Stream for TlsStream with fn write(self : TlsStream, buf : Buffer) -> Result[Int, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)

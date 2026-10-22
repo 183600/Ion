@@ -19,11 +19,17 @@ pub struct H1Codec {
   priv mut deferred_body_bytes : Bytes
   priv mut deferred_trailers : Headers
   priv mut deferred_chunked : Bool
+  // How long to wait for an interim/final response before sending a deferred
+  // `Expect: 100-continue` body anyway. A value of 0 waits indefinitely for
+  // the response (the historical behavior). Built-in socket transports make
+  // this a real poll; other streams fall back to `read_ready`.
+  mut expect_timeout_ms : Int
   max_body_bytes : Int
   on_complete : ((Bool) -> Unit)?
 }
 
 const DEFAULT_MAX_BODY_BYTES : Int = 67108864
+const DEFAULT_EXPECT_CONTINUE_WAIT_MS : Int = 1000
 // CONNECT tunnels carry an opaque byte stream rather than a response
 // representation, so the normal response-body cap does not apply to them.
 const TUNNEL_BODY_LIMIT : Int = 2147483647
@@ -34,6 +40,18 @@ pub fn H1Codec::new(stream : &Stream) -> H1Codec {
 
 pub fn H1Codec::new_with_limit(stream : &Stream, max_body_bytes : Int) -> H1Codec {
   H1Codec::make(stream, max_body_bytes, None)
+}
+
+/// Bound how long a request that advertised `Expect: 100-continue` waits for
+/// the peer's interim response before sending the body. This avoids a deadlock
+/// with peers that ignore the expectation and wait for the body. A value below
+/// 1 restores the unbounded (historical) wait.
+pub fn H1Codec::with_expect_timeout(
+  self : H1Codec,
+  timeout_ms : Int,
+) -> H1Codec {
+  self.expect_timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
+  self
 }
 
 pub fn H1Codec::new_with_completion(
@@ -69,6 +87,7 @@ fn H1Codec::make(
     deferred_body_bytes: b"",
     deferred_trailers: Headers::new(),
     deferred_chunked: false,
+    expect_timeout_ms: DEFAULT_EXPECT_CONTINUE_WAIT_MS,
     max_body_bytes: limit,
     on_complete,
   }
@@ -515,6 +534,22 @@ fn write_chunked_body(
     }
   }
   write_all(stream, @utf8.encode("\r\n"))
+}
+
+fn send_deferred_request_body(
+  stream : &Stream,
+  body : Bytes,
+  trailers : Headers,
+  chunked : Bool,
+) -> Result[Unit, HttpError] {
+  match write_request_body(stream, body, trailers, chunked) {
+    Ok(_) => ()
+    Err(err) => return Err(NetworkError(err))
+  }
+  match stream.flush() {
+    Ok(_) => Ok(())
+    Err(err) => Err(NetworkError(err))
+  }
 }
 
 fn write_request_body(
@@ -994,8 +1029,37 @@ pub fn H1Codec::decode_response(
   let deferred_chunked = self.deferred_chunked
   self.deferred_pending = false
   let mut deferred_body_sent = false
+  // The wait is attempted once, before reading the first response byte. Once
+  // the peer has started responding (for example with 103 Early Hints), keep
+  // reading its response instead of starting a second wait.
+  let mut expect_wait_done = false
   let mut informational_count = 0
   while true {
+    if deferred_pending && !deferred_body_sent && !expect_wait_done {
+      expect_wait_done = true
+      if self.expect_timeout_ms > 0 &&
+        self.reader.val.pending_offset >= self.reader.val.pending.length() {
+        match self.reader.val.stream.wait_readable(self.expect_timeout_ms) {
+          Ok(true) => ()
+          Ok(false) => {
+            // The peer did not answer the expectation in time. Send the body
+            // rather than blocking forever; a later 100 is still consumed and
+            // must not cause the body to be sent twice.
+            match send_deferred_request_body(
+              self.reader.val.stream,
+              deferred_body_bytes,
+              deferred_trailers,
+              deferred_chunked,
+            ) {
+              Ok(_) => ()
+              Err(err) => return Err(err)
+            }
+            deferred_body_sent = true
+          }
+          Err(err) => return Err(http_error_from_net(err))
+        }
+      }
+    }
     let response_head = match read_response_head(self.reader.val) {
       Ok(head) => head
       Err(err) => return Err(err)
@@ -1012,18 +1076,14 @@ pub fn H1Codec::decode_response(
     // A 100 Continue accepts the deferred request content. Other interim
     // responses (such as 103 Early Hints) do not, so the body stays pending.
     if response_head.status == 100 && !deferred_body_sent && deferred_pending {
-      match write_request_body(
+      match send_deferred_request_body(
         self.reader.val.stream,
         deferred_body_bytes,
         deferred_trailers,
         deferred_chunked,
       ) {
         Ok(_) => ()
-        Err(err) => return Err(NetworkError(err))
-      }
-      match self.reader.val.stream.flush() {
-        Ok(_) => ()
-        Err(err) => return Err(NetworkError(err))
+        Err(err) => return Err(err)
       }
       deferred_body_sent = true
     }

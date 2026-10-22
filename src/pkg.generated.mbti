@@ -193,6 +193,7 @@ pub struct H1Codec {
   mut last_is_head : Bool
   mut last_is_connect : Bool
   mut close_after_request : Bool
+  mut expect_timeout_ms : Int32
   max_body_bytes : Int32
   on_complete : ((Bool) -> Unit)?
   // private fields
@@ -204,6 +205,7 @@ pub fn H1Codec::new_with_completion(&Stream, (Bool) -> Unit) -> Self
 pub fn H1Codec::new_with_limit(&Stream, Int32) -> Self
 pub fn H1Codec::new_with_limit_and_completion(&Stream, Int32, (Bool) -> Unit) -> Self
 pub fn H1Codec::request(Self, Request, absolute_form? : Bool) -> Result[Response, HttpError]
+pub fn H1Codec::with_expect_timeout(Self, Int32) -> Self
 pub impl HttpClient for H1Codec
 
 type H2BodyStream
@@ -611,6 +613,7 @@ pub trait Stream {
   fn local_addr(Self) -> Result[String, NetError]
   fn set_body_limit(Self, Int32) -> Unit
   fn read_ready(Self) -> Bool
+  fn wait_readable(Self, Int32) -> Result[Bool, NetError]
 }
 
 pub trait TlsClientCtx {

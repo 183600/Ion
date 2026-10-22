@@ -455,6 +455,36 @@ int32_t feather_tcp_read_ready(int32_t fd) {
 }
 
 MOONBIT_FFI_EXPORT
+int32_t feather_tcp_wait_readable(int32_t fd, int32_t timeout_ms) {
+  if (fd < 0) {
+    return -EBADF;
+  }
+  if (timeout_ms < 0) {
+    return -EINVAL;
+  }
+  struct pollfd pfd;
+  pfd.fd = fd;
+  pfd.events = POLLIN;
+  pfd.revents = 0;
+  int ready;
+  do {
+    ready = poll(&pfd, 1, timeout_ms);
+  } while (ready < 0 && errno == EINTR);
+  if (ready < 0) {
+    return -errno;
+  }
+  if (ready == 0) {
+    return 0;
+  }
+  // EOF, a pending error, and a closed descriptor all make a subsequent read
+  // return promptly, so they count as readable for the caller's purposes.
+  if ((pfd.revents & (POLLIN | POLLHUP | POLLERR | POLLNVAL)) != 0) {
+    return 1;
+  }
+  return 0;
+}
+
+MOONBIT_FFI_EXPORT
 int32_t feather_tcp_is_alive(int32_t fd) {
   if (fd < 0) {
     return -EBADF;

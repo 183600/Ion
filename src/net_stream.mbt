@@ -39,6 +39,13 @@ pub trait Stream {
   // default keeps in-memory streams aggregating small reads as before; socket
   // transports override it so body readers can return partial data promptly.
   fn read_ready(Self) -> Bool = _
+
+  // Optional: wait until a read can make progress or the timeout expires.
+  // Returns true when the stream is readable (including EOF) and false on a
+  // clean timeout. The default preserves the historical behavior by only
+  // consulting `read_ready`; socket transports override it with a real poll so
+  // callers can bound a wait without blocking forever.
+  fn wait_readable(Self, Int) -> Result[Bool, NetError] = _
 }
 
 impl Stream with fn set_body_limit(_self, _limit) {
@@ -47,6 +54,10 @@ impl Stream with fn set_body_limit(_self, _limit) {
 
 impl Stream with fn read_ready(_self) {
   true
+}
+
+impl Stream with fn wait_readable(_self, _timeout_ms) {
+  Ok(_self.read_ready())
 }
 
 /// Placeholder TCP stream kept for API compatibility and tests. It validates

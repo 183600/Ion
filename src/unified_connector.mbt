@@ -34,6 +34,19 @@ pub impl Stream for PrefixStream with fn read_ready(self : PrefixStream) -> Bool
   self.offset < self.prefix.length() || self.underlying.read_ready()
 }
 
+pub impl Stream for PrefixStream with fn wait_readable(
+  self : PrefixStream,
+  timeout_ms : Int,
+) -> Result[Bool, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  if self.offset < self.prefix.length() {
+    return Ok(true)
+  }
+  self.underlying.wait_readable(timeout_ms)
+}
+
 pub impl Stream for PrefixStream with fn write(self : PrefixStream, buf : Buffer) -> Result[Int, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)

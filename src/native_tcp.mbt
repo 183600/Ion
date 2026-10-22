@@ -17,6 +17,8 @@ extern "C" fn feather_tcp_is_alive(fd : Int) -> Int = "feather_tcp_is_alive"
 
 extern "C" fn feather_tcp_read_ready(fd : Int) -> Int = "feather_tcp_read_ready"
 
+extern "C" fn feather_tcp_wait_readable(fd : Int, timeout_ms : Int) -> Int = "feather_tcp_wait_readable"
+
 #borrow(output)
 extern "C" fn feather_tcp_local_addr(fd : Int, output : Bytes, capacity : Int) -> Int = "feather_tcp_local_addr"
 
@@ -135,6 +137,21 @@ pub impl Stream for NativeTcpStream with fn read_ready(
     return false
   }
   feather_tcp_read_ready(self.fd) > 0
+}
+
+pub impl Stream for NativeTcpStream with fn wait_readable(
+  self : NativeTcpStream,
+  timeout_ms : Int,
+) -> Result[Bool, NetError] {
+  if !self.is_open || self.fd < 0 {
+    return Err(NetError::Closed)
+  }
+  let timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
+  let result = feather_tcp_wait_readable(self.fd, timeout_ms)
+  if result < 0 {
+    return Err(native_tcp_error(-result, "TCP poll"))
+  }
+  Ok(result > 0)
 }
 
 pub impl Stream for NativeTcpStream with fn write(

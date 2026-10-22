@@ -274,6 +274,21 @@ pub impl Stream for NativeTlsStream with fn read_ready(
   feather_tls_pending(self.tls) > 0 || self.underlying.read_ready()
 }
 
+pub impl Stream for NativeTlsStream with fn wait_readable(
+  self : NativeTlsStream,
+  timeout_ms : Int,
+) -> Result[Bool, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
+  // Decrypted bytes or a complete buffered TLS record can make progress
+  // without touching the socket. Otherwise the encrypted transport decides.
+  if feather_tls_pending(self.tls) > 0 {
+    return Ok(true)
+  }
+  self.underlying.wait_readable(timeout_ms)
+}
+
 pub impl Stream for NativeTlsStream with fn write(
   self : NativeTlsStream,
   buf : Buffer,
