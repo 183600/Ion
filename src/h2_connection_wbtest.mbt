@@ -703,6 +703,38 @@ test "http2 resets the request stream after an early response" {
   }
 }
 
+test "http2 ignores late DATA on an already closed stream" {
+  let first_headers = hpack_encode([(":status", "413"), ("content-length", "0")])
+  let second_headers = hpack_encode([(":status", "200"), ("x-request", "second")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      first_headers,
+    ),
+    h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, b"late"),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      3,
+      second_headers,
+    ),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let upload = Request::new(POST, Url::parse("https://example.com/upload").unwrap())
+    .with_body(Bytes::make(70000, b'x'))
+  assert_eq(connection.request(upload).unwrap().status, 413)
+  let second = connection.request(
+    Request::new(GET, Url::parse("https://example.com/two").unwrap()),
+  ).unwrap()
+  assert_eq(second.status, 200)
+  assert_eq(second.headers.get("x-request"), Some("second"))
+  assert_true(connection.is_open())
+}
+
 test "http2 closes a connection after a failed exchange" {
   let reset = h2_test_concat([
     h2_test_settings(),

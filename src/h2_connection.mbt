@@ -461,12 +461,17 @@ fn H2ResponseState::handle_frame(
           }
           self.ended = true
         }
+      } else if frame.stream_id < self.stream_id {
+        // The stream was reset or finished earlier (for example after an early
+        // response). Frames that arrive late are harmless; discard the payload
+        // but still account for it in the connection-level flow-control window.
       } else {
         // Server push is disabled, so no other stream can carry a response.
         return Err(ProtocolError("HTTP/2 DATA on unknown stream"))
       }
-      // The connection-level receive window is replenished as bytes arrive.
-      if frame.stream_id == self.stream_id && frame.payload.length() > 0 {
+      // The connection-level receive window is replenished as bytes arrive,
+      // including DATA for an already closed stream.
+      if frame.stream_id <= self.stream_id && frame.payload.length() > 0 {
         match h2_send_window_update(stream, 0, frame.payload.length()) {
           Ok(_) => ()
           Err(err) => return Err(err)
@@ -914,6 +919,36 @@ fn H2ClientConnection::drain_buffered_connection_frames(
       | H2_FRAME_WINDOW_UPDATE
       | H2_FRAME_GOAWAY
       | H2_FRAME_PRIORITY => ()
+      H2_FRAME_DATA => {
+        let offset = self.reader.pending_offset
+        let frame_stream_id = ((self.reader.pending[offset + 5].to_int() & 0x7f) << 24) |
+          (self.reader.pending[offset + 6].to_int() << 16) |
+          (self.reader.pending[offset + 7].to_int() << 8) |
+          self.reader.pending[offset + 8].to_int()
+        if frame_stream_id > state.stream_id {
+          // Leave a frame for a future stream buffered for the next request.
+          return
+        }
+        let frame = match h2_read_frame(self.reader) {
+          Ok(frame) => frame
+          Err(_) => {
+            self.closed = true
+            return
+          }
+        }
+        // The stream has already ended (or was reset); discard its payload
+        // but keep the connection-level receive window open.
+        if frame.payload.length() > 0 {
+          match h2_send_window_update(self.stream, 0, frame.payload.length()) {
+            Ok(_) => ()
+            Err(_) => {
+              self.closed = true
+              return
+            }
+          }
+        }
+        continue
+      }
       _ => {
         // A PUSH_PROMISE (push is disabled) or CONTINUATION here is always a
         // connection error. Frames for the just-finished stream are likewise
