@@ -792,6 +792,30 @@ test "bracketed IPvFuture hosts cannot use domain cookies" {
 }
 
 ///|
+test "host-only cookies do not leak between DNS names and bracketed literals" {
+  let dns = cookie_test_url("http://v1.foo/")
+  let literal = cookie_test_url("http://[v1.foo]/")
+  let jar = CookieJar::new()
+  jar.store_at(dns, "a=1; Path=/", 1000)
+  assert_eq(jar.cookie_header_at(dns, 1000), Some("a=1"))
+  assert_eq(jar.cookie_header_at(literal, 1000), None)
+
+  let jar = CookieJar::new()
+  jar.store_at(literal, "b=1; Path=/", 1000)
+  assert_eq(jar.cookie_header_at(literal, 1000), Some("b=1"))
+  assert_eq(jar.cookie_header_at(dns, 1000), None)
+
+  // The two authorities also keep distinct host-only cookies with the same
+  // name instead of overwriting each other.
+  let jar = CookieJar::new()
+  jar.store_at(dns, "c=dns; Path=/", 1000)
+  jar.store_at(literal, "c=literal; Path=/", 1000)
+  assert_eq(jar.length(), 2)
+  assert_eq(jar.cookie_header_at(dns, 1000), Some("c=dns"))
+  assert_eq(jar.cookie_header_at(literal, 1000), Some("c=literal"))
+}
+
+///|
 test "cookie domain suffixes never match IP address hosts" {  let jar = CookieJar::new()
   jar.store_at(
     cookie_test_url("http://0.0.1/"),

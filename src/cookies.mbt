@@ -25,6 +25,9 @@ pub struct Cookie {
   path : String
   secure : Bool
   host_only : Bool
+  // Whether the authority used a bracketed IP-literal form. Bracketed
+  // IPvFuture literals look like DNS names but are distinct authorities.
+  bracketed : Bool
   expires_at_ms : UInt64?
   creation : Int32
 } derive(Eq, Debug)
@@ -168,15 +171,20 @@ fn cookie_same_identity(a : Cookie, b : Cookie) -> Bool {
   a.name == b.name &&
   a.domain == b.domain &&
   a.path == b.path &&
-  a.host_only == b.host_only
+  a.host_only == b.host_only &&
+  a.bracketed == b.bracketed
 }
 
 /// Whether two cookies occupy the same name/domain/path slot. The secure
 /// overwrite rule intentionally ignores the host-only flag: a non-secure
 /// origin must not be able to shadow a Secure cookie by flipping how it was
-/// scoped.
+/// scoped. Bracketed literals remain separate from DNS names with the same
+/// text, so they cannot shadow each other.
 fn cookie_same_scope(a : Cookie, b : Cookie) -> Bool {
-  a.name == b.name && a.domain == b.domain && a.path == b.path
+  a.name == b.name &&
+  a.domain == b.domain &&
+  a.path == b.path &&
+  a.bracketed == b.bracketed
 }
 
 ///|
@@ -202,10 +210,20 @@ fn cookie_domain_matches(
   cookie : Cookie,
   host : String,
   literal_host : Bool,
+  bracketed : Bool,
 ) -> Bool {
   let host = cookie_canonical_host(host)
   if cookie.host_only {
-    return host == cookie.domain
+    if host != cookie.domain {
+      return false
+    }
+    // IPv4 and IPv6 literals have a canonical textual form, so their bracketed
+    // and unbracketed spellings denote the same authority. A bracketed
+    // IPvFuture literal, however, looks like a DNS name and must remain
+    // distinct from that DNS name.
+    let bracketed_matters = !is_ipv4_literal(host) &&
+      !is_ipv6_literal_with_zone(host)
+    return !bracketed_matters || cookie.bracketed == bracketed
   }
   // RFC 6265 §5.1.3 only allows domain cookies to match host names, never
   // IP literals. The caller distinguishes bracketed IPvFuture literals (whose
@@ -701,6 +719,7 @@ fn cookie_from_set_cookie(
     path,
     secure,
     host_only,
+    bracketed: url.bracketed,
     expires_at_ms,
     creation: 0,
   })
@@ -882,7 +901,7 @@ pub fn CookieJar::cookie_header_at(
       continue
     }
     alive = alive.prepend(cookie)
-    if cookie_domain_matches(cookie, url.host, literal_host) &&
+    if cookie_domain_matches(cookie, url.host, literal_host, url.bracketed) &&
       cookie_path_matches(cookie.path, request_path) &&
       (!cookie.secure || secure) {
       candidates.push(cookie)
