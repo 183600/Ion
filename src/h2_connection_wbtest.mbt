@@ -556,3 +556,37 @@ test "http2 rejects a server ENABLE_PUSH setting" {
     Err(err) => assert_eq(err, ProtocolError("HTTP/2 server sent ENABLE_PUSH"))
   }
 }
+
+test "http2 client connection reuses one stream for sequential requests" {
+  let first = hpack_encode([(":status", "200"), ("x-request", "first")])
+  let second = hpack_encode([(":status", "201"), ("x-request", "second")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, first),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 3, second),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/one").unwrap())
+  let first_response = connection.request(request).unwrap()
+  assert_eq(first_response.status, 200)
+  assert_eq(first_response.headers.get("x-request"), Some("first"))
+  let second_response = connection.request(request).unwrap()
+  assert_eq(second_response.status, 201)
+  assert_eq(second_response.headers.get("x-request"), Some("second"))
+  assert_true(connection.is_open())
+
+  let frames = h2_test_client_frames(stream)
+  let mut settings_count = 0
+  let header_streams : Array[Int] = []
+  for frame in frames {
+    if frame.frame_type == H2_FRAME_SETTINGS && (frame.flags & H2_FLAG_ACK) == 0 {
+      settings_count = settings_count + 1
+    }
+    if frame.frame_type == H2_FRAME_HEADERS {
+      header_streams.push(frame.stream_id)
+    }
+  }
+  assert_eq(settings_count, 1)
+  assert_eq(header_streams, [1, 3])
+}

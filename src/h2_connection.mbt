@@ -621,12 +621,8 @@ fn h2_write_header_block(
   Ok(())
 }
 
-fn h2_request_with_limit(
-  stream : &Stream,
-  request : Request,
-  max_body_bytes : Int,
-) -> Result[Response, HttpError] {
-  match write_all(stream, h2_preface_bytes) {
+fn H2ClientConnection::send_preface(self : H2ClientConnection) -> Result[Unit, HttpError] {
+  match write_all(self.stream, h2_preface_bytes) {
     Ok(_) => ()
     Err(err) => return Err(http_error_from_net(err))
   }
@@ -635,18 +631,74 @@ fn h2_request_with_limit(
     (H2_SETTINGS_INITIAL_WINDOW_SIZE, H2_MAX_WINDOW_SIZE),
     (H2_SETTINGS_MAX_HEADER_LIST_SIZE, 1048576),
   ])
-  match h2_write_frame(stream, H2_FRAME_SETTINGS, 0, 0, settings) {
+  match h2_write_frame(self.stream, H2_FRAME_SETTINGS, 0, 0, settings) {
     Ok(_) => ()
     Err(err) => return Err(err)
   }
-  match h2_send_window_update(stream, 0, H2_MAX_WINDOW_SIZE - H2_DEFAULT_WINDOW_SIZE) {
-    Ok(_) => ()
-    Err(err) => return Err(err)
-  }
+  h2_send_window_update(
+    self.stream,
+    0,
+    H2_MAX_WINDOW_SIZE - H2_DEFAULT_WINDOW_SIZE,
+  )
+}
 
+/// A persistent HTTP/2 client connection. It owns the client connection
+/// preface, its HPACK decoder, and the next available client-initiated stream
+/// id, so sequential requests can reuse the same TLS/TCP connection without
+/// renegotiating it.
+pub struct H2ClientConnection {
+  stream : &Stream
+  reader : StreamReader
+  decoder : HpackDecoder
+  flow : H2FlowState
+  mut next_stream_id : Int
+}
+
+/// Create a connection and send the client preface and initial SETTINGS. The
+/// preface is flushed with the first request, matching the usual client
+/// behavior of batching the settings and request head.
+pub fn H2ClientConnection::new(stream : &Stream) -> Result[H2ClientConnection, HttpError] {
+  let connection = H2ClientConnection::{
+    stream,
+    reader: StreamReader::new(stream),
+    decoder: HpackDecoder::new(),
+    flow: H2FlowState::new(),
+    next_stream_id: 1,
+  }
+  match connection.send_preface() {
+    Ok(_) => Ok(connection)
+    Err(err) => Err(err)
+  }
+}
+
+/// Whether this connection can still be used for another request.
+fn H2ClientConnection::is_open(self : H2ClientConnection) -> Bool {
+  self.stream.peer_addr() is Ok(_)
+}
+
+/// Close the underlying stream. Closing an already closed connection is a
+/// no-op.
+pub fn H2ClientConnection::close(self : H2ClientConnection) -> Unit {
+  let _ = self.stream.close()
+}
+
+/// Perform one request on this connection, reusing the client connection
+/// preface, HPACK decoder and connection-level flow-control window.
+pub fn H2ClientConnection::request_with_limit(
+  self : H2ClientConnection,
+  request : Request,
+  max_body_bytes : Int,
+) -> Result[Response, HttpError] {
+  if !self.is_open() {
+    return Err(ConnectionClosed)
+  }
   let headers = match h2_request_headers(request) {
     Ok(headers) => headers
     Err(err) => return Err(err)
+  }
+  let stream_id = self.next_stream_id
+  if stream_id < 1 || stream_id > H2_MAX_WINDOW_SIZE {
+    return Err(ProtocolError("HTTP/2 stream id exhausted"))
   }
   let block = hpack_encode(headers)
   let body = match request.body {
@@ -654,20 +706,25 @@ fn h2_request_with_limit(
     None => b""
   }
   let end_stream = body.length() == 0
-  match h2_write_header_block(stream, 1, block, end_stream) {
+  // A new stream starts with the peer's current initial window.
+  self.flow.stream_send_window = self.flow.peer_initial_window
+  match h2_write_header_block(self.stream, stream_id, block, end_stream) {
     Ok(_) => ()
     Err(err) => return Err(err)
   }
   // Make the request visible to the peer before blocking on the response.
-  match stream.flush() {
+  match self.stream.flush() {
     Ok(_) => ()
     Err(err) => return Err(http_error_from_net(err))
   }
 
-  let reader = StreamReader::new(stream)
-  let decoder = HpackDecoder::new()
-  let state = H2ResponseState::new(1, decoder, max_body_bytes, request.method == HEAD)
-  let flow = H2FlowState::new()
+  let state = H2ResponseState::new(
+    stream_id,
+    self.decoder,
+    max_body_bytes,
+    request.method == HEAD,
+  )
+  let flow = self.flow
   let mut sent = 0
   while sent < body.length() && !state.ended {
     let available = if flow.connection_send_window < flow.stream_send_window {
@@ -676,11 +733,11 @@ fn h2_request_with_limit(
       flow.stream_send_window
     }
     if available <= 0 {
-      let frame = match h2_read_frame(reader) {
+      let frame = match h2_read_frame(self.reader) {
         Ok(frame) => frame
         Err(err) => return Err(err)
       }
-      match state.handle_frame(frame, flow, stream) {
+      match state.handle_frame(frame, flow, self.stream) {
         Ok(_) => ()
         Err(err) => return Err(err)
       }
@@ -692,10 +749,10 @@ fn h2_request_with_limit(
     let last = sent + take == body.length()
     let flags = if last { H2_FLAG_END_STREAM } else { 0 }
     match h2_write_frame(
-      stream,
+      self.stream,
       H2_FRAME_DATA,
       flags,
-      1,
+      stream_id,
       body.exact_view(start=sent, end=sent + take).to_owned(),
     ) {
       Ok(_) => ()
@@ -703,7 +760,7 @@ fn h2_request_with_limit(
     }
     // Flush each body frame before the loop may block waiting for a window
     // update or a response frame.
-    match stream.flush() {
+    match self.stream.flush() {
       Ok(_) => ()
       Err(err) => return Err(http_error_from_net(err))
     }
@@ -713,20 +770,41 @@ fn h2_request_with_limit(
   }
 
   while !state.ended {
-    let frame = match h2_read_frame(reader) {
+    let frame = match h2_read_frame(self.reader) {
       Ok(frame) => frame
       Err(err) => return Err(err)
     }
-    match state.handle_frame(frame, flow, stream) {
+    match state.handle_frame(frame, flow, self.stream) {
       Ok(_) => ()
       Err(err) => return Err(err)
     }
   }
-  match stream.flush() {
+  match self.stream.flush() {
     Ok(_) => ()
     Err(err) => return Err(http_error_from_net(err))
   }
+  self.next_stream_id = stream_id + 2
   Ok(h2_make_response(state))
+}
+
+/// Perform one request with the default response body limit.
+pub fn H2ClientConnection::request(
+  self : H2ClientConnection,
+  request : Request,
+) -> Result[Response, HttpError] {
+  self.request_with_limit(request, DEFAULT_MAX_BODY_BYTES)
+}
+
+fn h2_request_with_limit(
+  stream : &Stream,
+  request : Request,
+  max_body_bytes : Int,
+) -> Result[Response, HttpError] {
+  let connection = match H2ClientConnection::new(stream) {
+    Ok(connection) => connection
+    Err(err) => return Err(err)
+  }
+  connection.request_with_limit(request, max_body_bytes)
 }
 
 /// Perform one HTTP/2 request over an ALPN-negotiated stream. The connection
