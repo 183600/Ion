@@ -355,6 +355,32 @@ fn valid_url_host_chars(host : String) -> Bool {
   true
 }
 
+/// Decode percent escapes for unreserved bytes in a DNS reg-name. Escapes
+/// for reserved delimiters are left encoded, so they cannot change the URL
+/// structure after validation.
+fn decode_host_unreserved(host : String) -> String {
+  let data = @utf8.encode(host)
+  let output = Buffer(size_hint=data.length())
+  let mut index = 0
+  while index < data.length() {
+    if data[index] == b'%' && index + 2 < data.length() {
+      let high = hex_char_value(Char::from_int(data[index + 1].to_int()))
+      let low = hex_char_value(Char::from_int(data[index + 2].to_int()))
+      if high >= 0 && low >= 0 {
+        let value = (high << 4) | low
+        if value < 128 && is_unreserved_char(Char::from_int(value)) {
+          output.write_byte(value.to_byte())
+          index = index + 3
+          continue
+        }
+      }
+    }
+    output.write_byte(data[index])
+    index = index + 1
+  }
+  @utf8.decode_lossy(output.to_bytes()[:])
+}
+
 pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
   if url_str.length() == 0 {
     return Err(InvalidUrl("Empty URL"))
@@ -451,6 +477,7 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
   if !bracketed && (host.contains(":") || host.contains("[") || host.contains("]")) {
     return Err(InvalidUrl("Invalid host"))
   }
+  let host = if bracketed { host } else { decode_host_unreserved(host) }
 
   let port = match port_str {
     Some(port_text) => {

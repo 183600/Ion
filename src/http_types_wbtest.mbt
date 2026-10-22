@@ -116,3 +116,11 @@ test "Headers iter yields insertion order" {
   assert_eq(seen, ["A=1", "B=2", "a=3"])
   assert_eq(headers.get_all("A"), @list.List(["1", "3"]))
 }
+
+test "URL decodes unreserved percent escapes in host names" {
+  let url = Url::parse("http://exa%6dple.com/path").unwrap()
+  assert_eq(url.host, "example.com")
+  assert_eq(url.authority(), "example.com")
+  let reserved = Url::parse("http://exa%2Fmple.com/").unwrap()
+  assert_eq(reserved.host, "exa%2Fmple.com")
+}
