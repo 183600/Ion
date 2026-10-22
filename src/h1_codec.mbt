@@ -858,11 +858,20 @@ pub fn H1Codec::decode_response(
       trailers,
     }
     if self.on_complete is Some(_) {
-      if is_head || response_head.status == 101 || response_head.status == 204 ||
-        response_head.status == 205 || response_head.status == 304 {
-        let _ = response_stream.prepare()
+      // Bodyless and zero-length responses can be completed before the caller
+      // sees them. Framing validation still matters: returning a response
+      // whose stream is already poisoned would hide a protocol error from
+      // callers that never read a (non-existent) body.
+      let completed = if is_head || response_head.status == 101 ||
+        response_head.status == 204 || response_head.status == 205 ||
+        response_head.status == 304 {
+        response_stream.prepare()
       } else {
         response_stream.complete_if_empty()
+      }
+      match completed {
+        Ok(_) => ()
+        Err(err) => return Err(http_error_from_net(err))
       }
     }
     let response_stream : &Stream = response_stream
@@ -1470,13 +1479,20 @@ fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
   Ok(())
 }
 
-fn ResponseStream::complete_if_empty(self : ResponseStream) -> Unit {
+fn ResponseStream::complete_if_empty(
+  self : ResponseStream,
+) -> Result[Unit, NetError] {
   if response_transfer_encoding(self.headers) is Ok(TransferEncodingAbsent) &&
     response_content_length(self.headers) is Ok(Some(0)) {
     match self.prepare() {
-      Ok(_) => self.finish()
-      Err(_) => ()
+      Ok(_) => {
+        self.finish()
+        Ok(())
+      }
+      Err(err) => Err(err)
     }
+  } else {
+    Ok(())
   }
 }
 
