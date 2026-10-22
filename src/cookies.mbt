@@ -636,11 +636,13 @@ fn cookie_from_set_cookie(
     return None
   }
   // RFC 6265bis §4.1.3: prefixes let servers ask clients to enforce stronger
-  // guarantees than the cookie syntax alone provides.
-  if name.has_prefix("__Secure-") && !secure {
+  // guarantees than the cookie syntax alone provides. Prefix matching is
+  // case-insensitive so a differently capitalized name cannot bypass them.
+  let lower_name = name.to_lower()
+  if lower_name.has_prefix("__secure-") && !secure {
     return None
   }
-  if name.has_prefix("__Host-") &&
+  if lower_name.has_prefix("__host-") &&
     (!secure ||
       !host_only ||
       !path_attribute_seen ||
