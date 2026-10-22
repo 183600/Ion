@@ -12,6 +12,8 @@ All sources live flat under `src/`:
 - `native_tls.mbt`, `tls_native_stub.c` — native OpenSSL TLS provider.
 - `tls_types.mbt`, `tls_provider.mbt` — TLS config and mock provider.
 - `http_types.mbt`, `h1_codec.mbt` — HTTP types and HTTP/1.1 codec.
+- `h2_codec.mbt`, `h2_hpack.mbt`, `h2_connection.mbt` — HTTP/2 framing,
+  HPACK, and persistent client sessions.
 - `inflate.mbt` — DEFLATE / zlib / gzip decompression (puff-style).
 - `cookies.mbt` — RFC 6265 cookie jar and matching.
 - `proxy.mbt` — HTTP forward proxy and CONNECT tunnel support.
@@ -34,7 +36,8 @@ moon test --target native # native-only tests (FFI, sockets, TLS)
 `native_tls.mbt`. Always also run `moon check --target native` (or
 `--target all`) so the native transport/TLS code is actually checked.
 
-`scripts/typus_cabal_loop.sh` enforces `moon check --target native && moon test`.
+`scripts/typus_cabal_loop.sh` enforces `moon check --target all && moon test &&
+moon test --target native`.
 
 ## Notes
 
