@@ -275,6 +275,9 @@ pub struct Connector {
   proxy : Proxy?
   proxy_bypass : Array[String]
   mut timeout_ms : Int
+  // Separate cap for dialing and the TLS handshake. Zero means "use the
+  // request timeout", preserving the historical single-timeout behavior.
+  mut connect_timeout_ms : Int
   mut max_connections_per_host : Int
   http2 : Bool
   http2_prior_knowledge : Bool
@@ -403,6 +406,7 @@ pub fn Connector::new(dialer : &Dialer, tls_provider : &TlsProvider) -> Connecto
     proxy: None,
     proxy_bypass: [],
     timeout_ms: 30000,
+    connect_timeout_ms: 0,
     max_connections_per_host: 0,
     http2: false,
     http2_prior_knowledge: false,
@@ -423,6 +427,7 @@ fn Connector::detached(self : Connector) -> Connector {
     proxy: self.proxy,
     proxy_bypass: self.proxy_bypass,
     timeout_ms: self.timeout_ms,
+    connect_timeout_ms: self.connect_timeout_ms,
     max_connections_per_host: self.max_connections_per_host,
     http2: self.http2,
     http2_prior_knowledge: self.http2_prior_knowledge,
@@ -444,6 +449,41 @@ pub fn Connector::timeout(self : Connector) -> Int {
   self.timeout_ms
 }
 
+/// Bound connection establishment separately from the response exchange.
+/// A value below 1 keeps using the request timeout. The effective connect
+/// timeout is never longer than the request timeout for that checkout.
+pub fn Connector::with_connect_timeout(
+  self : Connector,
+  timeout_ms : Int,
+) -> Connector {
+  self.connect_timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
+  self
+}
+
+/// The explicit connection-establishment timeout, or `0` when it follows the
+/// request timeout.
+pub fn Connector::connect_timeout(self : Connector) -> Int {
+  self.connect_timeout_ms
+}
+
+/// Combine the request deadline with the optional connect-only deadline.
+/// Zero means "unbounded" for the request timeout, so it must not win against
+/// a finite connect timeout.
+fn effective_connect_timeout(
+  request_timeout_ms : Int,
+  connect_timeout_ms : Int,
+) -> Int {
+  if connect_timeout_ms <= 0 {
+    request_timeout_ms
+  } else if request_timeout_ms <= 0 {
+    connect_timeout_ms
+  } else if connect_timeout_ms < request_timeout_ms {
+    connect_timeout_ms
+  } else {
+    request_timeout_ms
+  }
+}
+
 /// Use a shared TLS configuration for every HTTPS connection.
 /// Existing pooled connections were established with the previous
 /// configuration, so they must not be reused.
@@ -457,6 +497,7 @@ pub fn Connector::with_tls_config(self : Connector, config : TlsConfig) -> Conne
     proxy: self.proxy,
     proxy_bypass: self.proxy_bypass,
     timeout_ms: self.timeout_ms,
+    connect_timeout_ms: self.connect_timeout_ms,
     max_connections_per_host: self.max_connections_per_host,
     http2: self.http2,
     http2_prior_knowledge: self.http2_prior_knowledge,
@@ -478,6 +519,7 @@ pub fn Connector::with_proxy(self : Connector, proxy : Proxy) -> Connector {
     proxy: Some(proxy),
     proxy_bypass: self.proxy_bypass,
     timeout_ms: self.timeout_ms,
+    connect_timeout_ms: self.connect_timeout_ms,
     max_connections_per_host: self.max_connections_per_host,
     http2: self.http2,
     http2_prior_knowledge: self.http2_prior_knowledge,
@@ -1344,8 +1386,26 @@ fn establish_tunnel(
 /// `checkout`, which returns a lease that recycles the stream when the
 /// exchange finishes.
 pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpError] {
-  match self.connect_impl(url, true, false, self.timeout_ms) {
-    Ok((stream, _, _, _)) => Ok(stream)
+  let request_timeout = self.timeout_ms
+  let connect_timeout = effective_connect_timeout(
+    request_timeout,
+    self.connect_timeout_ms,
+  )
+  match self.connect_impl(url, true, false, connect_timeout) {
+    Ok((stream, reused, _, _)) => {
+      // The connect timeout only bounds dialing and the TLS handshake; restore
+      // the request timeout for the bytes exchanged after the connection is up.
+      if !reused {
+        match stream.set_timeout(request_timeout) {
+          Ok(_) => ()
+          Err(err) => {
+            let _ = stream.close()
+            return Err(http_error_from_net(err))
+          }
+        }
+      }
+      Ok(stream)
+    }
     Err(err) => Err(err)
   }
 }
@@ -1604,13 +1664,21 @@ pub fn Connector::checkout(
   url : Url,
   timeout_ms? : Int,
 ) -> Result[(&Stream, ConnectionLease), HttpError] {
-  let timeout_ms = timeout_ms.unwrap_or(self.timeout_ms)
+  let request_timeout = timeout_ms.unwrap_or(self.timeout_ms)
+  let connect_timeout = effective_connect_timeout(
+    request_timeout,
+    self.connect_timeout_ms,
+  )
+  // A newly dialed stream still carries the connect-only deadline. The
+  // checked-out caller applies its request timeout before writing anything;
+  // doing it here would consume a timeout-retry opportunity and hide a stale
+  // stream from the request layer.
   let conn_key = self.connection_key(url)
   let (stream, reused, negotiated_protocol, h2) = match self.connect_impl(
     url,
     false,
     true,
-    timeout_ms,
+    connect_timeout,
   ) {
     Ok(connection) => connection
     Err(err) => return Err(err)

@@ -9,6 +9,7 @@ pub struct UnifiedClient {
 pub struct ClientOptions {
   user_agent : String
   timeout_ms : Int
+  connect_timeout_ms : Int
   follow_redirects : Bool
   max_redirects : Int
   max_response_body_bytes : Int
@@ -20,6 +21,7 @@ pub fn ClientOptions::new() -> ClientOptions {
   ClientOptions::{
     user_agent: "Feather/0.1.0",
     timeout_ms: 30000,
+    connect_timeout_ms: 0,
     follow_redirects: true,
     max_redirects: 10,
     max_response_body_bytes: DEFAULT_MAX_BODY_BYTES,
@@ -34,6 +36,18 @@ pub fn ClientOptions::with_user_agent(self : ClientOptions, user_agent : String)
 
 pub fn ClientOptions::with_timeout(self : ClientOptions, timeout_ms : Int) -> ClientOptions {
   ClientOptions::{ ..self, timeout_ms: if timeout_ms < 0 { 0 } else { timeout_ms } }
+}
+
+/// Bound dialing and the TLS handshake separately from the response exchange.
+/// A value below 1 keeps using the request timeout for connection setup.
+pub fn ClientOptions::with_connect_timeout(
+  self : ClientOptions,
+  connect_timeout_ms : Int,
+) -> ClientOptions {
+  ClientOptions::{
+    ..self,
+    connect_timeout_ms: if connect_timeout_ms < 0 { 0 } else { connect_timeout_ms },
+  }
 }
 
 pub fn ClientOptions::with_follow_redirects(self : ClientOptions, follow_redirects : Bool) -> ClientOptions {
@@ -106,6 +120,7 @@ pub fn UnifiedClient::new() -> UnifiedClient {
   let tls_provider = default_client_tls_provider()
   let connector = Connector::new(dialer, tls_provider)
     .with_timeout(options.timeout_ms)
+    .with_connect_timeout(options.connect_timeout_ms)
     .with_http2(options.http2)
     .with_http2_prior_knowledge(options.http2_prior_knowledge)
 
@@ -122,6 +137,7 @@ pub fn UnifiedClient::with_options(options : ClientOptions) -> UnifiedClient {
   let tls_provider = default_client_tls_provider()
   let connector = Connector::new(dialer, tls_provider)
     .with_timeout(options.timeout_ms)
+    .with_connect_timeout(options.connect_timeout_ms)
     .with_http2(options.http2)
     .with_http2_prior_knowledge(options.http2_prior_knowledge)
 
@@ -138,7 +154,8 @@ pub fn UnifiedClient::client_options(self : UnifiedClient) -> ClientOptions {
 }
 
 /// Change the per-request timeout used when a request does not override it.
-/// This also changes the timeout applied to future dials and TLS handshakes.
+/// This also bounds future dials and TLS handshakes unless a separate
+/// connect timeout is configured.
 pub fn UnifiedClient::with_timeout(self : UnifiedClient, timeout_ms : Int) -> UnifiedClient {
   let timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
   let connector = Connector::{ ..self.connector.detached(), timeout_ms }
@@ -148,6 +165,22 @@ pub fn UnifiedClient::with_timeout(self : UnifiedClient, timeout_ms : Int) -> Un
     // this timeout before each dial.
     connector,
     options: ClientOptions::{ ..self.options, timeout_ms },
+    redirect_count: 0,
+  }
+}
+
+/// Bound dialing and the TLS handshake without shortening the response
+/// exchange timeout. A value below 1 makes connection setup follow the
+/// request timeout.
+pub fn UnifiedClient::with_connect_timeout(
+  self : UnifiedClient,
+  connect_timeout_ms : Int,
+) -> UnifiedClient {
+  let connect_timeout_ms = if connect_timeout_ms < 0 { 0 } else { connect_timeout_ms }
+  let connector = Connector::{ ..self.connector.detached(), connect_timeout_ms }
+  UnifiedClient::{
+    connector,
+    options: ClientOptions::{ ..self.options, connect_timeout_ms },
     redirect_count: 0,
   }
 }
@@ -244,6 +277,7 @@ pub fn UnifiedClient::with_transport(
   UnifiedClient::{
     connector: Connector::new(dialer, tls_provider)
       .with_timeout(options.timeout_ms)
+      .with_connect_timeout(options.connect_timeout_ms)
       .with_http2(options.http2)
       .with_http2_prior_knowledge(options.http2_prior_knowledge),
     options,
