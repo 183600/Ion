@@ -455,6 +455,20 @@ test "cookie expiry dates with one unknown token are ignored" {
   assert_eq(jar.cookie_header_at(url, after_2030), Some("extra=1"))
 }
 
+test "cookie expiry ignores only a leading weekday token" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("http://example.com/")
+  // The weekday-looking token in the middle is not the ignored leading
+  // weekday, so the date is invalid and the cookie becomes a session cookie.
+  jar.store_at(
+    url,
+    "mid=1; Expires=09 Mon Jun 2021 10:00:00 GMT; Path=/",
+    0,
+  )
+  let after_2030 : UInt64 = 2000000000000L.to_uint64()
+  assert_eq(jar.cookie_header_at(url, after_2030), Some("mid=1"))
+}
+
 test "pre-epoch expiry dates delete cookies" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")

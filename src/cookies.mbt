@@ -419,11 +419,17 @@ fn cookie_parse_date(value : String) -> UInt64? {
     return None
   }
   let raw_tokens = cookie_date_tokens(text)
+  // RFC 6265 §5.1.1 ignores a leading weekday token only. A weekday-looking
+  // token anywhere else is an unexpected token and invalidates the date.
+  let mut first = 0
+  if raw_tokens.length() > 0 && cookie_weekday(raw_tokens[0]) {
+    first = 1
+  }
   let tokens : Array[String] = []
-  for token in raw_tokens {
-    if !cookie_weekday(token) {
-      tokens.push(token)
-    }
+  let mut token_index = first
+  while token_index < raw_tokens.length() {
+    tokens.push(raw_tokens[token_index])
+    token_index = token_index + 1
   }
   if tokens.length() < 2 || tokens.length() > 5 {
     return None
