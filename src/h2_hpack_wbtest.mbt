@@ -176,3 +176,10 @@ test "hpack accepts strings and header counts within the advertised list size" {
   let decoded = HpackDecoder::new().decode(hpack_encode(fields)).unwrap()
   assert_eq(decoded.length(), 1001)
 }
+
+test "hpack rejects invalid UTF-8 string octets instead of replacing them" {
+  match HpackDecoder::new().decode(hpack_test_hex("00017801e9")) {
+    Ok(_) => fail("invalid UTF-8 HPACK string was accepted")
+    Err(err) => assert_eq(err, ProtocolError("Invalid UTF-8 in HPACK string"))
+  }
+}

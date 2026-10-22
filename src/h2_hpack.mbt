@@ -179,6 +179,17 @@ fn hpack_huffman_table() -> (Array[Array[Int]], Array[Int]) {
   (children, symbols)
 }
 
+/// Decode the octets of an HPACK string field. HTTP/2 field values are byte
+/// sequences; this library stores them as UTF-8 strings, so reject malformed
+/// UTF-8 instead of silently replacing octets with U+FFFD.
+fn hpack_string_from_bytes(data : BytesView) -> Result[String, HttpError] {
+  try {
+    Ok(@utf8.decode(data))
+  } catch {
+    _ => Err(ProtocolError("Invalid UTF-8 in HPACK string"))
+  }
+}
+
 fn hpack_huffman_decode(data : BytesView) -> Result[String, HttpError] {
   let (children, symbols) = hpack_huffman_table()
   let output = Buffer(size_hint=data.length() * 2)
@@ -217,9 +228,8 @@ fn hpack_huffman_decode(data : BytesView) -> Result[String, HttpError] {
       return Err(ProtocolError("Invalid HPACK Huffman padding"))
     }
   }
-  Ok(@utf8.decode_lossy(output.to_bytes()[:]))
+  hpack_string_from_bytes(output.to_bytes()[:])
 }
-
 fn hpack_read_integer(
   data : Bytes,
   offset : Int,
@@ -286,7 +296,10 @@ fn hpack_read_string(data : Bytes, offset : Int) -> Result[(String, Int), HttpEr
       Err(err) => Err(err)
     }
   } else {
-    Ok((@utf8.decode_lossy(raw), end))
+    match hpack_string_from_bytes(raw) {
+      Ok(value) => Ok((value, end))
+      Err(err) => Err(err)
+    }
   }
 }
 
