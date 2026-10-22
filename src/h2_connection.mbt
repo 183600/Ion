@@ -829,6 +829,21 @@ pub fn H2ClientConnection::request_with_limit(
       }
     }
   }
+  // An early final response (for example 413 or 401) leaves the request side
+  // of this stream half-open. Reset the stream instead of returning the
+  // connection to the pool with an unfinished upload.
+  if sent < body.length() {
+    match h2_write_frame(
+      self.stream,
+      H2_FRAME_RST_STREAM,
+      0,
+      stream_id,
+      b"\x00\x00\x00\x08",
+    ) {
+      Ok(_) => ()
+      Err(_) => self.closed = true
+    }
+  }
   match self.stream.flush() {
     Ok(_) => ()
     Err(err) => return Err(http_error_from_net(err))

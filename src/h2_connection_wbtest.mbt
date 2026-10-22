@@ -668,3 +668,28 @@ test "http2 rejects ambiguous path and query delimiters" {
   let request = Request::new(GET, url.with_query("a#b"))
   assert_eq(h2_request_headers(request), Err(InvalidUrl("Invalid request target")))
 }
+
+test "http2 resets the request stream after an early response" {
+  let response_headers = hpack_encode([(":status", "413"), ("content-length", "0")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let request = Request::new(POST, Url::parse("https://example.com/upload").unwrap())
+    .with_body(Bytes::make(70000, b'x'))
+  let response = h2_request(stream, request).unwrap()
+  assert_eq(response.status, 413)
+
+  let frames = h2_test_client_frames(stream)
+  let mut reset : H2Frame? = None
+  for frame in frames {
+    if frame.frame_type == H2_FRAME_RST_STREAM && frame.stream_id == 1 {
+      reset = Some(frame)
+    }
+  }
+  match reset {
+    Some(frame) => assert_eq(frame.payload, b"\x00\x00\x00\x08")
+    None => fail("unfinished HTTP/2 request stream was not reset")
+  }
+}
