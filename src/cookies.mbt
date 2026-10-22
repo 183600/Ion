@@ -814,6 +814,10 @@ fn cookie_from_set_cookie(
           // host, so the whole cookie is ignored.
           return None
         }
+        // Compare and store IP literals in one canonical spelling, so an
+        // expanded Domain attribute still matches a compressed request host
+        // (and vice versa).
+        let candidate = cookie_canonical_host(candidate)
         let single_label = !candidate.contains(".")
         if single_label && candidate != host {
           // A single-label Domain such as "com" is a public suffix, not a
