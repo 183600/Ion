@@ -688,12 +688,20 @@ struct ResponseHead {
 }
 
 const MAX_RESPONSE_HEADERS : Int = 200
+/// Bound the whole response head, not just each line: 200 lines of 8 KiB
+/// would otherwise allow a peer to make the client buffer more than a
+/// megabyte before the body framing is even known.
+const MAX_RESPONSE_HEAD_BYTES : Int = 1048576
 
 fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] {
   let response_line = match read_line(reader) {
     Ok(Some(line)) => line
     Ok(None) => return Err(ProtocolError("Invalid response line"))
     Err(err) => return Err(NetworkError(err))
+  }
+  let mut head_bytes = @utf8.encode(response_line).length() + 2
+  if head_bytes > MAX_RESPONSE_HEAD_BYTES {
+    return Err(ProtocolError("Response header section too large"))
   }
   let first_space = match response_line.find(" ") {
     Some(index) => index
@@ -744,6 +752,10 @@ fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] 
     }
     if line.length() == 0 {
       break
+    }
+    head_bytes = head_bytes + @utf8.encode(line).length() + 2
+    if head_bytes > MAX_RESPONSE_HEAD_BYTES {
+      return Err(ProtocolError("Response header section too large"))
     }
     // Obsolete line folding is ambiguous and must not be accepted.
     if line.get_char(0) == Some(' ') || line.get_char(0) == Some('\t') {
@@ -1117,6 +1129,7 @@ fn consume_chunk_trailers(
   trailers : @ref.Ref[Headers],
 ) -> Result[Unit, NetError] {
   let mut trailer_count = 0
+  let mut trailer_bytes = 0
   let mut collected = Headers::new()
   while true {
     let trailer = match read_line(reader) {
@@ -1127,6 +1140,10 @@ fn consume_chunk_trailers(
     if trailer.length() == 0 {
       trailers.val = collected
       return Ok(())
+    }
+    trailer_bytes = trailer_bytes + @utf8.encode(trailer).length() + 2
+    if trailer_bytes > MAX_RESPONSE_HEAD_BYTES {
+      return Err(NetError::ReadError("chunked trailer section too large"))
     }
     if trailer.get_char(0) == Some(' ') || trailer.get_char(0) == Some('\t') {
       return Err(NetError::ReadError("invalid chunked trailer"))

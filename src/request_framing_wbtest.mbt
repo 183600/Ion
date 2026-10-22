@@ -214,6 +214,50 @@ test "204 and 205 reject framing that implies a body" {
 }
 
 ///|
+test "the whole response header section is bounded" {
+  let raw = Buffer(size_hint=1100000)
+  raw.write_bytes(@utf8.encode("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n"))
+  let padding = "a".repeat(8000)
+  let mut index = 0
+  while index < 135 {
+    raw.write_bytes(@utf8.encode("X-Pad-" + index.to_string() + ": " + padding + "\r\n"))
+    index = index + 1
+  }
+  raw.write_bytes(@utf8.encode("\r\n"))
+  let text = @utf8.decode(raw.to_bytes()[:])
+  let codec = H1Codec::new(regression_mock_stream(text, 65536, 65536))
+  match codec.decode_response() {
+    Ok(_) => fail("oversized response header section was accepted")
+    Err(err) => assert_eq(err, ProtocolError("Response header section too large"))
+  }
+}
+
+///|
+test "the whole chunked trailer section is bounded" {
+  let raw = Buffer(size_hint=1100000)
+  raw.write_bytes(
+    @utf8.encode(
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n",
+    ),
+  )
+  let padding = "a".repeat(8000)
+  let mut index = 0
+  while index < 135 {
+    raw.write_bytes(@utf8.encode("X-Trailer-" + index.to_string() + ": " + padding + "\r\n"))
+    index = index + 1
+  }
+  raw.write_bytes(@utf8.encode("\r\n"))
+  let text = @utf8.decode(raw.to_bytes()[:])
+  let response = H1Codec::new(
+    regression_mock_stream(text, 65536, 65536),
+  ).decode_response().unwrap()
+  match response.read_body() {
+    Ok(_) => fail("oversized chunked trailer section was accepted")
+    Err(err) => assert_true(err is NetworkError(ReadError(_)))
+  }
+}
+
+///|
 test "304 responses with transfer coding are not pooled" {
   let raw = "HTTP/1.1 304 Not Modified\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
   let stream = regression_mock_stream(raw, 1, 0)
