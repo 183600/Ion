@@ -167,6 +167,9 @@ fn windows_1252_codepoint(byte : Int) -> Int {
     0x9C => 0x0153
     0x9E => 0x017E
     0x9F => 0x0178
+    // Windows-1252 leaves these positions undefined. A single-byte decoder
+    // reports them as errors (U+FFFD) instead of exposing the C1 control code.
+    0x81 | 0x8D | 0x8F | 0x90 | 0x9D => 0xFFFD
     _ => byte
   }
 }
