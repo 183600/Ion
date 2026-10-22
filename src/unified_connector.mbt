@@ -1399,16 +1399,16 @@ pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpEr
     self.connect_timeout_ms,
   )
   match self.connect_impl(url, true, false, connect_timeout) {
-    Ok((stream, reused, _, _)) => {
+    Ok((stream, _reused, _, _)) => {
       // The connect timeout only bounds dialing and the TLS handshake; restore
       // the request timeout for the bytes exchanged after the connection is up.
-      if !reused {
-        match stream.set_timeout(request_timeout) {
-          Ok(_) => ()
-          Err(err) => {
-            let _ = stream.close()
-            return Err(http_error_from_net(err))
-          }
+      // A pooled stream may still carry the timeout from its previous request,
+      // so apply the current request timeout even when it was reused.
+      match stream.set_timeout(request_timeout) {
+        Ok(_) => ()
+        Err(err) => {
+          let _ = stream.close()
+          return Err(http_error_from_net(err))
         }
       }
       Ok(stream)

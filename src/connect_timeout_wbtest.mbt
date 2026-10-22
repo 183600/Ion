@@ -56,3 +56,21 @@ test "connector restores the request timeout after a connect-only deadline" {
   assert_eq(stream.last_timeout, 5000)
   let _ = connector.close_all()
 }
+
+///|
+test "connector reapplies the request timeout when reusing a pooled stream" {
+  let stream = regression_mock_stream("", 0, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+    .with_timeout(5000)
+  let url = Url::parse("http://example.com/").unwrap()
+  let _ = connector.connect(url).unwrap()
+  // Simulate a previous checkout with a shorter per-request timeout, then a
+  // reconnect using the connector's current (longer) request timeout.
+  assert_true(stream.set_timeout(250) is Ok(_))
+  let _ = connector.with_timeout(9000)
+  let _ = connector.connect(url).unwrap()
+  assert_eq(dialer.count, 1)
+  assert_eq(stream.last_timeout, 9000)
+  let _ = connector.close_all()
+}
