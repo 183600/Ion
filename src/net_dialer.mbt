@@ -29,23 +29,7 @@ fn valid_tcp_port(port : Int) -> Bool {
 
 #cfg(target="native")
 fn decode_zone_percent(zone : String) -> String {
-  let bytes = @utf8.encode(zone)
-  let output = @buffer.new()
-  let mut index = 0
-  while index < bytes.length() {
-    if bytes[index] == b'%' && index + 2 < bytes.length() {
-      let high = proxy_hex_value(bytes[index + 1])
-      let low = proxy_hex_value(bytes[index + 2])
-      if high >= 0 && low >= 0 {
-        output.write_byte(((high * 16 + low).to_byte()))
-        index = index + 3
-        continue
-      }
-    }
-    output.write_byte(bytes[index])
-    index = index + 1
-  }
-  @utf8.decode_lossy(output.to_bytes()[:])
+  @utf8.decode_lossy(percent_decode_bytes(zone)[:])
 }
 
 #cfg(target="native")

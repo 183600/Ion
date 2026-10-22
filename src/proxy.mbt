@@ -9,19 +9,6 @@ pub struct Proxy {
   authorization : String?
 } derive(Eq, Debug)
 
-fn proxy_hex_value(byte : Byte) -> Int {
-  if byte >= b'0' && byte <= b'9' {
-    return byte.to_int() - b'0'.to_int()
-  }
-  if byte >= b'a' && byte <= b'f' {
-    return byte.to_int() - b'a'.to_int() + 10
-  }
-  if byte >= b'A' && byte <= b'F' {
-    return byte.to_int() - b'A'.to_int() + 10
-  }
-  -1
-}
-
 fn proxy_userinfo(url : String) -> String? {
   let scheme_end = match url.find("://") {
     Some(index) => index
