@@ -326,6 +326,11 @@ fn valid_url_host_chars(host : String) -> Bool {
       Some(ch) => ch
       None => return false
     }
+    // RFC 3986 reg-name is ASCII. This client does not implement IDNA, so a
+    // raw non-ASCII host cannot be resolved or safely written to `Host`.
+    if ch > '\u{7f}' {
+      return false
+    }
     if ch <= ' ' || ch == '\u{7f}' || ch == '/' || ch == '?' || ch == '#' ||
       ch == '@' || ch == '[' || ch == ']' || ch == '\\' || ch == '"' ||
       ch == '<' || ch == '>' || ch == '^' || ch == '\u{60}' || ch == '{' ||

@@ -17,6 +17,18 @@ test "astral characters in host names remain rejected" {
   assert_true(Url::parse("http://example.com/") is Ok(_))
 }
 
+test "raw non-ASCII host names are rejected consistently" {
+  for url in [
+    "http://éxample.com/",
+    "http://exa中mple.com/",
+    "http://example.comé/",
+  ] {
+    assert_true(Url::parse(url) is Err(_))
+  }
+  // Paths, queries, and fragments still accept non-ASCII text.
+  assert_true(Url::parse("http://example.com/é?q=中") is Ok(_))
+}
+
 test "response Connection values with astral characters do not panic" {
   let raw = "HTTP/1.1 200 OK\r\nConnection: 🙂, keep-alive\r\nContent-Length: 2\r\n\r\nok"
   let stream = regression_mock_stream(raw, 1, 0)
