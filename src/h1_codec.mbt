@@ -1,12 +1,3 @@
-/// A request body held back until the peer accepts `Expect: 100-continue`.
-/// Keeping the framing decision here means the body is sent exactly once and
-/// with the same transfer coding that the request head advertised.
-struct DeferredRequestBody {
-  body : Bytes
-  trailers : Headers
-  chunked : Bool
-}
-
 /// HTTP/1.1 codec for encoding requests and decoding responses
 pub struct H1Codec {
   stream : &Stream
@@ -18,7 +9,10 @@ pub struct H1Codec {
   mut close_after_request : Bool
   // Set when a request head carried `Expect: 100-continue` and the body has
   // not been written yet. `decode_response` sends it after an interim 100.
-  mut deferred_body : DeferredRequestBody?
+  priv mut deferred_pending : Bool
+  priv mut deferred_body_bytes : Bytes
+  priv mut deferred_trailers : Headers
+  priv mut deferred_chunked : Bool
   max_body_bytes : Int
   on_complete : ((Bool) -> Unit)?
 }
@@ -63,7 +57,10 @@ fn H1Codec::make(
     last_is_head: false,
     last_is_connect: false,
     close_after_request: false,
-    deferred_body: None,
+    deferred_pending: false,
+    deferred_body_bytes: b"",
+    deferred_trailers: Headers::new(),
+    deferred_chunked: false,
     max_body_bytes: limit,
     on_complete,
   }
@@ -543,7 +540,7 @@ pub fn H1Codec::encode_request(
   self.last_is_head = false
   self.last_is_connect = false
   self.close_after_request = false
-  self.deferred_body = None
+  self.deferred_pending = false
   if !valid_url_path_chars(req.url.path) ||
     !valid_url_query_chars(req.url.query) {
     return Err(InvalidUrl("Invalid request target"))
@@ -702,11 +699,10 @@ pub fn H1Codec::encode_request(
   let defer_body = headers_have_token(req.headers, "Expect", "100-continue") &&
     (body.length() > 0 || chunked || has_trailers)
   if defer_body {
-    self.deferred_body = Some(DeferredRequestBody::{
-      body,
-      trailers: req.trailers,
-      chunked,
-    })
+    self.deferred_body_bytes = body
+    self.deferred_trailers = req.trailers
+    self.deferred_chunked = chunked
+    self.deferred_pending = true
   } else {
     match write_request_body(self.stream, body, req.trailers, chunked) {
       Ok(_) => ()
@@ -893,8 +889,11 @@ pub fn H1Codec::decode_response(
   // A deferred body belongs to the request that produced the response being
   // read now. Take it out of the codec so an error, a final response without
   // 100, or a reused codec can never send it with a later exchange.
-  let deferred_body = self.deferred_body
-  self.deferred_body = None
+  let deferred_pending = self.deferred_pending
+  let deferred_body_bytes = self.deferred_body_bytes
+  let deferred_trailers = self.deferred_trailers
+  let deferred_chunked = self.deferred_chunked
+  self.deferred_pending = false
   let mut deferred_body_sent = false
   let mut informational_count = 0
   while true {
@@ -913,26 +912,21 @@ pub fn H1Codec::decode_response(
     }
     // A 100 Continue accepts the deferred request content. Other interim
     // responses (such as 103 Early Hints) do not, so the body stays pending.
-    if response_head.status == 100 && !deferred_body_sent {
-      match deferred_body {
-        Some(pending) => {
-          match write_request_body(
-            self.reader.val.stream,
-            pending.body,
-            pending.trailers,
-            pending.chunked,
-          ) {
-            Ok(_) => ()
-            Err(err) => return Err(NetworkError(err))
-          }
-          match self.reader.val.stream.flush() {
-            Ok(_) => ()
-            Err(err) => return Err(NetworkError(err))
-          }
-          deferred_body_sent = true
-        }
-        None => ()
+    if response_head.status == 100 && !deferred_body_sent && deferred_pending {
+      match write_request_body(
+        self.reader.val.stream,
+        deferred_body_bytes,
+        deferred_trailers,
+        deferred_chunked,
+      ) {
+        Ok(_) => ()
+        Err(err) => return Err(NetworkError(err))
       }
+      match self.reader.val.stream.flush() {
+        Ok(_) => ()
+        Err(err) => return Err(NetworkError(err))
+      }
+      deferred_body_sent = true
     }
     // Skip interim responses such as 100 Continue; 101 is a final response.
     if response_head.status >= 100 && response_head.status < 200 &&
