@@ -8,6 +8,10 @@
 const HPACK_STATIC_SIZE : Int = 61
 const HPACK_DEFAULT_TABLE_SIZE : Int = 4096
 const HPACK_MAX_STRING_BYTES : Int = 1048576
+// Encoding very large literals one bit at a time costs more CPU than it saves
+// on the wire, and headers near the frame limit are already exceptional. Leave
+// oversized values in their raw form so framing behavior stays predictable.
+const HPACK_HUFFMAN_INPUT_LIMIT : Int = 8192
 const HPACK_MAX_HEADER_LIST_BYTES : Int = 1048576
 // The list-size accounting already bounds the field count (every entry costs
 // at least 32 octets), so this is only a defensive upper bound.
@@ -513,10 +517,55 @@ fn hpack_write_integer(
   output.write_byte(remaining.to_byte())
 }
 
+/// Huffman-encode the UTF-8 octets of a string using the RFC 7541 code table.
+/// The final partial byte is padded with the most significant bits set to one,
+/// as required by §5.2. The encoder appends one bit at a time so it never has
+/// to hold more than a single output octet in an integer accumulator.
+fn hpack_huffman_encode(value : String) -> Bytes {
+  let encoded = @utf8.encode(value)
+  let output = Buffer(size_hint=encoded.length())
+  let mut current = 0
+  let mut used = 0
+  for byte in encoded {
+    let symbol = byte.to_int()
+    let code = hpack_huffman_codes[symbol]
+    let length = hpack_huffman_lengths[symbol]
+    let mut bit = length - 1
+    while bit >= 0 {
+      current = (current << 1) | ((code >> bit) & 1)
+      used = used + 1
+      if used == 8 {
+        output.write_byte(current.to_byte())
+        current = 0
+        used = 0
+      }
+      bit = bit - 1
+    }
+  }
+  if used > 0 {
+    let padding = 8 - used
+    current = (current << padding) | ((1 << padding) - 1)
+    output.write_byte(current.to_byte())
+  }
+  output.to_bytes()
+}
+
 fn hpack_write_string(output : Buffer, value : String) -> Unit {
   let encoded = @utf8.encode(value)
-  hpack_write_integer(output, 0, 7, encoded.length())
-  output.write_bytes(encoded)
+  // The H bit distinguishes a Huffman-coded literal from raw octets. Use the
+  // shorter representation; for very short values the raw form often wins.
+  let huffman = if encoded.length() <= HPACK_HUFFMAN_INPUT_LIMIT {
+    hpack_huffman_encode(value)
+  } else {
+    b""
+  }
+  if huffman.length() > 0 && huffman.length() < encoded.length() {
+    hpack_write_integer(output, 0x80, 7, huffman.length())
+    output.write_bytes(huffman)
+  } else {
+    hpack_write_integer(output, 0, 7, encoded.length())
+    output.write_bytes(encoded)
+  }
 }
 
 /// Encode one header field without adding it to a dynamic table.
