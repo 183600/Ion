@@ -1295,13 +1295,21 @@ fn parse_connect_response_head(head : Bytes) -> Result[Int, HttpError] {
     if !valid_header_value(raw_value) {
       return Err(ProtocolError("Invalid proxy CONNECT response headers"))
     }
-    // Interim responses cannot carry content, so framing fields would be
-    // meaningless and could otherwise desynchronize the tunnel parsing.
+    // Interim responses cannot carry content, and a successful CONNECT
+    // response is followed by opaque tunnel bytes rather than an HTTP body
+    // (RFC 9110 §9.3.6). Framing fields in either case would be meaningless
+    // and could desynchronize the tunnel parsing, so reject them instead of
+    // silently treating the advertised body as tunnel data.
     let lower_name = name.to_lower()
-    if status < 200 &&
+    if (status < 200 || (status >= 200 && status < 300)) &&
       (lower_name == "content-length" || lower_name == "transfer-encoding") {
+      if status < 200 {
+        return Err(ProtocolError(
+          "Informational proxy response must not include framing headers",
+        ))
+      }
       return Err(ProtocolError(
-        "Informational proxy response must not include framing headers",
+        "Successful CONNECT response must not include framing headers",
       ))
     }
     index = index + 1

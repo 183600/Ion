@@ -80,3 +80,19 @@ test "connector preserves bracketed IPvFuture literals when dialing" {
   assert_eq(dialer.host, "[v1.foo]")
   assert_eq(dialer.port, 80)
 }
+
+///|
+test "CONNECT response parsing rejects framing headers on successful responses" {
+  for header in ["Content-Length: 0", "Transfer-Encoding: chunked"] {
+    let raw = "HTTP/1.1 200 Connection Established\r\n" +
+      header +
+      "\r\n\r\nTUNNEL"
+    let stream = regression_mock_stream(raw, 0, 0)
+    match read_connect_response(stream) {
+      Ok(_) => fail("successful CONNECT response with framing headers was accepted")
+      Err(ProtocolError(message)) =>
+        assert_true(message.contains("CONNECT response"))
+      Err(_) => fail("unexpected CONNECT response error")
+    }
+  }
+}
