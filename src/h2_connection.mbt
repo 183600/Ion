@@ -1210,6 +1210,11 @@ fn H2LiveBodyStream::finish(self : H2LiveBodyStream, reusable : Bool) -> Unit {
   self.completed = true
   if self.state.ended {
     self.trailers.val = self.state.trailers
+    // A graceful GOAWAY after this stream was accepted still forbids opening
+    // another stream on the connection. Do not let the lease pool it.
+    if self.state.goaway_last_stream_id is Some(_) {
+      self.connection.closed = true
+    }
   }
   match self.on_complete {
     Some(callback) => callback(reusable)

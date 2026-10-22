@@ -186,3 +186,28 @@ test "a streaming HTTP/2 body prevents overlapping exchanges" {
   assert_eq(next.status, 201)
   assert_eq(next.text().unwrap(), "")
 }
+
+///|
+test "streaming HTTP/2 body does not reuse a session after GOAWAY" {
+  let headers = hpack_encode([(":status", "200"), ("content-length", "2")])
+  let goaway = h2_test_frame(
+    H2_FRAME_GOAWAY,
+    0,
+    0,
+    b"\x00\x00\x00\x01\x00\x00\x00\x00",
+  )
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, headers),
+    goaway,
+    h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, b"ok"),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/goaway").unwrap())
+  let response = connection.request_streaming(request).unwrap()
+  assert_eq(response.text().unwrap(), "ok")
+  assert_false(connection.is_open())
+  let _ = connection.close()
+  assert_false(stream.is_open)
+}
