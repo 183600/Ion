@@ -683,6 +683,14 @@ fn H2ResponseState::handle_frame(
               let _ = stream.flush()
               return Err(ProtocolError("HTTP/2 stream WINDOW_UPDATE increment is zero"))
             } else if frame.stream_id < self.stream_id {
+              if !h2_is_client_stream(frame.stream_id) {
+                // Server-push streams are never valid here because push is
+                // disabled. Do not silently ignore a malformed update for one,
+                // even when its increment is zero.
+                return Err(ProtocolError(
+                  "HTTP/2 WINDOW_UPDATE on a server-push stream",
+                ))
+              }
               // The stream has already ended; the update has no effect.
               return Ok(())
             }
