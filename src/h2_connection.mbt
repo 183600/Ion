@@ -246,6 +246,10 @@ fn h2_apply_settings(
       }
       flow.stream_send_window = flow.stream_send_window + (value - flow.peer_initial_window)
       flow.peer_initial_window = value
+    } else if identifier == H2_SETTINGS_MAX_FRAME_SIZE {
+      if value < H2_MAX_FRAME_SIZE || value > H2_MAX_FRAME_SIZE_LIMIT {
+        return Err(ProtocolError("Invalid HTTP/2 max frame size"))
+      }
     }
     offset = offset + 6
   }

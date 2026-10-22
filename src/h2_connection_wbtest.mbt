@@ -199,6 +199,16 @@ test "http2 rejects an out-of-range initial window setting" {
   h2_apply_settings(maximum, flow).unwrap()
   assert_eq(flow.peer_initial_window, H2_MAX_WINDOW_SIZE)
   assert_eq(flow.stream_send_window, H2_MAX_WINDOW_SIZE)
+
+  for invalid in [0, H2_MAX_FRAME_SIZE - 1, H2_MAX_FRAME_SIZE_LIMIT + 1] {
+    let payload = h2_settings_payload([(H2_SETTINGS_MAX_FRAME_SIZE, invalid)])
+    match h2_apply_settings(payload, flow) {
+      Err(err) => assert_eq(err, ProtocolError("Invalid HTTP/2 max frame size"))
+      Ok(_) => fail("invalid HTTP/2 max frame size was accepted")
+    }
+  }
+  let valid = h2_settings_payload([(H2_SETTINGS_MAX_FRAME_SIZE, H2_MAX_FRAME_SIZE)])
+  h2_apply_settings(valid, flow).unwrap()
 }
 
 test "http2 propagates stream reset and GOAWAY errors" {
