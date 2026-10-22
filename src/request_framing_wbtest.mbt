@@ -162,3 +162,53 @@ test "bodyless responses still validate framing fields" {
     assert_true(response.read_body() is Err(_))
   }
 }
+
+///|
+test "informational responses must not include framing headers" {
+  for raw in [
+    "HTTP/1.1 100 Continue\r\nContent-Length: 0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
+    "HTTP/1.1 103 Early Hints\r\nTransfer-Encoding: chunked\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
+    "HTTP/1.1 101 Switching Protocols\r\nContent-Length: 0\r\n\r\n",
+  ] {
+    let codec = H1Codec::new(regression_mock_stream(raw, 4096, 4096))
+    match codec.decode_response() {
+      Ok(_) => fail("informational response with framing headers was accepted")
+      Err(err) =>
+        assert_eq(
+          err,
+          ProtocolError("Informational response must not include framing headers"),
+        )
+    }
+  }
+}
+
+///|
+test "204 and 205 reject framing that implies a body" {
+  for raw in [
+    "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n",
+    "HTTP/1.1 204 No Content\r\nContent-Length: 5\r\n\r\n",
+    "HTTP/1.1 204 No Content\r\nTransfer-Encoding: chunked\r\n\r\n",
+    "HTTP/1.1 205 Reset Content\r\nContent-Length: 1\r\n\r\n",
+    "HTTP/1.1 205 Reset Content\r\nTransfer-Encoding: chunked\r\n\r\n",
+  ] {
+    let codec = H1Codec::new(regression_mock_stream(raw, 4096, 4096))
+    let response = codec.decode_response().unwrap()
+    match response.read_body() {
+      Ok(_) => fail("bodyless response accepted body framing")
+      Err(err) => assert_true(err is NetworkError(ReadError(_)))
+    }
+  }
+
+  let empty_205 = "HTTP/1.1 205 Reset Content\r\nContent-Length: 0\r\n\r\n"
+  let response = H1Codec::new(
+    regression_mock_stream(empty_205, 4096, 4096),
+  ).decode_response().unwrap()
+  assert_eq(response.read_body().unwrap(), b"")
+
+  // A 304 response can advertise the length of the selected representation.
+  let not_modified = "HTTP/1.1 304 Not Modified\r\nContent-Length: 5\r\n\r\n"
+  let response = H1Codec::new(
+    regression_mock_stream(not_modified, 4096, 4096),
+  ).decode_response().unwrap()
+  assert_eq(response.read_body().unwrap(), b"")
+}

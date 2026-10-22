@@ -726,6 +726,15 @@ pub fn H1Codec::decode_response(
       Ok(head) => head
       Err(err) => return Err(err)
     }
+    // Interim responses cannot carry content, so framing fields are forbidden
+    // on them (RFC 9110 §8.6 and RFC 9112 §6.1). Rejecting them also avoids
+    // accidentally treating framing metadata meant for a later response as
+    // part of the interim head.
+    if response_head.status >= 100 && response_head.status < 200 &&
+      (response_head.headers.contains("Content-Length") ||
+        response_head.headers.contains("Transfer-Encoding")) {
+      return Err(ProtocolError("Informational response must not include framing headers"))
+    }
     // Skip interim responses such as 100 Continue; 101 is a final response.
     if response_head.status >= 100 && response_head.status < 200 &&
       response_head.status != 101 {
@@ -1294,6 +1303,27 @@ fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
         Err(err) => return Err(self.fail(err))
       }
     _ => None
+  }
+
+  // 204 responses must not carry framing fields at all (RFC 9110 §8.6,
+  // RFC 9112 §6.1). A 205 response may only advertise a zero-length body, so
+  // a non-zero Content-Length or any transfer coding is also invalid.
+  let invalid_bodyless_framing = match self.status {
+    204 =>
+      self.headers.contains("Content-Length") ||
+      self.headers.contains("Transfer-Encoding")
+    205 =>
+      (match transfer_encoding {
+        TransferEncodingAbsent => false
+        _ => true
+      }) ||
+      (content_length is Some(length) && length != 0)
+    _ => false
+  }
+  if invalid_bodyless_framing {
+    return Err(self.fail(NetError::ReadError(
+      "invalid framing for bodyless response",
+    )))
   }
 
   if self.head || self.status == 204 || self.status == 205 || self.status == 304 ||
