@@ -34,6 +34,7 @@ pub impl Stream for WindowUpdateFlushStream with fn flush(
 pub impl Stream for WindowUpdateFlushStream with fn close(
   self : WindowUpdateFlushStream,
 ) -> Result[Unit, NetError] {
+  let _ = self
   Ok(())
 }
 
