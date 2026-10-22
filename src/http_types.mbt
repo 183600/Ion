@@ -1352,6 +1352,50 @@ pub fn Response::read_body_with_limit(
   Ok(output.to_bytes())
 }
 
+/// Stream the raw response body into `sink` without buffering the complete
+/// body in memory. The body is decoded only for transfer framing; any
+/// `Content-Encoding` remains applied. Returns the number of body bytes
+/// written. `sink` is flushed but not closed.
+pub fn Response::copy_body_to(
+  self : Response,
+  sink : &Stream,
+) -> Result[Int, HttpError] {
+  let mut total = 0
+  while true {
+    let chunk = Buffer(size_hint=8192)
+    match self.body.read(chunk) {
+      Ok(0) => break
+      Ok(count) => {
+        if count < 0 {
+          let _ = self.body.close()
+          return Err(NetworkError(ReadError("invalid read count")))
+        }
+        let bytes = chunk.to_bytes()
+        if bytes.length() == 0 {
+          let _ = self.body.close()
+          return Err(NetworkError(ReadError("stream returned no data")))
+        }
+        match write_all(sink, bytes) {
+          Ok(_) => ()
+          Err(err) => {
+            let _ = self.body.close()
+            return Err(http_error_from_net(err))
+          }
+        }
+        total = total + bytes.length()
+      }
+      Err(err) => {
+        let _ = self.body.close()
+        return Err(http_error_from_net(err))
+      }
+    }
+  }
+  match sink.flush() {
+    Ok(_) => Ok(total)
+    Err(err) => Err(http_error_from_net(err))
+  }
+}
+
 /// Read the complete response body, enforcing the response's size limit.
 pub fn Response::read_body(self : Response) -> Result[Bytes, HttpError] {
   self.read_body_with_limit(self.max_body_bytes)
