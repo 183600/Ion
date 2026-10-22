@@ -1077,3 +1077,19 @@ test "attribute values longer than 1024 octets are ignored" {
     Some("s=1"),
   )
 }
+
+///|
+test "SameSite=None cookies require the Secure attribute" {
+  let jar = CookieJar::new()
+  let plain = cookie_test_url("http://example.com/")
+  let secure_url = cookie_test_url("https://example.com/")
+  jar.store_at(plain, "a=1; SameSite=None; Path=/", 1000)
+  jar.store_at(secure_url, "b=1; SameSite=None; Path=/", 1000)
+  assert_eq(jar.length(), 0)
+  jar.store_at(secure_url, "c=1; SameSite=None; Secure; Path=/", 1000)
+  assert_eq(jar.length(), 1)
+  assert_eq(jar.cookie_header_at(secure_url, 1000), Some("c=1"))
+  // A later unrecognized SameSite value resolves to Default and wins.
+  jar.store_at(secure_url, "d=1; SameSite=None; SameSite=unknown; Path=/", 1000)
+  assert_eq(jar.cookie_header_at(secure_url, 1000), Some("c=1; d=1"))
+}

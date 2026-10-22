@@ -600,6 +600,7 @@ fn cookie_from_set_cookie(
   let mut host_only = true
   let mut path = cookie_default_path(url)
   let mut secure = false
+  let mut same_site_none = false
   let mut expires_at_ms : UInt64? = None
   let mut max_age_seen = false
   let mut domain_attribute_seen = false
@@ -645,6 +646,10 @@ fn cookie_from_set_cookie(
       path_attribute_is_root = attribute_value == "/"
     } else if attribute == "secure" {
       secure = true
+    } else if attribute == "samesite" {
+      // RFC 6265bis §5.5.7: an unrecognized value means "Default". The last
+      // SameSite attribute wins, and only "None" changes storage here.
+      same_site_none = attribute_value.to_lower() == "none"
     } else if attribute == "max-age" {
       match cookie_parse_max_age(attribute_value) {
         Some(seconds) => {
@@ -715,6 +720,11 @@ fn cookie_from_set_cookie(
   // RFC 6265 §5.3: a non-secure origin must not be able to set a Secure
   // cookie, even though the jar would never send it over plain HTTP.
   if secure && !url.is_secure() {
+    return None
+  }
+  // RFC 6265bis §5.6 step 19: SameSite=None is only meaningful for a Secure
+  // cookie. Without the Secure attribute the cookie must be ignored.
+  if same_site_none && !secure {
     return None
   }
   // RFC 6265bis §4.1.3: prefixes let servers ask clients to enforce stronger
