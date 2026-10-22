@@ -231,11 +231,13 @@ fn parse_cli_request(args : Array[String]) -> (String, String, String) {
     let lower = first.to_lower()
     if lower.has_prefix("http://") || lower.has_prefix("https://") {
       url = first
-    } else if index + 1 < args.length() {
-      method = first.to_lower()
-      url = args[index + 1]
-      if index + 2 < args.length() {
-        body = args[index + 2]
+    } else {
+      method = lower
+      if index + 1 < args.length() {
+        url = args[index + 1]
+        if index + 2 < args.length() {
+          body = args[index + 2]
+        }
       }
     }
   }
