@@ -401,3 +401,31 @@ test "streaming body drains buffered connection frames after END_STREAM" {
   assert_false(connection.is_open())
   let _ = connection.close()
 }
+
+///|
+test "live CONNECT tunnel rejects overlapping exchanges" {
+  let headers = hpack_encode([(":status", "200")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, headers),
+    h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, b"tunnel"),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let tunnel = connection.request(
+    Request::new(CONNECT, Url::parse("https://example.com:443/").unwrap()),
+  ).unwrap()
+  assert_eq(tunnel.status, 200)
+  match connection.request(
+    Request::new(GET, Url::parse("https://example.com/other").unwrap()),
+  ) {
+    Ok(_) => fail("overlapping request on a live HTTP/2 tunnel was accepted")
+    Err(err) =>
+      assert_eq(
+        err,
+        ProtocolError("HTTP/2 connection has an outstanding streaming body"),
+      )
+  }
+  assert_eq(tunnel.read_body().unwrap(), b"tunnel")
+  assert_false(connection.is_open())
+}

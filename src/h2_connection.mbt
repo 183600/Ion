@@ -1454,6 +1454,7 @@ fn H2TunnelBody::finish(self : H2TunnelBody) -> Unit {
     return
   }
   self.notified = true
+  self.connection.streaming_busy = false
   let callback = self.on_close
   self.on_close = None
   match callback {
@@ -2528,7 +2529,10 @@ fn H2ClientConnection::request_with_limit_and_callback(
     state.status >= 200 && state.status < 300 {
     // A successful CONNECT response ends the HTTP exchange but not the
     // tunnel. Return as soon as the response head is complete so the caller
-    // can exchange tunnelled bytes while the stream remains open.
+    // can exchange tunnelled bytes while the stream remains open. The tunnel
+    // owns the connection until its body is closed or reaches EOF, so reject
+    // overlapping exchanges instead of letting them consume tunnel DATA.
+    self.streaming_busy = true
     return Ok(h2_make_tunnel_response(self, state, flow, connect_completion))
   }
   match self.drain_buffered_connection_frames(state, flow) {
