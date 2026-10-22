@@ -1049,3 +1049,31 @@ test "Path attributes longer than 1024 octets are ignored" {
     Some("q=1"),
   )
 }
+
+///|
+test "attribute values longer than 1024 octets are ignored" {
+  let jar = CookieJar::new()
+  let url = cookie_test_url("https://example.com/")
+  let long_value = "9".repeat(1025)
+  // A long Max-Age is ignored, leaving the Expires attribute in effect.
+  jar.store_at(
+    url,
+    "a=1; Expires=Wed, 21 Oct 2026 07:28:00 GMT; Max-Age=" + long_value + "; Path=/",
+    0,
+  )
+  let expiry : UInt64 = 1792567680000L.to_uint64()
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("https://example.com/x"), expiry - 1),
+    Some("a=1"),
+  )
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("https://example.com/x"), expiry),
+    None,
+  )
+  // A long Secure value is ignored, so the cookie is not marked Secure.
+  jar.store_at(url, "s=1; Secure=" + long_value + "; Path=/", 0)
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://example.com/"), 0),
+    Some("s=1"),
+  )
+}

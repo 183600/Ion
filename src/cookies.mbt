@@ -614,35 +614,35 @@ fn cookie_from_set_cookie(
     )
     let attribute = raw_attribute.trim().to_lower()
     let attribute_value = raw_attribute_value.trim().to_owned()
+    // RFC 6265bis §5.5: an attribute whose value is longer than 1024 octets
+    // is ignored as a whole, regardless of its name. In particular it must not
+    // affect expiry, security, or the selected path.
+    if @utf8.encode(attribute_value).length() > 1024 {
+      index = index + 1
+      continue
+    }
     if attribute == "domain" {
       let mut candidate = attribute_value.to_lower()
       if candidate.has_prefix(".") {
         candidate = candidate[1:].to_owned()
       }
-      // The storage algorithm uses the last Domain attribute whose value is
-      // no longer than 1024 octets; earlier/longer values do not get a chance
-      // to reject the cookie. An empty value (including a lone leading dot) is
-      // ignored entirely, so it must not discard an earlier valid Domain
-      // attribute.
-      if @utf8.encode(attribute_value).length() <= 1024 &&
-        candidate.length() > 0 {
+      // Overlong attribute values were ignored by the parser above. An empty
+      // value (including a lone leading dot) is ignored entirely, so it must
+      // not discard an earlier valid Domain attribute.
+      if candidate.length() > 0 {
         domain_attribute_seen = true
         domain_attribute = Some(candidate)
       }
     } else if attribute == "path" {
-      path_attribute_seen = true
-      // RFC 6265bis §5.6 step 11 only considers a Path attribute whose value
-      // is at most 1024 octets; longer values are ignored, leaving an earlier
-      // valid Path attribute in effect. §5.2.4 still resolves an empty value
-      // or one that does not begin with "/" to the default-path.
-      if @utf8.encode(attribute_value).length() <= 1024 {
-        path = if attribute_value.has_prefix("/") {
-          attribute_value
-        } else {
-          cookie_default_path(url)
-        }
-        path_attribute_is_root = attribute_value == "/"
+      // RFC 6265 §5.2.4: an empty Path or one that does not begin with "/"
+      // resolves to the default-path. The last Path attribute wins.
+      path = if attribute_value.has_prefix("/") {
+        attribute_value
+      } else {
+        cookie_default_path(url)
       }
+      path_attribute_seen = true
+      path_attribute_is_root = attribute_value == "/"
     } else if attribute == "secure" {
       secure = true
     } else if attribute == "max-age" {
