@@ -158,6 +158,18 @@ pub fn H1Codec::new_with_limit_and_completion(&Stream, Int32, (Bool) -> Unit) ->
 type H2BodyStream
 pub impl Stream for H2BodyStream
 
+pub struct H2ClientConnection {
+  stream : &Stream
+  reader : StreamReader
+  decoder : HpackDecoder
+  flow : H2FlowState
+  mut next_stream_id : Int32
+}
+pub fn H2ClientConnection::close(Self) -> Unit
+pub fn H2ClientConnection::new(&Stream) -> Result[Self, HttpError]
+pub fn H2ClientConnection::request(Self, Request) -> Result[Response, HttpError]
+pub fn H2ClientConnection::request_with_limit(Self, Request, Int32) -> Result[Response, HttpError]
+
 type H2FlowState
 
 type H2Frame
