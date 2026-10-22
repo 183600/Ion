@@ -44,9 +44,12 @@ struct H2ResponseState {
   stream_id : Int
   decoder : HpackDecoder
   max_body_bytes : Int
+  head : Bool
   mut status : Int
   mut status_seen : Bool
   mut headers : Headers
+  mut content_length : Int?
+  mut body_forbidden : Bool
   body : Buffer
   mut trailers : Headers
   mut ended : Bool
@@ -55,14 +58,22 @@ struct H2ResponseState {
   mut header_block_end_stream : Bool
 }
 
-fn H2ResponseState::new(stream_id : Int, decoder : HpackDecoder, max_body_bytes : Int) -> H2ResponseState {
+fn H2ResponseState::new(
+  stream_id : Int,
+  decoder : HpackDecoder,
+  max_body_bytes : Int,
+  head : Bool,
+) -> H2ResponseState {
   H2ResponseState::{
     stream_id,
     decoder,
     max_body_bytes: if max_body_bytes < 0 { 0 } else { max_body_bytes },
+    head,
     status: 0,
     status_seen: false,
     headers: Headers::new(),
+    content_length: None,
+    body_forbidden: false,
     body: Buffer(size_hint=4096),
     trailers: Headers::new(),
     ended: false,
@@ -160,6 +171,10 @@ fn H2ResponseState::apply_header_block(
     if !end_stream {
       return Err(ProtocolError("HTTP/2 trailers did not end the stream"))
     }
+    if !self.body_forbidden && self.content_length is Some(length) &&
+      self.body.length() != length {
+      return Err(ProtocolError("HTTP/2 response body does not match Content-Length"))
+    }
     self.trailers = regular
     self.ended = true
     return Ok(())
@@ -181,7 +196,31 @@ fn H2ResponseState::apply_header_block(
   self.status = status
   self.status_seen = true
   self.headers = regular
+  // Responses to HEAD and 204/205/304 carry no payload body. A 101 response
+  // is not used by HTTP/2, but it also terminates the HTTP message.
+  self.body_forbidden = self.head || status == 101 || status == 204 ||
+    status == 205 || status == 304
+  if !self.body_forbidden {
+    let declared = match response_content_length(regular) {
+      Ok(value) => value
+      Err(_) => return Err(ProtocolError("Invalid HTTP/2 Content-Length"))
+    }
+    match declared {
+      Some(length) => {
+        if length > self.max_body_bytes {
+          return Err(ProtocolError("HTTP/2 response body too large"))
+        }
+        self.content_length = Some(length)
+      }
+      None => self.content_length = None
+    }
+  } else {
+    self.content_length = None
+  }
   if end_stream {
+    if self.content_length is Some(length) && length != 0 {
+      return Err(ProtocolError("HTTP/2 response body does not match Content-Length"))
+    }
     self.ended = true
   }
   Ok(())
@@ -232,11 +271,25 @@ fn H2ResponseState::handle_frame(
         if !self.status_seen {
           return Err(ProtocolError("HTTP/2 DATA before response headers"))
         }
-        if payload.length() > self.max_body_bytes - self.body.length() {
-          return Err(ProtocolError("HTTP/2 response body too large"))
+        if self.body_forbidden {
+          if payload.length() > 0 {
+            return Err(ProtocolError("HTTP/2 response must not include a body"))
+          }
+        } else {
+          if payload.length() > self.max_body_bytes - self.body.length() {
+            return Err(ProtocolError("HTTP/2 response body too large"))
+          }
+          if self.content_length is Some(length) &&
+            payload.length() > length - self.body.length() {
+            return Err(ProtocolError("HTTP/2 response body does not match Content-Length"))
+          }
+          self.body.write_bytes(payload)
         }
-        self.body.write_bytes(payload)
         if (frame.flags & H2_FLAG_END_STREAM) != 0 {
+          if !self.body_forbidden && self.content_length is Some(length) &&
+            self.body.length() != length {
+            return Err(ProtocolError("HTTP/2 response body does not match Content-Length"))
+          }
           self.ended = true
         }
       }
@@ -533,7 +586,7 @@ fn h2_request_with_limit(
 
   let reader = StreamReader::new(stream)
   let decoder = HpackDecoder::new()
-  let state = H2ResponseState::new(1, decoder, max_body_bytes)
+  let state = H2ResponseState::new(1, decoder, max_body_bytes, request.method == HEAD)
   let flow = H2FlowState::new()
   let mut sent = 0
   while sent < body.length() && !state.ended {

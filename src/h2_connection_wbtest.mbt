@@ -280,4 +280,82 @@ test "http2 rejects forbidden trailer fields" {
   }
 }
 
+test "http2 enforces response content length" {
+  let headers = hpack_encode([(":status", "200"), ("content-length", "10")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, headers),
+    h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, @utf8.encode("hello")),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match h2_request(stream, request) {
+    Ok(_) => fail("HTTP/2 Content-Length mismatch was accepted")
+    Err(err) =>
+      assert_eq(err, ProtocolError("HTTP/2 response body does not match Content-Length"))
+  }
+
+  let matching = hpack_encode([(":status", "200"), ("content-length", "5")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, matching),
+    h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, @utf8.encode("hello")),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let response = h2_request(stream, request).unwrap()
+  assert_eq(response.read_body().unwrap(), @utf8.encode("hello"))
+
+  let trailers = hpack_encode([("x-trailer", "done")])
+  let truncated_input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, headers),
+    h2_test_frame(H2_FRAME_DATA, 0, 1, @utf8.encode("hello")),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, trailers),
+  ])
+  let truncated_stream = h2_frame_mock_stream(truncated_input, 0)
+  match h2_request(truncated_stream, request) {
+    Ok(_) => fail("truncated HTTP/2 body ending in trailers was accepted")
+    Err(err) =>
+      assert_eq(err, ProtocolError("HTTP/2 response body does not match Content-Length"))
+  }
+}
+
+test "http2 rejects bodies on HEAD and bodyless responses" {
+  let head_headers = hpack_encode([(":status", "200"), ("content-length", "100")])
+  let head_input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, head_headers),
+    h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, @utf8.encode("bogus")),
+  ])
+  let head_stream = h2_frame_mock_stream(head_input, 0)
+  let head_request = Request::new(HEAD, Url::parse("https://example.com/").unwrap())
+  match h2_request(head_stream, head_request) {
+    Ok(_) => fail("HTTP/2 HEAD response body was accepted")
+    Err(err) => assert_eq(err, ProtocolError("HTTP/2 response must not include a body"))
+  }
+
+  let empty_head_input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, head_headers),
+  ])
+  let empty_head_stream = h2_frame_mock_stream(empty_head_input, 0)
+  let empty_head_request = Request::new(HEAD, Url::parse("https://example.com/").unwrap())
+  let response = h2_request(empty_head_stream, empty_head_request).unwrap()
+  assert_eq(response.read_body().unwrap(), b"")
+
+  let no_content = hpack_encode([(":status", "204")])
+  let no_content_input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, no_content),
+    h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, @utf8.encode("bogus")),
+  ])
+  let no_content_stream = h2_frame_mock_stream(no_content_input, 0)
+  let get_request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match h2_request(no_content_stream, get_request) {
+    Ok(_) => fail("HTTP/2 204 response body was accepted")
+    Err(err) => assert_eq(err, ProtocolError("HTTP/2 response must not include a body"))
+  }
+}
+
+
 
