@@ -719,15 +719,19 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
 }
 
 fn h2_body_stream(data : Bytes) -> H2BodyStream {
-  H2BodyStream::{ data, offset: 0 }
+  H2BodyStream::{ data, offset: 0, is_open: true }
 }
 
 struct H2BodyStream {
   data : Bytes
   mut offset : Int
+  mut is_open : Bool
 }
 
 pub impl Stream for H2BodyStream with fn read(self : H2BodyStream, buf : Buffer) -> Result[Int, NetError] {
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
   let remaining = self.data.length() - self.offset
   if remaining <= 0 {
     return Ok(0)
@@ -739,34 +743,44 @@ pub impl Stream for H2BodyStream with fn read(self : H2BodyStream, buf : Buffer)
 }
 
 pub impl Stream for H2BodyStream with fn write(self : H2BodyStream, buf : Buffer) -> Result[Int, NetError] {
-  let _ = self
   let _ = buf
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
   Err(NetError::WriteError("HTTP/2 response body is read-only"))
 }
 
 pub impl Stream for H2BodyStream with fn flush(self : H2BodyStream) -> Result[Unit, NetError] {
-  let _ = self
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
   Ok(())
 }
 
 pub impl Stream for H2BodyStream with fn close(self : H2BodyStream) -> Result[Unit, NetError] {
-  let _ = self
+  self.is_open = false
   Ok(())
 }
 
 pub impl Stream for H2BodyStream with fn set_timeout(self : H2BodyStream, timeout_ms : Int) -> Result[Unit, NetError] {
-  let _ = self
   let _ = timeout_ms
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
   Ok(())
 }
 
 pub impl Stream for H2BodyStream with fn peer_addr(self : H2BodyStream) -> Result[String, NetError] {
-  let _ = self
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
   Err(NetError::InvalidAddress("HTTP/2 response body has no peer"))
 }
 
 pub impl Stream for H2BodyStream with fn local_addr(self : H2BodyStream) -> Result[String, NetError] {
-  let _ = self
+  if !self.is_open {
+    return Err(NetError::Closed)
+  }
   Err(NetError::InvalidAddress("HTTP/2 response body has no address"))
 }
 

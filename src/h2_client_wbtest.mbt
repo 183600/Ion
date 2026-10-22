@@ -403,3 +403,30 @@ test "UnifiedClient retries a POST the server excluded with GOAWAY" {
   assert_false(first.is_open)
   let _ = client.close_all()
 }
+
+///|
+test "HTTP/2 response bodies become closed streams after close" {
+  let response_headers = hpack_encode([(":status", "200")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, response_headers),
+    h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, @utf8.encode("hello")),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let client = UnifiedClient::with_transport(
+    dialer,
+    provider,
+    ClientOptions::new().with_follow_redirects(false),
+  )
+  let response = client.get("https://example.com/closed-body").unwrap()
+  assert_true(response.body.close() is Ok(_))
+  assert_true(response.body.read(Buffer()) is Err(Closed))
+  assert_true(response.body.write(Buffer()) is Err(Closed))
+  assert_true(response.body.flush() is Err(Closed))
+  assert_true(response.body.set_timeout(1000) is Err(Closed))
+  assert_true(response.body.peer_addr() is Err(Closed))
+  assert_true(response.body.local_addr() is Err(Closed))
+  let _ = client.close_all()
+}
