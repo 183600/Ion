@@ -30,6 +30,9 @@ pub struct Cookie {
   priv bracketed : Bool
   expires_at_ms : UInt64?
   creation : Int32
+  // RFC 6265bis eviction uses last access, not creation order. Keep it
+  // private so the public snapshot shape stays source-compatible.
+  priv last_access_ms : UInt64
 } derive(Eq, Debug)
 
 ///|
@@ -809,23 +812,42 @@ fn cookie_from_set_cookie(
     bracketed: url.bracketed,
     expires_at_ms,
     creation: 0,
+    last_access_ms: 0,
   })
 }
 
-///|
-fn cookie_oldest_in_domain(cookies : List[Cookie], domain : String) -> Cookie? {
+/// Whether `candidate` should be evicted before `current`: earliest
+/// last-access time wins, with creation order breaking ties deterministically.
+fn cookie_older(candidate : Cookie, current : Cookie) -> Bool {
+  candidate.last_access_ms < current.last_access_ms ||
+  (candidate.last_access_ms == current.last_access_ms &&
+    candidate.creation < current.creation)
+}
+
+/// Find the least-recently-used cookie in `domain`. When `secure_filter` is
+/// set, only cookies with that secure-only flag are considered.
+fn cookie_oldest_in_domain(
+  cookies : List[Cookie],
+  domain : String,
+  secure_filter : Bool?,
+) -> Cookie? {
   let mut oldest : Cookie? = None
   for candidate in cookies {
     if candidate.domain != domain {
       continue
     }
+    match secure_filter {
+      Some(expected) => if candidate.secure != expected {
+        continue
+      }
+      None => ()
+    }
     oldest = match oldest {
-      Some(current) =>
-        if candidate.creation < current.creation {
-          Some(candidate)
-        } else {
-          Some(current)
-        }
+      Some(current) => if cookie_older(candidate, current) {
+        Some(candidate)
+      } else {
+        Some(current)
+      }
       None => Some(candidate)
     }
   }
@@ -837,12 +859,11 @@ fn cookie_oldest(cookies : List[Cookie]) -> Cookie? {
   let mut oldest : Cookie? = None
   for candidate in cookies {
     oldest = match oldest {
-      Some(current) =>
-        if candidate.creation < current.creation {
-          Some(candidate)
-        } else {
-          Some(current)
-        }
+      Some(current) => if cookie_older(candidate, current) {
+        Some(candidate)
+      } else {
+        Some(current)
+      }
       None => Some(candidate)
     }
   }
@@ -862,7 +883,13 @@ fn cookie_evict_for_capacity(
     }
   }
   while domain_count >= MAX_COOKIES_PER_DOMAIN {
-    let oldest = match cookie_oldest_in_domain(result, domain) {
+    // RFC 6265bis: within an overfull domain, evict a non-secure cookie
+    // before any Secure cookie, then use the earliest last-access time.
+    let victim = match cookie_oldest_in_domain(result, domain, Some(false)) {
+      Some(cookie) => Some(cookie)
+      None => cookie_oldest_in_domain(result, domain, None)
+    }
+    let oldest = match victim {
       Some(cookie) => cookie
       None => break
     }
@@ -915,7 +942,11 @@ fn CookieJar::store_parsed(
       }
     }
     let remaining = cookie_evict_for_capacity(remaining, cookie.domain)
-    self.cookies = remaining.prepend(Cookie::{ ..cookie, creation, })
+    self.cookies = remaining.prepend(Cookie::{
+      ..cookie,
+      creation,
+      last_access_ms: now_ms,
+    })
   } else {
     self.cookies = remaining
   }
@@ -992,11 +1023,16 @@ pub fn CookieJar::cookie_header_at(
     if cookie_expired(cookie, now_ms) {
       continue
     }
-    alive = alive.prepend(cookie)
     if cookie_domain_matches(cookie, host, literal_host, url.bracketed) &&
       cookie_path_matches(cookie.path, request_path) &&
       (!cookie.secure || secure) {
-      candidates.push(cookie)
+      // Retrieval refreshes last-access for the cookies actually sent, so
+      // later eviction prefers genuinely unused cookies.
+      let current = Cookie::{ ..cookie, last_access_ms: now_ms }
+      alive = alive.prepend(current)
+      candidates.push(current)
+    } else {
+      alive = alive.prepend(cookie)
     }
   }
   self.cookies = alive
