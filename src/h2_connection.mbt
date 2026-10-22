@@ -1468,6 +1468,21 @@ fn h2_tunnel_read_error(err : HttpError) -> NetError {
   }
 }
 
+/// Write failures on a tunnel must surface as write errors, even when the
+/// underlying HTTP/2 framing layer reports a protocol problem (for example a
+/// frame that cannot be encoded). Read and write directions share the same
+/// transport but callers rely on the error direction to decide whether the
+/// tunnel is still usable for reading.
+fn h2_tunnel_write_error(err : HttpError) -> NetError {
+  match err {
+    NetworkError(net) => net
+    Timeout => Timeout
+    ConnectionClosed => Closed
+    ProtocolError(message) => NetError::WriteError(message)
+    _ => NetError::IoError(@debug.to_string(err))
+  }
+}
+
 /// Streaming body for a successful HTTP/2 CONNECT tunnel. A tunnel's
 /// END_STREAM may only arrive when the tunnelled peer closes, so the response
 /// must be returned as soon as its headers are complete and further DATA
@@ -1619,7 +1634,7 @@ pub impl Stream for H2TunnelBody with fn write(
       Err(err) => {
         self.finish()
         self.is_open = false
-        return if sent > 0 { Ok(sent) } else { Err(h2_tunnel_read_error(err)) }
+        return if sent > 0 { Ok(sent) } else { Err(h2_tunnel_write_error(err)) }
       }
     }
     match self.connection.stream.flush() {
@@ -1627,7 +1642,7 @@ pub impl Stream for H2TunnelBody with fn write(
       Err(err) => {
         self.finish()
         self.is_open = false
-        let mapped = h2_tunnel_read_error(http_error_from_net(err))
+        let mapped = h2_tunnel_write_error(http_error_from_net(err))
         return if sent > 0 { Ok(sent) } else { Err(mapped) }
       }
     }
