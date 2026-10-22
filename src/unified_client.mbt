@@ -13,6 +13,7 @@ pub struct ClientOptions {
   max_redirects : Int
   max_response_body_bytes : Int
   http2 : Bool
+  http2_prior_knowledge : Bool
 } derive(Eq, Debug)
 
 pub fn ClientOptions::new() -> ClientOptions {
@@ -23,6 +24,7 @@ pub fn ClientOptions::new() -> ClientOptions {
     max_redirects: 10,
     max_response_body_bytes: DEFAULT_MAX_BODY_BYTES,
     http2: true,
+    http2_prior_knowledge: false,
   }
 }
 
@@ -43,8 +45,26 @@ pub fn ClientOptions::with_max_redirects(self : ClientOptions, max_redirects : I
 }
 
 /// Enable or disable HTTP/2 negotiation through ALPN. Enabled by default.
+/// Disabling HTTP/2 also disables cleartext prior knowledge.
 pub fn ClientOptions::with_http2(self : ClientOptions, enabled : Bool) -> ClientOptions {
-  ClientOptions::{ ..self, http2: enabled }
+  ClientOptions::{
+    ..self,
+    http2: enabled,
+    http2_prior_knowledge: enabled && self.http2_prior_knowledge,
+  }
+}
+
+/// Use HTTP/2 for cleartext `http://` origins without ALPN (prior knowledge).
+/// Enabling this also enables the normal HTTP/2 policy for HTTPS.
+pub fn ClientOptions::with_http2_prior_knowledge(
+  self : ClientOptions,
+  enabled : Bool,
+) -> ClientOptions {
+  ClientOptions::{
+    ..self,
+    http2: enabled || self.http2,
+    http2_prior_knowledge: enabled,
+  }
 }
 
 /// Cap the number of body bytes read from a single response. A value below 1 is
@@ -87,6 +107,7 @@ pub fn UnifiedClient::new() -> UnifiedClient {
   let connector = Connector::new(dialer, tls_provider)
     .with_timeout(options.timeout_ms)
     .with_http2(options.http2)
+    .with_http2_prior_knowledge(options.http2_prior_knowledge)
 
   UnifiedClient::{
     connector,
@@ -102,6 +123,7 @@ pub fn UnifiedClient::with_options(options : ClientOptions) -> UnifiedClient {
   let connector = Connector::new(dialer, tls_provider)
     .with_timeout(options.timeout_ms)
     .with_http2(options.http2)
+    .with_http2_prior_knowledge(options.http2_prior_knowledge)
 
   UnifiedClient::{
     connector,
@@ -194,7 +216,7 @@ pub fn UnifiedClient::with_max_response_body_bytes(
 pub fn UnifiedClient::with_http2(self : UnifiedClient, enabled : Bool) -> UnifiedClient {
   UnifiedClient::{
     connector: self.connector.detached().with_http2(enabled),
-    options: ClientOptions::{ ..self.options, http2: enabled },
+    options: self.options.with_http2(enabled),
     redirect_count: 0,
   }
 }
@@ -208,11 +230,7 @@ pub fn UnifiedClient::with_http2_prior_knowledge(
 ) -> UnifiedClient {
   UnifiedClient::{
     connector: self.connector.detached().with_http2_prior_knowledge(enabled),
-    options: ClientOptions::{
-      ..self.options,
-      // Enabling cleartext prior knowledge also enables the HTTP/2 policy.
-      http2: enabled || self.options.http2,
-    },
+    options: self.options.with_http2_prior_knowledge(enabled),
     redirect_count: 0,
   }
 }
@@ -226,7 +244,8 @@ pub fn UnifiedClient::with_transport(
   UnifiedClient::{
     connector: Connector::new(dialer, tls_provider)
       .with_timeout(options.timeout_ms)
-      .with_http2(options.http2),
+      .with_http2(options.http2)
+      .with_http2_prior_knowledge(options.http2_prior_knowledge),
     options,
     redirect_count: 0,
   }

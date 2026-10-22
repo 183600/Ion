@@ -479,8 +479,10 @@ test "cleartext HTTP/2 prior knowledge sends the client preface" {
   let client = UnifiedClient::with_transport(
     dialer,
     provider,
-    ClientOptions::new().with_follow_redirects(false),
-  ).with_http2_prior_knowledge(true)
+    ClientOptions::new()
+      .with_follow_redirects(false)
+      .with_http2_prior_knowledge(true),
+  )
   let response = client.get("http://example.com/h2c").unwrap()
   assert_eq(dialer.count, 1)
   assert_eq(response.version, "HTTP/2")

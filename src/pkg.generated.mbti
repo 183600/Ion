@@ -56,10 +56,12 @@ pub struct ClientOptions {
   max_redirects : Int32
   max_response_body_bytes : Int32
   http2 : Bool
+  http2_prior_knowledge : Bool
 } derive(Eq, @debug.Debug)
 pub fn ClientOptions::new() -> Self
 pub fn ClientOptions::with_follow_redirects(Self, Bool) -> Self
 pub fn ClientOptions::with_http2(Self, Bool) -> Self
+pub fn ClientOptions::with_http2_prior_knowledge(Self, Bool) -> Self
 pub fn ClientOptions::with_max_redirects(Self, Int32) -> Self
 pub fn ClientOptions::with_max_response_body_bytes(Self, Int32) -> Self
 pub fn ClientOptions::with_timeout(Self, Int32) -> Self
