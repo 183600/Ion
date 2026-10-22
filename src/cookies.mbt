@@ -182,7 +182,7 @@ fn cookie_domain_scope_matches(
   bracketed : Bool,
 ) -> Bool {
   let literal_host = bracketed || is_ipv4_literal(host) ||
-    is_ipv6_literal_with_zone(host)
+    is_numeric_dotted_host(host) || is_ipv6_literal_with_zone(host)
   cookie_domain_matches(cookie, host, literal_host, bracketed)
 }
 
@@ -732,7 +732,7 @@ fn cookie_from_set_cookie(
         // Bracketed IPvFuture literals have DNS-looking text but are still IP
         // literals; they must never be treated as a domain suffix.
         let literal_host = url.bracketed || is_ipv4_literal(host) ||
-          is_ipv6_literal_with_zone(host)
+          is_numeric_dotted_host(host) || is_ipv6_literal_with_zone(host)
         if valid_url_host_chars(candidate) &&
           (host == candidate ||
             (!literal_host && host.has_suffix("." + candidate))) {
@@ -961,7 +961,7 @@ pub fn CookieJar::cookie_header_at(
   // replayed to the literal address `127.0.0.1.`.
   let host = cookie_canonical_host(url.host)
   let literal_host = url.bracketed || is_ipv4_literal(host) ||
-    is_ipv6_literal_with_zone(host)
+    is_numeric_dotted_host(host) || is_ipv6_literal_with_zone(host)
   let candidates : Array[Cookie] = []
   let mut alive = @list.List([])
   for cookie in self.cookies {

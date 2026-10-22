@@ -90,6 +90,24 @@ fn percent_decode_bytes(value : String) -> Bytes {
   output.to_bytes()
 }
 
+/// Whether a host is made only of digits and dots. Such a host is intended as
+/// an IPv4 literal even when it is malformed (for example a leading-zero octet
+/// or an out-of-range octet), so it must never be treated as a DNS suffix.
+fn is_numeric_dotted_host(value : String) -> Bool {
+  let mut saw_digit = false
+  let mut saw_dot = false
+  for ch in value {
+    if ch == '.' {
+      saw_dot = true
+    } else if ch >= '0' && ch <= '9' {
+      saw_digit = true
+    } else {
+      return false
+    }
+  }
+  saw_digit && saw_dot
+}
+
 fn is_ipv4_literal(value : String) -> Bool {
   let parts = value.split(".").collect()
   if parts.length() != 4 {

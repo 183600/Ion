@@ -1145,3 +1145,22 @@ test "default cookie path is / for a non-absolute uri-path" {
     Some("x=1"),
   )
 }
+
+test "numeric dotted hosts never receive domain-suffix cookies" {
+  let jar = CookieJar::new()
+  let origin = cookie_test_url("http://010.0.0.1/")
+  jar.store_at(origin, "leak=1; Domain=0.0.1; Path=/", 1000)
+  assert_eq(jar.length(), 0)
+  jar.store_at(origin, "same=1; Domain=010.0.0.1; Path=/", 1000)
+  assert_eq(jar.cookie_header_at(origin, 1000), Some("same=1"))
+  assert_eq(
+    jar.cookie_header_at(cookie_test_url("http://sub.010.0.0.1/"), 1000),
+    None,
+  )
+
+  let malformed = cookie_test_url("http://1.2.3.999/")
+  jar.store_at(malformed, "leak=1; Domain=2.3.999; Path=/", 1000)
+  assert_eq(jar.length(), 1)
+  jar.store_at(malformed, "same=1; Domain=1.2.3.999; Path=/", 1000)
+  assert_eq(jar.cookie_header_at(malformed, 1000), Some("same=1"))
+}

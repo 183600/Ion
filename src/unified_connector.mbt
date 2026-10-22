@@ -833,21 +833,6 @@ fn bypass_cidr_matches(candidate : String, host : String) -> Bool {
   prefix <= 128 && bypass_prefix_bytes_match(network, address, prefix)
 }
 
-fn is_numeric_dotted_host(value : String) -> Bool {
-  let mut saw_digit = false
-  let mut saw_dot = false
-  for ch in value {
-    if ch == '.' {
-      saw_dot = true
-    } else if ch >= '0' && ch <= '9' {
-      saw_digit = true
-    } else {
-      return false
-    }
-  }
-  saw_digit && saw_dot
-}
-
 fn proxy_bypass_matches(
   pattern : String,
   host : String,
