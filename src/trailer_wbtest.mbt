@@ -16,6 +16,12 @@ test "chunked trailers reject forbidden message fields" {
     "Set-Cookie: session=1",
     "Cache-Control: no-store",
     "Range: bytes=0-0",
+    "Age: 60",
+    "Date: Wed, 21 Oct 2015 07:28:00 GMT",
+    "Expires: Wed, 21 Oct 2015 07:28:00 GMT",
+    "Location: /elsewhere",
+    "Retry-After: 120",
+    "Vary: Accept-Encoding",
   ] {
     let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n" +
       trailer + "\r\n\r\n"
