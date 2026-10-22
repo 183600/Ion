@@ -48,6 +48,9 @@ pub enum HttpMethod {
   PATCH
   TRACE
   CONNECT
+  /// An extension method (for example `PROPFIND` or `PURGE`). The token is
+  /// stored verbatim because HTTP method names are case-sensitive.
+  Custom(String)
 } derive(Eq, Debug)
 
 pub fn HttpMethod::parse(value : String) -> Result[HttpMethod, HttpError] {
@@ -65,8 +68,28 @@ pub fn HttpMethod::parse(value : String) -> Result[HttpMethod, HttpError] {
   }
 }
 
-pub fn HttpMethod::to_string(method : HttpMethod) -> String {
-  match method {
+/// Build a method from an RFC 9110 token. The nine methods with dedicated
+/// variants are recognized case-insensitively for convenience (matching
+/// `HttpMethod::parse`); every other valid token becomes `Custom` and keeps
+/// its original spelling. An invalid token (empty, containing whitespace or a
+/// separator) is rejected before it can reach the wire.
+pub fn HttpMethod::custom(value : String) -> Result[HttpMethod, HttpError] {
+  if value.length() == 0 {
+    return Err(InvalidMethod(value))
+  }
+  for ch in value {
+    if !is_header_token_char(ch) {
+      return Err(InvalidMethod(value))
+    }
+  }
+  match HttpMethod::parse(value) {
+    Ok(method) => Ok(method)
+    Err(_) => Ok(Custom(value))
+  }
+}
+
+pub fn HttpMethod::to_string(verb : HttpMethod) -> String {
+  match verb {
     GET => "GET"
     POST => "POST"
     PUT => "PUT"
@@ -76,6 +99,7 @@ pub fn HttpMethod::to_string(method : HttpMethod) -> String {
     PATCH => "PATCH"
     TRACE => "TRACE"
     CONNECT => "CONNECT"
+    Custom(token) => token
   }
 }
 
