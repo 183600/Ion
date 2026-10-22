@@ -212,3 +212,16 @@ test "204 and 205 reject framing that implies a body" {
   ).decode_response().unwrap()
   assert_eq(response.read_body().unwrap(), b"")
 }
+
+///|
+test "304 responses with transfer coding are not pooled" {
+  let raw = "HTTP/1.1 304 Not Modified\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
+  let stream = regression_mock_stream(raw, 1, 0)
+  let codec = H1Codec::new(stream)
+  let response = codec.decode_response().unwrap()
+  assert_eq(response.status, 304)
+  assert_eq(response.read_body().unwrap(), b"")
+  // The unread chunk framing must not be left on a reused connection.
+  assert_false(stream.is_open)
+  assert_true(codec.decode_response() is Err(_))
+}

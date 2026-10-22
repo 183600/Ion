@@ -1388,6 +1388,16 @@ fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
       "invalid framing for bodyless response",
     )))
   }
+  // A 304 has no body, so a transfer coding cannot describe a payload we can
+  // consume. If the peer nonetheless sends chunked framing after the head,
+  // reusing the connection would desynchronize the next response. Close it
+  // instead of pooling it.
+  if self.status == 304 {
+    match transfer_encoding {
+      TransferEncodingAbsent => ()
+      _ => self.close_after_body = true
+    }
+  }
 
   if self.head || self.status == 204 || self.status == 205 || self.status == 304 ||
     (self.status >= 100 && self.status < 200) {
