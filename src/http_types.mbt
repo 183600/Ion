@@ -754,7 +754,17 @@ pub fn Url::join(self : Url, reference : String) -> Result[Url, HttpError] {
     Ok(url) => url
     Err(err) => return Err(err)
   }
-  Ok(parsed.with_path(normalize_url_path(parsed.path)))
+  let normalized = normalize_url_path(parsed.path)
+  // A fragment-only reference names the same document. Keep the special
+  // asterisk-form target as `*` rather than turning it into the serialized
+  // path `/*`, so redirect handling still recognizes it as the same target.
+  let path = if self.path == "*" && reference.has_prefix("#") &&
+    normalized == "/*" {
+    "*"
+  } else {
+    normalized
+  }
+  Ok(parsed.with_path(path))
 }
 
 pub fn Url::with_path(self : Url, path : String) -> Url {

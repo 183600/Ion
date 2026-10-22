@@ -80,7 +80,7 @@ test "Url::join keeps an asterisk-form base intact for fragment-only references"
   let base = Url::parse("http://example.com").unwrap().with_path("*")
   let joined = base.join("#s").unwrap()
   assert_eq(joined.host, "example.com")
-  assert_eq(joined.path, "/*")
+  assert_eq(joined.path, "*")
   assert_eq(joined.fragment, "s")
   assert_eq(joined.to_string(), "http://example.com/*#s")
 }
