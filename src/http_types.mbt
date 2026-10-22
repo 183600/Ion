@@ -1350,10 +1350,14 @@ pub fn Response::read_body_with_limit(
   Ok(output.to_bytes())
 }
 
-/// Stream the raw response body into `sink` without buffering the complete
-/// body in memory. The body is decoded only for transfer framing; any
-/// `Content-Encoding` remains applied. Returns the number of body bytes
-/// written. `sink` is flushed but not closed.
+/// Stream the response body into `sink` without buffering the complete body
+/// in memory. Transfer framing and any non-chunked transfer codings are
+/// decoded; a `Content-Encoding` such as gzip remains applied for the caller.
+/// Returns the number of body bytes written. `sink` is flushed but not closed.
+///
+/// A body using a non-chunked transfer coding has to be decoded as a whole, so
+/// that case is buffered up to the response limit. Plain, fixed-length, and
+/// chunked bodies are streamed directly.
 pub fn Response::copy_body_to(
   self : Response,
   sink : &Stream,
@@ -1362,48 +1366,96 @@ pub fn Response::copy_body_to(
   // example a streaming HTTP/1.1 body). Authorize this response's own limit
   // before the first read, matching `read_body_with_limit`.
   self.body.set_body_limit(self.max_body_bytes)
-  let mut total = 0
-  while true {
-    let chunk = Buffer(size_hint=8192)
-    match self.body.read(chunk) {
-      Ok(0) => break
-      Ok(count) => {
-        if count < 0 {
-          let _ = self.body.close()
-          return Err(NetworkError(ReadError("invalid read count")))
-        }
-        let bytes = chunk.to_bytes()
-        if bytes.length() == 0 {
-          let _ = self.body.close()
-          return Err(NetworkError(ReadError("stream returned no data")))
-        }
-        if bytes.length() > self.max_body_bytes - total {
-          let _ = self.body.close()
-          return Err(NetworkError(ReadError("response body too large")))
-        }
-        match write_all(sink, bytes) {
-          Ok(_) => ()
-          Err(err) => {
-            let _ = self.body.close()
-            return Err(http_error_from_net(err))
-          }
-        }
-        total = total + bytes.length()
+  let transfer_codings = match response_transfer_codings(self.headers) {
+    Ok(codings) => codings
+    Err(err) => {
+      let _ = self.body.close()
+      return Err(err)
+    }
+  }
+  if transfer_codings_need_decode(transfer_codings) {
+    let raw = match self.read_body_with_limit(self.max_body_bytes) {
+      Ok(body) => body
+      Err(err) => return Err(err)
+    }
+    // Both limits are the response cap: the encoded input is bounded by the
+    // same value as the decoded output, so a transfer-coding bomb cannot grow
+    // beyond the caller's configured limit.
+    let decoded = match decode_transfer_encodings(
+      transfer_codings,
+      raw,
+      self.max_body_bytes,
+      self.max_body_bytes,
+      false,
+    ) {
+      Ok(body) => body
+      Err(err) => {
+        let _ = self.body.close()
+        return Err(err)
       }
+    }
+    if decoded.length() > self.max_body_bytes {
+      let _ = self.body.close()
+      return Err(NetworkError(ReadError("response body too large")))
+    }
+    match write_all(sink, decoded) {
+      Ok(_) => ()
       Err(err) => {
         let _ = self.body.close()
         return Err(http_error_from_net(err))
       }
     }
-  }
-  match sink.flush() {
-    Ok(_) => Ok(total)
-    Err(err) => {
-      // The sink rejected the completed copy, so the source body may still
-      // have unread bytes. Close it rather than letting a pooled connection
-      // be reused with its old response body still on the wire.
-      let _ = self.body.close()
-      Err(http_error_from_net(err))
+    match sink.flush() {
+      Ok(_) => Ok(decoded.length())
+      Err(err) => {
+        let _ = self.body.close()
+        Err(http_error_from_net(err))
+      }
+    }
+  } else {
+    let mut total = 0
+    while true {
+      let chunk = Buffer(size_hint=8192)
+      match self.body.read(chunk) {
+        Ok(0) => break
+        Ok(count) => {
+          if count < 0 {
+            let _ = self.body.close()
+            return Err(NetworkError(ReadError("invalid read count")))
+          }
+          let bytes = chunk.to_bytes()
+          if bytes.length() == 0 {
+            let _ = self.body.close()
+            return Err(NetworkError(ReadError("stream returned no data")))
+          }
+          if bytes.length() > self.max_body_bytes - total {
+            let _ = self.body.close()
+            return Err(NetworkError(ReadError("response body too large")))
+          }
+          match write_all(sink, bytes) {
+            Ok(_) => ()
+            Err(err) => {
+              let _ = self.body.close()
+              return Err(http_error_from_net(err))
+            }
+          }
+          total = total + bytes.length()
+        }
+        Err(err) => {
+          let _ = self.body.close()
+          return Err(http_error_from_net(err))
+        }
+      }
+    }
+    match sink.flush() {
+      Ok(_) => Ok(total)
+      Err(err) => {
+        // The sink rejected the completed copy, so the source body may still
+        // have unread bytes. Close it rather than letting a pooled connection
+        // be reused with its old response body still on the wire.
+        let _ = self.body.close()
+        Err(http_error_from_net(err))
+      }
     }
   }
 }
