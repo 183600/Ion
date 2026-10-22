@@ -650,8 +650,8 @@ pub fn H1Codec::encode_request(
   // CONNECT establishes a tunnel rather than transferring request content.
   // Rejecting framed bodies avoids sending a body the peer would interpret as
   // the first bytes of the tunnelled protocol.
-  if is_connect && (body_length > 0 || req.trailers.length() > 0 || chunked ||
-    content_length is Some(_)) {
+  if is_connect && (req.body is Some(_) || req.trailers.length() > 0 ||
+    chunked || content_length is Some(_)) {
     return Err(InvalidHeader("CONNECT request content is not allowed"))
   }
   match content_length {

@@ -36,3 +36,19 @@ test "HTTP/2 CONNECT tunnel bytes are not capped as a response body" {
   assert_eq(response.status, 200)
   assert_eq(response.read_body().unwrap(), b"hello")
 }
+
+test "CONNECT rejects an explicitly empty request body in both versions" {
+  let url = Url::parse("http://example.com:80/").unwrap()
+  let request = Request::new(CONNECT, url).with_body(b"")
+  let stream = regression_mock_stream("", 0, 0)
+  match H1Codec::new(stream).encode_request(request) {
+    Ok(_) => fail("HTTP/1 CONNECT with an explicit empty body was accepted")
+    Err(err) =>
+      assert_eq(err, InvalidHeader("CONNECT request content is not allowed"))
+  }
+  assert_eq(stream.output.to_bytes().length(), 0)
+  assert_eq(
+    h2_request_headers(request),
+    Err(InvalidHeader("CONNECT request content is not allowed")),
+  )
+}

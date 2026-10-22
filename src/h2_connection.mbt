@@ -916,7 +916,7 @@ fn h2_request_headers_with_protocol(
   // first tunnelled bytes, so it is not generated here. Extended CONNECT has
   // the same framing rule because the 2xx response switches to the protocol.
   if (is_connect || extended_connect) &&
-    (body_length > 0 || request.trailers.length() > 0) {
+    (request.body is Some(_) || request.trailers.length() > 0) {
     return Err(InvalidHeader("CONNECT request content is not allowed"))
   }
   let content_lengths = request.headers.get_all("Content-Length")
