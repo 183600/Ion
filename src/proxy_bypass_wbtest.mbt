@@ -148,3 +148,21 @@ test "single-label bypass entries do not match every subdomain" {
     connector.proxy_for_url(Url::parse("http://127.0.0.1/").unwrap()) is Some(_),
   )
 }
+
+///|
+test "explicit wildcard entries match single-label subdomains" {
+  let stream = regression_mock_stream("", 0, 0)
+  let connector = bypass_test_connector(RegressionMockDialer::{ stream, count: 0 }, [
+    "*.localhost", ".internal",
+  ])
+  assert_true(
+    connector.proxy_for_url(Url::parse("http://api.localhost/").unwrap()) is None,
+  )
+  assert_true(
+    connector.proxy_for_url(Url::parse("http://host.internal/").unwrap()) is None,
+  )
+  assert_true(
+    connector.proxy_for_url(Url::parse("http://api.host.internal/").unwrap()) is None,
+  )
+  assert_true(connector.proxy_for_url(Url::parse("http://other.example/").unwrap()) is Some(_))
+}

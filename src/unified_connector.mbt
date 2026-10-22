@@ -592,6 +592,8 @@ fn proxy_bypass_matches(pattern : String, host : String, port : Int) -> Bool {
     return false
   }
   let mut pattern_host = raw_pattern_host.to_lower()
+  let explicit_domain = pattern_host.has_prefix("*.") ||
+    pattern_host.has_prefix(".")
   if pattern_host.has_prefix("*.") {
     pattern_host = pattern_host[2:].to_owned()
   } else if pattern_host.has_prefix(".") {
@@ -609,10 +611,12 @@ fn proxy_bypass_matches(pattern : String, host : String, port : Int) -> Bool {
     is_ipv4_literal(pattern_host) ||
     is_numeric_dotted_host(pattern_host)
   // A bare label such as `com` is a public suffix, not a domain owned by the
-  // caller; only match subdomains for multi-label domain patterns. The same
-  // rule keeps partial or malformed numeric hosts from matching by suffix.
+  // caller; only match subdomains for multi-label domain patterns. An explicit
+  // `*.` or leading `.` opts into subdomain matching even for a single label
+  // such as `*.localhost`. The same numeric check keeps partial or malformed
+  // numeric hosts from matching by suffix.
   !numeric_ip &&
-  pattern_host.contains(".") &&
+  (pattern_host.contains(".") || explicit_domain) &&
   normalized_host.has_suffix("." + pattern_host)
 }
 
