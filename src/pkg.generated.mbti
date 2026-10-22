@@ -290,12 +290,15 @@ pub struct Request {
   url : Url
   headers : Headers
   body : Bytes?
+  trailers : Headers
   timeout_ms : Int32
   timeout_explicit : Bool
 } derive(Eq, @debug.Debug)
 pub fn Request::from_url(HttpMethod, String) -> Result[Self, HttpError]
 pub fn Request::get_header(Self, String) -> String?
 pub fn Request::get_header_all(Self, String) -> @list.List[String]
+pub fn Request::get_trailer(Self, String) -> String?
+pub fn Request::get_trailer_all(Self, String) -> @list.List[String]
 pub fn Request::new(HttpMethod, Url) -> Self
 pub fn Request::set_header(Self, String, String) -> Self
 pub fn Request::with_basic_auth(Self, String, String) -> Self
@@ -305,6 +308,8 @@ pub fn Request::with_header(Self, String, String) -> Self
 pub fn Request::with_method(Self, HttpMethod) -> Self
 pub fn Request::with_multipart(Self, Array[(String, String)], Array[MultipartFile]) -> Self
 pub fn Request::with_timeout(Self, Int32) -> Self
+pub fn Request::with_trailer(Self, String, String) -> Self
+pub fn Request::with_trailers(Self, Headers) -> Self
 pub fn Request::without_header(Self, String) -> Self
 
 pub struct Response {

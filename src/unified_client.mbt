@@ -660,6 +660,7 @@ fn UnifiedClient::do_request_once(
       url: parsed_url,
       headers: next_headers,
       body: if keep_body { request.body } else { None },
+      trailers: if keep_body { request.trailers } else { Headers::new() },
       timeout_ms: request.timeout_ms,
       timeout_explicit: request.timeout_explicit,
     }

@@ -428,7 +428,33 @@ fn method_defines_body(method : HttpMethod) -> Bool {
   }
 }
 
-fn write_chunked_body(stream : &Stream, body : Bytes) -> Result[Unit, NetError] {
+fn validate_request_trailers(trailers : Headers) -> Result[Unit, HttpError] {
+  for trailer in trailers.iter() {
+    if !valid_header_name(trailer.name) ||
+      !valid_header_value(trailer.value) ||
+      is_forbidden_trailer_field(trailer.name) {
+      return Err(InvalidHeader(trailer.name))
+    }
+  }
+  Ok(())
+}
+
+fn request_trailer_names(trailers : Headers) -> String {
+  let names = Buffer(size_hint=64)
+  for trailer in trailers.iter() {
+    if names.length() > 0 {
+      names.write_bytes(@utf8.encode(", "))
+    }
+    names.write_bytes(@utf8.encode(trailer.name))
+  }
+  @utf8.decode_lossy(names.to_bytes()[:])
+}
+
+fn write_chunked_body(
+  stream : &Stream,
+  body : Bytes,
+  trailers : Headers,
+) -> Result[Unit, NetError] {
   if body.length() > 0 {
     let size_line = body.length().to_string(radix=16) + "\r\n"
     match write_all(stream, @utf8.encode(size_line)) {
@@ -444,7 +470,20 @@ fn write_chunked_body(stream : &Stream, body : Bytes) -> Result[Unit, NetError] 
       Err(err) => return Err(err)
     }
   }
-  write_all(stream, @utf8.encode("0\r\n\r\n"))
+  match write_all(stream, @utf8.encode("0\r\n")) {
+    Ok(_) => ()
+    Err(err) => return Err(err)
+  }
+  for trailer in trailers.iter() {
+    match write_all(
+      stream,
+      @utf8.encode(trailer.name + ": " + trailer.value + "\r\n"),
+    ) {
+      Ok(_) => ()
+      Err(err) => return Err(err)
+    }
+  }
+  write_all(stream, @utf8.encode("\r\n"))
 }
 
 /// Encode HTTP request to HTTP/1.1 format.
@@ -493,13 +532,28 @@ pub fn H1Codec::encode_request(
     Ok(value) => value
     Err(err) => return Err(err)
   }
-  let chunked = match request_is_chunked(req.headers) {
+  let mut chunked = match request_is_chunked(req.headers) {
     Ok(value) => value
     Err(err) => return Err(err)
   }
   if content_length is Some(_) && chunked {
     return Err(InvalidHeader("Transfer-Encoding"))
   }
+
+  let has_trailers = req.trailers.length() > 0
+  if has_trailers {
+    match validate_request_trailers(req.trailers) {
+      Ok(_) => ()
+      Err(err) => return Err(err)
+    }
+    // Trailers need a self-delimiting body, so they cannot coexist with an
+    // explicit Content-Length. Chunked framing can be selected implicitly.
+    if content_length is Some(_) {
+      return Err(InvalidHeader("Content-Length"))
+    }
+    chunked = true
+  }
+  let synthesize_chunked = has_trailers && !req.headers.contains("Transfer-Encoding")
 
   let body_length = match req.body {
     Some(body) => body.length()
@@ -528,6 +582,15 @@ pub fn H1Codec::encode_request(
     headers_str += "Content-Length: " + body_length.to_string() + "\r\n"
   }
 
+  // Request trailers require chunked framing. Advertise both the framing and
+  // the trailer names when the caller did not provide them explicitly.
+  if synthesize_chunked {
+    headers_str += "Transfer-Encoding: chunked\r\n"
+  }
+  if has_trailers && !req.headers.contains("Trailer") {
+    headers_str += "Trailer: " + request_trailer_names(req.trailers) + "\r\n"
+  }
+
   // Add User-Agent if not present
   if !req.headers.contains("User-Agent") {
     headers_str += "User-Agent: Feather/0.1.0\r\n"
@@ -551,8 +614,8 @@ pub fn H1Codec::encode_request(
   // Write body using the selected framing
   let body_result = if chunked {
     match req.body {
-      Some(body) => write_chunked_body(self.stream, body)
-      None => write_chunked_body(self.stream, b"")
+      Some(body) => write_chunked_body(self.stream, body, req.trailers)
+      None => write_chunked_body(self.stream, b"", req.trailers)
     }
   } else {
     match req.body {

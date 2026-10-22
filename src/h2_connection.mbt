@@ -192,6 +192,34 @@ fn h2_forbidden_trailer_field(name : String) -> Bool {
   }
 }
 
+/// Validate request trailer fields before they are written. Request trailers
+/// must never carry framing, routing, authentication, or payload metadata.
+fn h2_request_trailer_fields(
+  trailers : Headers,
+) -> Result[Array[(String, String)], HttpError] {
+  let fields : Array[(String, String)] = []
+  for trailer in trailers.iter() {
+    let name = trailer.name.to_lower()
+    if !h2_valid_field_name(name) || !h2_valid_field_value(trailer.value) ||
+      is_forbidden_trailer_field(name) {
+      return Err(InvalidHeader(trailer.name))
+    }
+    fields.push((name, trailer.value))
+  }
+  Ok(fields)
+}
+
+fn h2_trailer_names(trailers : Headers) -> String {
+  let names = Buffer(size_hint=64)
+  for trailer in trailers.iter() {
+    if names.length() > 0 {
+      names.write_bytes(@utf8.encode(", "))
+    }
+    names.write_bytes(@utf8.encode(trailer.name.to_lower()))
+  }
+  @utf8.decode_lossy(names.to_bytes()[:])
+}
+
 fn H2ResponseState::apply_header_block(
   self : H2ResponseState,
   block : Bytes,
@@ -695,6 +723,10 @@ fn h2_request_headers(request : Request) -> Result[Array[(String, String)], Http
     content_lengths.length() == 0 &&
     !h2_name_in_array(connection_nominated, "content-length") {
     headers.push(("content-length", body_length.to_string()))
+  }
+  if request.trailers.length() > 0 && !request.headers.contains("Trailer") &&
+    !h2_name_in_array(connection_nominated, "trailer") {
+    headers.push(("trailer", h2_trailer_names(request.trailers)))
   }
   if !request.headers.contains("User-Agent") &&
     !h2_name_in_array(connection_nominated, "user-agent") {
@@ -1201,6 +1233,11 @@ pub fn H2ClientConnection::request_with_limit(
   if !self.is_open() {
     return Err(ConnectionClosed)
   }
+  let trailer_fields = match h2_request_trailer_fields(request.trailers) {
+    Ok(fields) => fields
+    Err(err) => return Err(err)
+  }
+  let has_trailers = trailer_fields.length() > 0
   let headers = match h2_request_headers(request) {
     Ok(headers) => headers
     Err(err) => return Err(err)
@@ -1221,17 +1258,28 @@ pub fn H2ClientConnection::request_with_limit(
   if h2_header_list_size(headers) > self.flow.peer_max_header_list_size {
     return Err(ProtocolError("HTTP/2 request header list too large"))
   }
+  if has_trailers &&
+    h2_header_list_size(trailer_fields) > self.flow.peer_max_header_list_size {
+    return Err(ProtocolError("HTTP/2 request trailer list too large"))
+  }
   let stream_id = self.next_stream_id
   if stream_id < 1 || stream_id > H2_MAX_WINDOW_SIZE {
     self.closed = true
     return Err(ProtocolError("HTTP/2 stream id exhausted"))
   }
   let block = hpack_encode(headers)
+  let trailer_block = if has_trailers {
+    hpack_encode(trailer_fields)
+  } else {
+    b""
+  }
   let body = match request.body {
     Some(body) => body
     None => b""
   }
-  let end_stream = body.length() == 0
+  // A request with trailers must leave the stream open until the trailing
+  // HEADERS frame is written, even when the body itself is empty.
+  let end_stream = body.length() == 0 && !has_trailers
   // A new stream starts with the peer's current initial window.
   self.flow.stream_send_window = self.flow.peer_initial_window
   match h2_write_header_block(self.stream, stream_id, block, end_stream) {
@@ -1261,6 +1309,7 @@ pub fn H2ClientConnection::request_with_limit(
   )
   let flow = self.flow
   let mut sent = 0
+  let mut trailers_sent = !has_trailers
   while sent < body.length() && !state.ended {
     let available = if flow.connection_send_window < flow.stream_send_window {
       flow.connection_send_window
@@ -1289,7 +1338,7 @@ pub fn H2ClientConnection::request_with_limit(
     let frame_limit = h2_outbound_frame_limit(flow.peer_max_frame_size)
     let take = if wanted < frame_limit { wanted } else { frame_limit }
     let last = sent + take == body.length()
-    let flags = if last { H2_FLAG_END_STREAM } else { 0 }
+    let flags = if last && !has_trailers { H2_FLAG_END_STREAM } else { 0 }
     match h2_write_frame(
       self.stream,
       H2_FRAME_DATA,
@@ -1317,6 +1366,24 @@ pub fn H2ClientConnection::request_with_limit(
     flow.stream_send_window = flow.stream_send_window - take
   }
 
+  if has_trailers && !state.ended {
+    match h2_write_header_block(self.stream, stream_id, trailer_block, true) {
+      Ok(_) => ()
+      Err(err) => {
+        self.closed = true
+        return Err(err)
+      }
+    }
+    match self.stream.flush() {
+      Ok(_) => ()
+      Err(err) => {
+        self.closed = true
+        return Err(http_error_from_net(err))
+      }
+    }
+    trailers_sent = true
+  }
+
   while !state.ended {
     let frame = match h2_read_frame(self.reader) {
       Ok(frame) => frame
@@ -1337,7 +1404,8 @@ pub fn H2ClientConnection::request_with_limit(
   // An early final response (for example 413 or 401) leaves the request side
   // of this stream half-open. Reset the stream instead of returning the
   // connection to the pool with an unfinished upload.
-  if sent < body.length() && !self.closed {
+  let request_finished = sent == body.length() && trailers_sent
+  if !request_finished && !self.closed {
     match h2_write_frame(
       self.stream,
       H2_FRAME_RST_STREAM,

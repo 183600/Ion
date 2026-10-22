@@ -745,6 +745,10 @@ pub struct Request {
   url : Url
   headers : Headers
   body : Option[Bytes]
+  // Trailer fields sent after a chunked (HTTP/1.1) or DATA (HTTP/2) body.
+  // Trailer names are also advertised through a `Trailer` header unless the
+  // caller supplied one explicitly.
+  trailers : Headers
   timeout_ms : Int
   timeout_explicit : Bool
 } derive(Eq, Debug)
@@ -755,6 +759,7 @@ pub fn Request::new(method : HttpMethod, url : Url) -> Request {
     url,
     headers: Headers::new(),
     body: None,
+    trailers: Headers::new(),
     timeout_ms: 30000,
     timeout_explicit: false,
   }
@@ -1055,6 +1060,25 @@ pub fn Request::without_header(self : Request, name : String) -> Request {
 
 pub fn Request::with_body(self : Request, body : Bytes) -> Request {
   Request::{ ..self, body: Some(body) }
+}
+
+/// Append a trailer field. Request trailers require chunked framing on
+/// HTTP/1.1; HTTP/2 sends them in a trailing HEADERS frame.
+pub fn Request::with_trailer(self : Request, name : String, value : String) -> Request {
+  Request::{ ..self, trailers: self.trailers.add(name, value) }
+}
+
+/// Replace all request trailer fields.
+pub fn Request::with_trailers(self : Request, trailers : Headers) -> Request {
+  Request::{ ..self, trailers }
+}
+
+pub fn Request::get_trailer(self : Request, name : String) -> Option[String] {
+  self.trailers.get(name)
+}
+
+pub fn Request::get_trailer_all(self : Request, name : String) -> List[String] {
+  self.trailers.get_all(name)
 }
 
 pub fn Request::with_timeout(self : Request, timeout_ms : Int) -> Request {
