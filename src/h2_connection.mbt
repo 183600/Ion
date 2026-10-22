@@ -1927,7 +1927,11 @@ fn H2ClientConnection::drain_buffered_connection_frames(
           return Ok(())
         }
         if frame_stream_id > state.stream_id {
-          // Leave a frame for a future stream buffered for the next request.
+          // DATA on an idle stream is a connection-level protocol error
+          // (RFC 9113 §5.1). Keeping the frame for the next request would
+          // pool a session that the peer has already made unusable and would
+          // let a new request be sent before the error is noticed.
+          self.closed = true
           return Ok(())
         }
         let frame = match h2_read_connection_frame(self.reader) {
