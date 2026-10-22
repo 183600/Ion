@@ -353,6 +353,7 @@ pub fn Request::with_multipart(Self, Array[(String, String)], Array[MultipartFil
 pub fn Request::with_timeout(Self, Int32) -> Self
 pub fn Request::with_trailer(Self, String, String) -> Self
 pub fn Request::with_trailers(Self, Headers) -> Self
+pub fn Request::with_upgrade(Self, String) -> Self
 pub fn Request::without_header(Self, String) -> Self
 
 pub struct Response {

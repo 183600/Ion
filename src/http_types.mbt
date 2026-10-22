@@ -896,6 +896,32 @@ pub fn Request::with_header(self : Request, name : String, value : String) -> Re
   Request::{ ..self, headers: self.headers.add(name, value) }
 }
 
+/// Offer a protocol upgrade on this request (for example `websocket`). The
+/// `Connection: Upgrade` nomination is added or merged without discarding
+/// other connection options. On HTTP/1.1 a matching `101 Switching Protocols`
+/// response exposes the switched byte stream through `Response::body_stream`,
+/// which is writable like a CONNECT tunnel. HTTP/2 carries extended protocols
+/// differently and does not use the `Upgrade` field.
+pub fn Request::with_upgrade(self : Request, protocol : String) -> Request {
+  let mut connection = ""
+  for value in self.headers.get_all("Connection").iter() {
+    if connection.length() > 0 {
+      connection = connection + ", "
+    }
+    connection = connection + value
+  }
+  if !headers_have_token(self.headers, "Connection", "upgrade") {
+    connection = if connection.length() == 0 {
+      "Upgrade"
+    } else {
+      connection + ", Upgrade"
+    }
+  }
+  self
+    .set_header("Connection", connection)
+    .set_header("Upgrade", protocol)
+}
+
 fn is_form_safe_byte(byte : Byte) -> Bool {
   (byte >= b'a' && byte <= b'z') || (byte >= b'A' && byte <= b'Z') ||
   (byte >= b'0' && byte <= b'9') || byte == b'*' || byte == b'-' ||

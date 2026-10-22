@@ -6,6 +6,9 @@ pub struct H1Codec {
   priv reader : @ref.Ref[StreamReader]
   mut last_is_head : Bool
   mut last_is_connect : Bool
+  // Whether the most recently encoded request asked for a protocol upgrade.
+  // A 101 response is only an upgrade tunnel when the request offered one.
+  priv mut last_is_upgrade : Bool
   mut close_after_request : Bool
   // Set when a request head carried `Expect: 100-continue` and the body has
   // not been written yet. `decode_response` sends it after an interim 100.
@@ -56,6 +59,7 @@ fn H1Codec::make(
     reader: @ref.Ref(StreamReader::new(stream)),
     last_is_head: false,
     last_is_connect: false,
+    last_is_upgrade: false,
     close_after_request: false,
     deferred_pending: false,
     deferred_body_bytes: b"",
@@ -539,6 +543,7 @@ pub fn H1Codec::encode_request(
   // reached the wire; success below sets the state for this request.
   self.last_is_head = false
   self.last_is_connect = false
+  self.last_is_upgrade = false
   self.close_after_request = false
   self.deferred_pending = false
   if !valid_url_path_chars(req.url.path) ||
@@ -715,6 +720,7 @@ pub fn H1Codec::encode_request(
     Ok(_) => {
       self.last_is_head = req.method == HEAD
       self.last_is_connect = is_connect
+      self.last_is_upgrade = request_requests_upgrade(req.headers)
       self.close_after_request = headers_have_token(req.headers, "Connection", "close")
       Ok(())
     }
@@ -869,6 +875,21 @@ fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] 
   Ok(ResponseHead::{ version, status, headers })
 }
 
+/// Whether a request explicitly offered a protocol upgrade. Both the
+/// `Connection: Upgrade` nomination and a non-empty `Upgrade` field are
+/// required; otherwise a 101 response is unsolicited.
+fn request_requests_upgrade(headers : Headers) -> Bool {
+  if !headers_have_token(headers, "Connection", "upgrade") {
+    return false
+  }
+  for value in headers.get_all("Upgrade") {
+    if value.trim().length() > 0 {
+      return true
+    }
+  }
+  false
+}
+
 /// Decode HTTP response from HTTP/1.1 format
 pub fn H1Codec::decode_response(
   self : H1Codec,
@@ -883,8 +904,10 @@ pub fn H1Codec::decode_response(
   // response when the codec is reused after an error.
   let request_close = self.close_after_request
   let request_connect = self.last_is_connect
+  let request_upgrade = self.last_is_upgrade
   self.last_is_head = false
   self.last_is_connect = false
+  self.last_is_upgrade = false
   self.close_after_request = false
   // A deferred body belongs to the request that produced the response being
   // read now. Take it out of the codec so an error, a final response without
@@ -938,6 +961,10 @@ pub fn H1Codec::decode_response(
       continue
     }
 
+    // A 101 response switches to the protocol named by the request's Upgrade
+    // field. A 101 without a matching offer is still returned as a bodyless
+    // response, but the connection is closed rather than pooled.
+    let upgrade_tunnel = response_head.status == 101 && request_upgrade
     // A successful CONNECT response switches to the tunnelled stream. It is
     // close-delimited and must not carry HTTP body framing (RFC 9110 §9.3.6).
     let connect_tunnel = request_connect &&
@@ -956,7 +983,7 @@ pub fn H1Codec::decode_response(
       headers: response_head.headers,
       status: response_head.status,
       head: is_head,
-      tunnel: connect_tunnel,
+      tunnel: connect_tunnel || upgrade_tunnel,
       max_body_bytes: self.max_body_bytes,
       body_mode: BodyUnknown,
       remaining: 0,
@@ -971,7 +998,7 @@ pub fn H1Codec::decode_response(
       released_to_pool: false,
       trailers,
     }
-    if connect_tunnel {
+    if connect_tunnel || upgrade_tunnel {
       response_stream.body_mode = BodyUntilEof
       response_stream.close_after_body = true
       response_stream.prepared = true
@@ -1011,7 +1038,11 @@ pub fn H1Codec::decode_response(
       )
         .with_trailers(trailers)
         .with_max_body_bytes(
-          if connect_tunnel { TUNNEL_BODY_LIMIT } else { self.max_body_bytes },
+          if connect_tunnel || upgrade_tunnel {
+            TUNNEL_BODY_LIMIT
+          } else {
+            self.max_body_bytes
+          },
         ),
     )
   }
