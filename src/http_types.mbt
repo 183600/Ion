@@ -1183,6 +1183,10 @@ pub fn Response::read_body_with_limit(
   max_bytes : Int,
 ) -> Result[Bytes, HttpError] {
   let limit = if max_bytes < 0 { 0 } else { max_bytes }
+  // An explicit larger limit may exceed the cap the response stream was
+  // created with (for example when decoding an encoded body); authorize it
+  // before the first read.
+  self.body.set_body_limit(limit)
   let output = Buffer(size_hint=4096)
   while true {
     let chunk = Buffer(size_hint=4096)

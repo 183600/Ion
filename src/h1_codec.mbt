@@ -905,7 +905,7 @@ struct ResponseStream {
   headers : Headers
   status : Int
   head : Bool
-  max_body_bytes : Int
+  mut max_body_bytes : Int
   mut body_mode : ResponseBodyMode
   mut remaining : Int
   mut total_read : Int
@@ -1488,6 +1488,16 @@ fn ResponseStream::finish(self : ResponseStream) -> Unit {
     self.complete(false)
   } else {
     self.complete(true)
+  }
+}
+
+pub impl Stream for ResponseStream with fn set_body_limit(
+  self : ResponseStream,
+  max_body_bytes : Int,
+) -> Unit {
+  let limit = if max_body_bytes < 0 { 0 } else { max_body_bytes }
+  if limit > self.max_body_bytes {
+    self.max_body_bytes = limit
   }
 }
 

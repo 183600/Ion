@@ -31,6 +31,13 @@ pub trait Stream {
 
   // Optional: Get local address
   fn local_addr(Self) -> Result[String, NetError]
+
+  // Optional: authorize reading more body bytes for an explicit caller limit.
+  fn set_body_limit(Self, Int) -> Unit = _
+}
+
+impl Stream with fn set_body_limit(_self, _limit) {
+  ()
 }
 
 /// Placeholder TCP stream kept for API compatibility and tests. It validates

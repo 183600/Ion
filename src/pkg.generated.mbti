@@ -521,6 +521,7 @@ pub trait Stream {
   fn set_timeout(Self, Int32) -> Result[Unit, NetError]
   fn peer_addr(Self) -> Result[String, NetError]
   fn local_addr(Self) -> Result[String, NetError]
+  fn set_body_limit(Self, Int32) -> Unit
 }
 
 pub trait TlsClientCtx {
