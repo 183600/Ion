@@ -2390,6 +2390,13 @@ test "Proxy::new parses URL and credentials" {
 }
 
 ///|
+test "Proxy::new ignores empty userinfo" {
+  let proxy = Proxy::new("http://@proxy.example:3128").unwrap()
+  assert_eq(proxy.authority(), "proxy.example:3128")
+  assert_true(proxy.authorization() is None)
+}
+
+///|
 test "Proxy::new rejects non-http schemes and bad ports" {
   assert_true(Proxy::new("https://proxy.example:443") is Err(InvalidUrl(_)))
   assert_true(Proxy::new("http://proxy.example:0") is Err(_))

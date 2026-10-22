@@ -58,7 +58,12 @@ fn proxy_from_url(url : String, scheme : String) -> Result[Proxy, HttpError] {
     return Err(InvalidUrl("Proxy URL must not include a path, query, or fragment"))
   }
   let authorization = match proxy_userinfo(url) {
-    Some(userinfo) => Some("Basic " + proxy_basic_authorization(userinfo))
+    Some(userinfo) =>
+      if userinfo.length() > 0 {
+        Some("Basic " + proxy_basic_authorization(userinfo))
+      } else {
+        None
+      }
     None => None
   }
   Ok(Proxy::{ url: parsed, authorization })
