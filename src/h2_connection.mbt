@@ -194,6 +194,9 @@ fn H2ResponseState::apply_header_block(
     if !trailers_mode {
       return Err(ProtocolError("Empty HTTP/2 header block"))
     }
+    if self.body_forbidden {
+      return Err(ProtocolError("HTTP/2 response must not include trailers"))
+    }
     // An empty trailing HEADERS block is a valid (if unusual) way to end a
     // stream: there are simply no trailer fields. It still has to satisfy the
     // same END_STREAM and Content-Length rules as a non-empty trailer block.
@@ -239,6 +242,9 @@ fn H2ResponseState::apply_header_block(
   if trailers_mode {
     if status_text is Some(_) {
       return Err(ProtocolError("HTTP/2 trailers contain :status"))
+    }
+    if self.body_forbidden {
+      return Err(ProtocolError("HTTP/2 response must not include trailers"))
     }
     if !end_stream {
       return Err(ProtocolError("HTTP/2 trailers did not end the stream"))
@@ -319,11 +325,12 @@ fn h2_apply_settings(
       payload[offset + 5].to_int()
     if identifier == H2_SETTINGS_ENABLE_PUSH {
       // A server must not ask the client to enable push. The setting is still
-      // legal when it explicitly disables push with value 0.
+      // legal when it explicitly disables push with value 0. Values are
+      // unsigned 32-bit, so compare against 0/1 without relying on sign.
       if value == 1 {
         return Err(ProtocolError("HTTP/2 server sent ENABLE_PUSH"))
       }
-      if value > 1 {
+      if value != 0 {
         return Err(ProtocolError("Invalid HTTP/2 ENABLE_PUSH"))
       }
     } else if identifier == H2_SETTINGS_INITIAL_WINDOW_SIZE {
@@ -487,10 +494,17 @@ fn H2ResponseState::handle_frame(
         }
         flow.connection_send_window = flow.connection_send_window + increment
       } else if frame.stream_id == self.stream_id {
+        // WINDOW_UPDATE for a stream that has already ended is legal and must
+        // not be treated as an overflow error.
+        if self.ended {
+          return Ok(())
+        }
         if flow.stream_send_window > H2_MAX_WINDOW_SIZE - increment {
           return Err(ProtocolError("HTTP/2 stream window overflow"))
         }
         flow.stream_send_window = flow.stream_send_window + increment
+      } else if frame.stream_id > self.stream_id {
+        return Err(ProtocolError("HTTP/2 WINDOW_UPDATE on idle stream"))
       }
       Ok(())
     }
@@ -519,6 +533,8 @@ fn H2ResponseState::handle_frame(
         } else {
           Err(ProtocolError("HTTP/2 stream reset by server"))
         }
+      } else if frame.stream_id > self.stream_id {
+        Err(ProtocolError("HTTP/2 RST_STREAM on idle stream"))
       } else {
         Ok(())
       }
@@ -766,11 +782,14 @@ fn H2ClientConnection::send_preface(self : H2ClientConnection) -> Result[Unit, H
     Ok(_) => ()
     Err(err) => return Err(err)
   }
-  h2_send_window_update(
+  match h2_send_window_update(
     self.stream,
     0,
     H2_MAX_WINDOW_SIZE - H2_DEFAULT_WINDOW_SIZE,
-  )
+  ) {
+    Ok(_) => Ok(())
+    Err(err) => Err(err)
+  }
 }
 
 /// A persistent HTTP/2 client connection. It owns the client connection
@@ -834,7 +853,23 @@ fn H2ClientConnection::drain_buffered_connection_frames(
       | H2_FRAME_WINDOW_UPDATE
       | H2_FRAME_GOAWAY
       | H2_FRAME_PRIORITY => ()
-      _ => return
+      _ => {
+        // A PUSH_PROMISE (push is disabled) or CONTINUATION here is always a
+        // connection error. Frames for the just-finished stream are likewise
+        // invalid. Keep frames for a not-yet-opened stream buffered: callers
+        // may have supplied several sequential responses in one test buffer.
+        let offset = self.reader.pending_offset
+        let frame_stream_id = ((self.reader.pending[offset + 5].to_int() & 0x7f) << 24) |
+          (self.reader.pending[offset + 6].to_int() << 16) |
+          (self.reader.pending[offset + 7].to_int() << 8) |
+          self.reader.pending[offset + 8].to_int()
+        if frame_type == H2_FRAME_PUSH_PROMISE ||
+          frame_type == H2_FRAME_CONTINUATION ||
+          frame_stream_id <= state.stream_id {
+          self.closed = true
+        }
+        return
+      }
     }
     let frame = match h2_read_frame(self.reader) {
       Ok(frame) => frame
@@ -952,9 +987,36 @@ fn H2ClientConnection::drain_buffered_settings(
   flow : H2FlowState,
 ) -> Result[Unit, HttpError] {
   while h2_frame_is_buffered(self.reader) {
-    let frame_type = self.reader.pending[self.reader.pending_offset + 3].to_int()
+    let offset = self.reader.pending_offset
+    let frame_type = self.reader.pending[offset + 3].to_int()
+    let frame_stream_id = ((self.reader.pending[offset + 5].to_int() & 0x7f) << 24) |
+      (self.reader.pending[offset + 6].to_int() << 16) |
+      (self.reader.pending[offset + 7].to_int() << 8) |
+      self.reader.pending[offset + 8].to_int()
+    if frame_type == H2_FRAME_WINDOW_UPDATE &&
+      frame_stream_id == self.next_stream_id {
+      // This update belongs to the stream that is about to be opened. Leave
+      // it buffered for the body loop, which resets the stream window first.
+      return Ok(())
+    }
+    if frame_type == H2_FRAME_GOAWAY &&
+      self.reader.pending.length() - offset >= 13 {
+      let last_stream_id = ((self.reader.pending[offset + 9].to_int() & 0x7f) << 24) |
+        (self.reader.pending[offset + 10].to_int() << 16) |
+        (self.reader.pending[offset + 11].to_int() << 8) |
+        self.reader.pending[offset + 12].to_int()
+      if last_stream_id >= self.next_stream_id {
+        // The next stream was accepted before the peer sent GOAWAY. Leave
+        // both the GOAWAY and its response for the response loop.
+        return Ok(())
+      }
+    }
     match frame_type {
-      H2_FRAME_SETTINGS | H2_FRAME_PING | H2_FRAME_PRIORITY => ()
+      H2_FRAME_SETTINGS
+      | H2_FRAME_PING
+      | H2_FRAME_PRIORITY
+      | H2_FRAME_GOAWAY
+      | H2_FRAME_WINDOW_UPDATE => ()
       _ => return Ok(())
     }
     let frame = match h2_read_frame(self.reader) {
@@ -1006,11 +1068,33 @@ fn H2ClientConnection::drain_buffered_settings(
             }
           }
         }
+      H2_FRAME_WINDOW_UPDATE => {
+        let increment = match h2_parse_window_update(frame.payload) {
+          Ok(value) => value
+          Err(err) => {
+            self.closed = true
+            return Err(err)
+          }
+        }
+        // Only the connection window can still matter before the next stream
+        // is opened. Updates for already-closed streams are harmless, but an
+        // update for a stream that has never been opened is a protocol error.
+        if frame.stream_id == 0 {
+          if flow.connection_send_window > H2_MAX_WINDOW_SIZE - increment {
+            self.closed = true
+            return Err(ProtocolError("HTTP/2 connection window overflow"))
+          }
+          flow.connection_send_window = flow.connection_send_window + increment
+        } else if frame.stream_id >= self.next_stream_id {
+          self.closed = true
+          return Err(ProtocolError("HTTP/2 WINDOW_UPDATE on idle stream"))
+        }
+      }
       H2_FRAME_GOAWAY => {
         self.closed = true
         let error_code = match h2_parse_goaway(frame.payload) {
           Ok((_, code)) => code
-          Err(_) => 0
+          Err(err) => return Err(err)
         }
         if error_code != 0 {
           return Err(ProtocolError("HTTP/2 GOAWAY error " + error_code.to_string()))

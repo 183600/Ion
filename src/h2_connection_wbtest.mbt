@@ -944,3 +944,147 @@ test "http2 rejects an empty trailer block that does not end the stream" {
       assert_eq(err, ProtocolError("HTTP/2 trailers did not end the stream"))
   }
 }
+
+test "http2 rejects a SETTINGS_ENABLE_PUSH value with the high bit set" {
+  let flow = H2FlowState::new()
+  let invalid = h2_settings_payload([(H2_SETTINGS_ENABLE_PUSH, -1)])
+  match h2_apply_settings(invalid, flow) {
+    Err(err) => assert_eq(err, ProtocolError("Invalid HTTP/2 ENABLE_PUSH"))
+    Ok(_) => fail("invalid HTTP/2 ENABLE_PUSH was accepted")
+  }
+}
+
+test "http2 honors a buffered GOAWAY before writing request headers" {
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_GOAWAY, 0, 0, b"\x00\x00\x00\x00\x00\x00\x00\x00"),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match connection.request(request) {
+    Ok(_) => fail("GOAWAY before a request was ignored")
+    Err(err) => assert_eq(err, ProtocolError("HTTP/2 connection closed by GOAWAY"))
+  }
+  let frames = h2_test_client_frames(stream)
+  for frame in frames {
+    assert_true(frame.frame_type != H2_FRAME_HEADERS)
+  }
+  assert_false(connection.is_open())
+}
+
+test "http2 processes SETTINGS buffered behind a WINDOW_UPDATE" {
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_WINDOW_UPDATE, 0, 0, b"\x00\x00\x00\x01"),
+    h2_test_frame(
+      H2_FRAME_SETTINGS,
+      0,
+      0,
+      h2_settings_payload([(H2_SETTINGS_ENABLE_PUSH, -1)]),
+    ),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match connection.request(request) {
+    Ok(_) => fail("invalid SETTINGS behind WINDOW_UPDATE was ignored")
+    Err(err) => assert_eq(err, ProtocolError("Invalid HTTP/2 ENABLE_PUSH"))
+  }
+  let frames = h2_test_client_frames(stream)
+  for frame in frames {
+    assert_true(frame.frame_type != H2_FRAME_HEADERS)
+  }
+}
+
+test "http2 rejects frames on an idle stream" {
+  let response_headers = hpack_encode([(":status", "200")])
+  for frame in [
+    h2_test_frame(H2_FRAME_WINDOW_UPDATE, 0, 3, b"\x00\x00\x00\x01"),
+    h2_test_frame(H2_FRAME_RST_STREAM, 0, 3, b"\x00\x00\x00\x00"),
+  ] {
+    let input = h2_test_concat([
+      h2_test_settings(),
+      frame,
+      h2_test_frame(
+        H2_FRAME_HEADERS,
+        H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+        1,
+        response_headers,
+      ),
+    ])
+    let stream = h2_frame_mock_stream(input, 0)
+    let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+    match h2_request(stream, request) {
+      Ok(_) => fail("frame on an idle HTTP/2 stream was ignored")
+      Err(_) => ()
+    }
+  }
+}
+
+test "http2 rejects trailers on a bodyless response" {
+  let response_headers = hpack_encode([(":status", "204")])
+  let trailers = hpack_encode([("x-trailer", "done")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, response_headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      trailers,
+    ),
+  ])
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  match h2_request(h2_frame_mock_stream(input, 0), request) {
+    Ok(_) => fail("HTTP/2 trailers on a 204 response were accepted")
+    Err(err) =>
+      assert_eq(err, ProtocolError("HTTP/2 response must not include trailers"))
+  }
+}
+
+test "http2 closes a session with an invalid buffered frame after the response" {
+  let response_headers = hpack_encode([(":status", "200")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
+    h2_test_frame(H2_FRAME_PUSH_PROMISE, 0, 3, b"\x00\x00\x00\x01"),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  let response = connection.request(request).unwrap()
+  assert_eq(response.status, 200)
+  assert_false(connection.is_open())
+}
+
+test "http2 ignores WINDOW_UPDATE for a stream that already ended" {
+  let settings = h2_test_frame(
+    H2_FRAME_SETTINGS,
+    0,
+    0,
+    h2_settings_payload([(H2_SETTINGS_INITIAL_WINDOW_SIZE, H2_MAX_WINDOW_SIZE)]),
+  )
+  let response_headers = hpack_encode([(":status", "200")])
+  let input = h2_test_concat([
+    settings,
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
+    h2_test_frame(H2_FRAME_WINDOW_UPDATE, 0, 1, b"\x00\x00\x00\x01"),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  let response = connection.request(request).unwrap()
+  assert_eq(response.status, 200)
+  assert_true(connection.is_open())
+}
