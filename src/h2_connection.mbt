@@ -191,11 +191,16 @@ fn h2_forbidden_header(name : String) -> Bool {
 }
 
 fn h2_forbidden_trailer_field(name : String) -> Bool {
-  match name.to_lower() {
-    "content-length" | "transfer-encoding" | "host" | "connection" |
-    "trailer" | "te" | "upgrade" | "keep-alive" | "proxy-connection" => true
-    _ => false
+  let name = name.to_lower()
+  // Existing HTTP/2 callers treat these response metadata fields as ordinary
+  // trailer fields, so keep accepting them. Every other HTTP/1.1 trailer
+  // restriction still applies (RFC 9113 §8.1): framing, routing,
+  // authentication, request modifiers, and payload transforms cannot move to
+  // the trailer section.
+  if name == "content-type" || name == "cache-control" {
+    return false
   }
+  is_forbidden_trailer_field(name)
 }
 
 /// Validate request trailer fields before they are written. Request trailers
