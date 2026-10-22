@@ -290,3 +290,34 @@ test "explicit body limits can raise the cap for a streaming response" {
   assert_true(connection.is_open())
   let _ = connection.close()
 }
+
+///|
+test "UnifiedClient returns a streaming HEAD session to the pool unread" {
+  let headers = hpack_encode([(":status", "200"), ("content-length", "9")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      headers,
+    ),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let client = UnifiedClient::with_transport(
+    dialer,
+    provider,
+    ClientOptions::new()
+      .with_http2_streaming(true)
+      .with_follow_redirects(false),
+  )
+  let response = client.head("https://example.com/head").unwrap()
+  assert_eq(response.status, 200)
+  assert_eq(response.text().unwrap(), "")
+  assert_eq(client.active_connection_count(), 0)
+  assert_eq(client.idle_connection_count(), 1)
+  let _ = client.close_all()
+  assert_eq(client.connection_count(), 0)
+}
