@@ -1975,6 +1975,16 @@ fn h2_request_with_limit_and_callback(
   )
 }
 
+/// Run HTTP/2 exchanges on this persistent connection through the common
+/// `HttpClient` interface. Unlike the inherent `request` method, this keeps the
+/// connection object so later requests can reuse its preface and HPACK state.
+pub impl HttpClient for H2ClientConnection with fn request(
+  self : H2ClientConnection,
+  request : Request,
+) -> Result[Response, HttpError] {
+  self.request_with_limit(request, DEFAULT_MAX_BODY_BYTES)
+}
+
 /// Perform one HTTP/2 request over an ALPN-negotiated stream. The connection
 /// must already have negotiated the `h2` protocol; the caller owns closing it.
 pub fn h2_request(stream : &Stream, request : Request) -> Result[Response, HttpError] {
