@@ -980,6 +980,11 @@ fn h2_request_headers_with_protocol(
     !h2_name_in_array(connection_nominated, "user-agent") {
     headers.push(("user-agent", "Feather/0.1.0"))
   }
+  // RFC 9113 §8.2.3 allows a Cookie field to be split into multiple field
+  // lines, but recipients must concatenate the fragments with "; ". Send one
+  // field to peers that only look at a single Cookie header, keeping the
+  // caller's fragment order.
+  let cookie_values : Array[String] = []
   for header in request.headers.iter() {
     let name = header.name.to_lower()
     if h2_forbidden_header(name) || name == "host" ||
@@ -998,7 +1003,14 @@ fn h2_request_headers_with_protocol(
     if !h2_valid_field_name(name) || !h2_valid_field_value(header.value) {
       return Err(InvalidHeader(header.name))
     }
+    if name == "cookie" {
+      cookie_values.push(header.value)
+      continue
+    }
     headers.push((name, header.value))
+  }
+  if cookie_values.length() > 0 {
+    headers.push(("cookie", cookie_values.join("; ")))
   }
   Ok(headers)
 }
