@@ -347,8 +347,14 @@ int32_t feather_tcp_set_timeout(int32_t fd, int32_t timeout_ms) {
   return feather_set_timeout(fd, timeout_ms);
 }
 
-MOONBIT_FFI_EXPORT
-int32_t feather_tcp_local_addr(int32_t fd, moonbit_bytes_t output, int32_t capacity) {
+// Format the local or peer address of `fd` as `host:port`, bracketing IPv6
+// literals. `peer` selects getpeername instead of getsockname.
+static int32_t feather_tcp_format_addr(
+  int32_t fd,
+  int32_t peer,
+  moonbit_bytes_t output,
+  int32_t capacity
+) {
   if (fd < 0) {
     return -EBADF;
   }
@@ -357,7 +363,10 @@ int32_t feather_tcp_local_addr(int32_t fd, moonbit_bytes_t output, int32_t capac
   }
   struct sockaddr_storage addr;
   socklen_t length = sizeof(addr);
-  if (getsockname(fd, (struct sockaddr *)&addr, &length) < 0) {
+  int result = peer
+    ? getpeername(fd, (struct sockaddr *)&addr, &length)
+    : getsockname(fd, (struct sockaddr *)&addr, &length);
+  if (result < 0) {
     return -errno;
   }
   char host[INET6_ADDRSTRLEN];
@@ -389,6 +398,16 @@ int32_t feather_tcp_local_addr(int32_t fd, moonbit_bytes_t output, int32_t capac
   }
   memcpy(output, text, (size_t)written);
   return written;
+}
+
+MOONBIT_FFI_EXPORT
+int32_t feather_tcp_local_addr(int32_t fd, moonbit_bytes_t output, int32_t capacity) {
+  return feather_tcp_format_addr(fd, 0, output, capacity);
+}
+
+MOONBIT_FFI_EXPORT
+int32_t feather_tcp_peer_addr(int32_t fd, moonbit_bytes_t output, int32_t capacity) {
+  return feather_tcp_format_addr(fd, 1, output, capacity);
 }
 
 MOONBIT_FFI_EXPORT

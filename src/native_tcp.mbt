@@ -18,6 +18,9 @@ extern "C" fn feather_tcp_is_alive(fd : Int) -> Int = "feather_tcp_is_alive"
 #borrow(output)
 extern "C" fn feather_tcp_local_addr(fd : Int, output : Bytes, capacity : Int) -> Int = "feather_tcp_local_addr"
 
+#borrow(output)
+extern "C" fn feather_tcp_peer_addr(fd : Int, output : Bytes, capacity : Int) -> Int = "feather_tcp_peer_addr"
+
 #borrow(host, output)
 extern "C" fn feather_tcp_resolve(host : Bytes, output : Bytes, capacity : Int) -> Int = "feather_tcp_resolve"
 
@@ -191,12 +194,13 @@ pub impl Stream for NativeTcpStream with fn peer_addr(
   if feather_tcp_is_alive(self.fd) <= 0 {
     return Err(NetError::Closed)
   }
-  let host = if self.host.contains(":") && !(self.host.has_prefix("[") && self.host.has_suffix("]")) {
-    "[" + self.host + "]"
-  } else {
-    self.host
+  let capacity = 128
+  let output = Bytes::new(capacity)
+  let length = feather_tcp_peer_addr(self.fd, output, capacity)
+  if length < 0 {
+    return Err(native_tcp_error(-length, "TCP peer address"))
   }
-  Ok(host + ":" + self.port.to_string())
+  Ok(@utf8.decode_lossy(output.exact_view(start=0, end=length)))
 }
 
 pub impl Stream for NativeTcpStream with fn local_addr(

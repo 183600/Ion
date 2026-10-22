@@ -100,12 +100,41 @@ extern "C" fn feather_read_file_capacity_probe(
 
 ///|
 #cfg(target="native")
+#borrow(output)
+extern "C" fn feather_tcp_peer_addr_probe(
+  fd : Int,
+  output : Bytes,
+  capacity : Int,
+) -> Int = "feather_tcp_peer_addr"
+
+///|
+#cfg(target="native")
+#borrow(output)
+extern "C" fn feather_tcp_local_addr_probe(
+  fd : Int,
+  output : Bytes,
+  capacity : Int,
+) -> Int = "feather_tcp_local_addr"
+
+///|
+#cfg(target="native")
 test "native FFI rejects capacities beyond the output buffer" {
   let host = @utf8.encode("localhost")
   let output = Bytes::new(8)
   assert_eq(feather_tcp_resolve_capacity_probe(host, output, 9), -22)
   let path = @utf8.encode("/dev/null")
   assert_eq(feather_read_file_capacity_probe(path, output, 9), -22)
+}
+
+///|
+#cfg(target="native")
+test "native address FFI rejects invalid descriptors and capacities" {
+  let output = Bytes::new(128)
+  for probe in [feather_tcp_peer_addr_probe, feather_tcp_local_addr_probe] {
+    assert_eq(probe(-1, output, 128), -9)
+    assert_eq(probe(0, output, 129), -22)
+    assert_eq(probe(0, output, -1), -22)
+  }
 }
 
 ///|
