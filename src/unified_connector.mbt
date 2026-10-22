@@ -648,7 +648,14 @@ pub fn Connector::max_connections_per_host(self : Connector) -> Int {
 /// An explicit `with_tls_config` value is respected as-is, so callers that
 /// want HTTP/2 with shared credentials must include `h2` in its ALPN list.
 pub fn Connector::with_http2(self : Connector, enabled : Bool) -> Connector {
-  Connector::{ ..self, http2: enabled }
+  if self.http2 == enabled {
+    return self
+  }
+  // Existing connections negotiated the old ALPN list and cannot be reused
+  // for the new HTTP version policy.
+  let pool = @ref.Ref(self.pool.val.empty_with_settings())
+  let _ = self.close_all()
+  Connector::{ ..self, http2: enabled, pool }
 }
 
 /// Whether default TLS configurations advertise HTTP/2.
@@ -726,7 +733,11 @@ pub fn Connector::store_cookies(
 }
 
 fn Connector::connection_key(self : Connector, url : Url) -> String {
-  let origin = url.scheme.to_lower() + "://" + url.host.to_lower() + ":" + url.port.to_string()
+  // IP literals and DNS names can have the same text (IPvFuture); keep the
+  // bracketing distinction so a connection verified for one authority is
+  // never reused for the other.
+  let authority = url_authority_host(url.host.to_lower(), url.bracketed)
+  let origin = url.scheme.to_lower() + "://" + authority + ":" + url.port.to_string()
   match self.proxy_for_url(url) {
     Some(proxy) =>
       "proxy:" +

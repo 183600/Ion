@@ -243,3 +243,25 @@ test "UnifiedClient retries a stale pooled HTTP/2 session once" {
   assert_true(fresh.is_open)
   let _ = client.close_all()
 }
+
+test "changing the HTTP/2 policy closes connections negotiated under the old policy" {
+  let stream = regression_mock_stream("", 1, 0)
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let url = Url::parse("http://example.com/").unwrap()
+  let _ = connector.connect(url).unwrap()
+  assert_true(stream.is_open)
+  let enabled = connector.with_http2(true)
+  assert_true(enabled.http2_enabled())
+  assert_false(stream.is_open)
+  // Setting the same value again is a no-op for the current pool.
+  let again = enabled.with_http2(true)
+  assert_true(again.http2_enabled())
+}
+
+test "connection keys distinguish IPvFuture literals from DNS names" {
+  let connector = Connector::new(TcpDialer::new(), MockTlsProvider::new("test"))
+  let dns = Url::parse("https://v1.foo/").unwrap()
+  let literal = Url::parse("https://[v1.foo]/").unwrap()
+  assert_true(connector.connection_key(dns) != connector.connection_key(literal))
+}
