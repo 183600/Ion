@@ -1114,6 +1114,12 @@ pub fn H1Codec::decode_response(
       if informational_count > 8 {
         return Err(ProtocolError("Too many informational responses"))
       }
+      // The peer has started responding but has not accepted the deferred
+      // body yet. Re-arm the bounded wait for the next response so a peer that
+      // sends early hints and then waits for the request body cannot deadlock.
+      if deferred_pending && !deferred_body_sent {
+        expect_wait_done = false
+      }
       continue
     }
 
