@@ -545,10 +545,15 @@ fn resolve_redirect_url(base : Url, location : String) -> Result[Url, HttpError]
     Ok(url) => url
     Err(err) => return Err(err)
   }
-  // `join` already normalizes dot segments, but it deliberately keeps the
-  // special asterisk-form path as `*`. Do not turn that back into `/*` here.
-  let path = if joined.path == "*" {
-    "*"
+  let reference = location.trim().to_owned()
+  // `join` already normalizes dot segments for a reference that supplies a
+  // path. An empty, fragment-only, or query-only redirect keeps the base path
+  // verbatim (RFC 3986 §5.2.2), as does the special asterisk-form target.
+  let keeps_base_path = reference.length() == 0 ||
+    reference.has_prefix("#") ||
+    reference.has_prefix("?")
+  let path = if joined.path == "*" || keeps_base_path {
+    joined.path
   } else {
     normalize_path_and_suffix(joined.path)
   }

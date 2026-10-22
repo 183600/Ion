@@ -125,3 +125,19 @@ test "Url::join keeps dot segments in the base path for empty-path references" {
   // A reference that supplies a path is still normalized after merging.
   assert_eq(base.join("next").unwrap().to_string(), "http://example.com/next")
 }
+
+test "redirect resolution keeps dot segments for empty-path references" {
+  let base = Url::parse("http://example.com/a/../b").unwrap()
+  for entry in [
+    ("", "http://example.com/a/../b"),
+    ("#s", "http://example.com/a/../b#s"),
+    ("?y=2", "http://example.com/a/../b?y=2"),
+  ] {
+    let (location, expected) = entry
+    assert_eq(resolve_redirect_url(base, location).unwrap().to_string(), expected)
+  }
+  assert_eq(
+    resolve_redirect_url(base, "next").unwrap().to_string(),
+    "http://example.com/next",
+  )
+}
