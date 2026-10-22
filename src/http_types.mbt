@@ -1396,7 +1396,13 @@ pub fn Response::copy_body_to(
   }
   match sink.flush() {
     Ok(_) => Ok(total)
-    Err(err) => Err(http_error_from_net(err))
+    Err(err) => {
+      // The sink rejected the completed copy, so the source body may still
+      // have unread bytes. Close it rather than letting a pooled connection
+      // be reused with its old response body still on the wire.
+      let _ = self.body.close()
+      Err(http_error_from_net(err))
+    }
   }
 }
 
