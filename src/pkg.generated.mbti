@@ -31,6 +31,8 @@ pub fn h2_request(&Stream, Request) -> Result[Response, HttpError]
 
 pub fn h2_request_streaming(&Stream, Request) -> Result[Response, HttpError]
 
+pub fn h2_request_streaming_with_limit(&Stream, Request, Int32) -> Result[Response, HttpError]
+
 pub fn head(String) -> Result[Response, HttpError]
 
 pub fn hpack_encode(Array[(String, String)]) -> Bytes

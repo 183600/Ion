@@ -2617,6 +2617,17 @@ pub fn h2_request_streaming(
   stream : &Stream,
   request : Request,
 ) -> Result[Response, HttpError] {
+  h2_request_streaming_with_limit(stream, request, DEFAULT_MAX_BODY_BYTES)
+}
+
+/// Like `h2_request_streaming`, but bound the lazily-read response body at
+/// `max_body_bytes`. An explicit larger limit can still be authorized through
+/// `Response::read_body_with_limit` before the first body byte is consumed.
+pub fn h2_request_streaming_with_limit(
+  stream : &Stream,
+  request : Request,
+  max_body_bytes : Int,
+) -> Result[Response, HttpError] {
   let connection = match H2ClientConnection::new(stream) {
     Ok(connection) => connection
     Err(err) => return Err(err)
@@ -2628,7 +2639,7 @@ pub fn h2_request_streaming(
   })
   connection.request_streaming_with_callback(
     request,
-    DEFAULT_MAX_BODY_BYTES,
+    max_body_bytes,
     completion,
   )
 }

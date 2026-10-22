@@ -321,3 +321,18 @@ test "UnifiedClient returns a streaming HEAD session to the pool unread" {
   let _ = client.close_all()
   assert_eq(client.connection_count(), 0)
 }
+
+///|
+test "h2_request_streaming_with_limit bounds and releases a one-shot exchange" {
+  let headers = hpack_encode([(":status", "200")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, headers),
+    h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, b"abcdef"),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let request = Request::new(GET, Url::parse("https://example.com/one-shot-limit").unwrap())
+  let response = h2_request_streaming_with_limit(stream, request, 8).unwrap()
+  assert_eq(@utf8.decode_lossy(response.read_body_with_limit(8).unwrap()[:]), "abcdef")
+  assert_false(stream.is_open)
+}
