@@ -114,3 +114,92 @@ pub fn Proxy::is_secure(self : Proxy) -> Bool {
 pub fn Proxy::authorization(self : Proxy) -> String? {
   self.authorization
 }
+
+fn proxy_env_value(
+  names : Array[String],
+  lookup : (String) -> String?,
+) -> String? {
+  for name in names {
+    match lookup(name) {
+      Some(value) =>
+        if value.trim().length() > 0 {
+          return Some(value.trim().to_owned())
+        }
+      None => ()
+    }
+  }
+  None
+}
+
+/// Parse a proxy URL from an environment variable. A bare `host:port` value is
+/// treated as an HTTP proxy, matching the convention used by common HTTP
+/// clients and tools.
+fn proxy_from_env_url(value : String) -> Result[Proxy, HttpError] {
+  let lower = value.to_lower()
+  if lower.has_prefix("https://") {
+    Proxy::new_https(value)
+  } else if lower.contains("://") {
+    Proxy::new(value)
+  } else {
+    Proxy::new("http://" + value)
+  }
+}
+
+fn proxy_from_env_lookup(
+  url : Url,
+  lookup : (String) -> String?,
+) -> Result[Proxy?, HttpError] {
+  let mut candidate : String? = None
+  if url.is_secure() {
+    candidate = proxy_env_value(["HTTPS_PROXY", "https_proxy"], lookup)
+  } else {
+    candidate = proxy_env_value(["http_proxy"], lookup)
+    // CGI variables are attacker-controlled and must not select the proxy.
+    // Uppercase HTTP_PROXY is therefore only honoured outside a CGI
+    // environment, matching the convention used by curl.
+    if candidate is None && lookup("REQUEST_METHOD") is None {
+      candidate = proxy_env_value(["HTTP_PROXY"], lookup)
+    }
+  }
+  if candidate is None {
+    candidate = proxy_env_value(["ALL_PROXY", "all_proxy"], lookup)
+  }
+  match candidate {
+    Some(value) =>
+      match proxy_from_env_url(value) {
+        Ok(proxy) => Ok(Some(proxy))
+        Err(err) => Err(err)
+      }
+    None => Ok(None)
+  }
+}
+
+/// Resolve the proxy configured through the standard environment variables for
+/// `url`: `HTTPS_PROXY` for HTTPS, `http_proxy` (and `HTTP_PROXY` outside CGI)
+/// for HTTP, with `ALL_PROXY` as a fallback. Values without a scheme are
+/// treated as plain HTTP proxies. `NO_PROXY` is not applied here; combine the
+/// result with `Proxy::no_proxy_from_env` and `Connector::with_proxy_bypass`.
+pub fn Proxy::from_env(url : Url) -> Result[Proxy?, HttpError] {
+  proxy_from_env_lookup(url, @env.get_env_var)
+}
+
+fn proxy_no_proxy_lookup(lookup : (String) -> String?) -> Array[String] {
+  let value = match proxy_env_value(["NO_PROXY", "no_proxy"], lookup) {
+    Some(value) => value
+    None => return []
+  }
+  let patterns : Array[String] = []
+  for part in value.split(",") {
+    let pattern = part.trim()
+    if pattern.length() > 0 {
+      patterns.push(pattern.to_owned())
+    }
+  }
+  patterns
+}
+
+/// The `NO_PROXY` / `no_proxy` exclusion list from the environment. The
+/// patterns use the syntax accepted by `Connector::with_proxy_bypass`.
+pub fn Proxy::no_proxy_from_env() -> Array[String] {
+  proxy_no_proxy_lookup(@env.get_env_var)
+}

@@ -39,6 +39,7 @@ fn print_usage() -> Unit {
   println("       FEATHER_URL=<url> feather              send a GET request to FEATHER_URL")
   println("       FEATHER_PROXY=<url> feather            route requests through an HTTP proxy")
   println("       FEATHER_NO_PROXY=<list> feather        comma-separated hosts to reach directly")
+  println("       HTTPS_PROXY/http_proxy/NO_PROXY        standard proxy variables used when FEATHER_PROXY is unset")
   println("       FEATHER_CA=<pem file> feather          trust an extra CA certificate bundle")
   println("       FEATHER_CLIENT_CERT=<pem file>         client certificate for mTLS")
   println("       FEATHER_CLIENT_KEY=<pem file>          client private key for mTLS")
@@ -187,8 +188,16 @@ fn run_request(method : HttpMethod, url : String, body : String) -> Bool {
       return false
     }
   }
-  match @env.get_env_var("FEATHER_PROXY") {
+  let explicit_proxy = match @env.get_env_var("FEATHER_PROXY") {
     Some(value) => if value.length() > 0 {
+      Some(value)
+    } else {
+      None
+    }
+    None => None
+  }
+  match explicit_proxy {
+    Some(value) => {
       match client.with_proxy_url(value) {
         Ok(updated) => client = updated
         Err(err) => {
@@ -204,7 +213,29 @@ fn run_request(method : HttpMethod, url : String, body : String) -> Bool {
         None => ()
       }
     }
-    None => ()
+    None =>
+      match Url::parse(url) {
+        Ok(parsed) =>
+          match Proxy::from_env(parsed) {
+            Ok(Some(proxy)) => {
+              client = client.with_proxy(proxy)
+              let bypass = match @env.get_env_var("FEATHER_NO_PROXY") {
+                Some(value) => split_proxy_bypass(value)
+                None => Proxy::no_proxy_from_env()
+              }
+              if bypass.length() > 0 {
+                client = client.with_proxy_bypass(bypass)
+              }
+            }
+            Ok(None) => ()
+            Err(err) => {
+              report(err)
+              let _ = client.close_all()
+              return false
+            }
+          }
+        Err(_) => ()
+      }
   }
   let succeeded = if method == GET && body.length() == 0 {
     match client.get(url) {
