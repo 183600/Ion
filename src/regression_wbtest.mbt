@@ -929,18 +929,25 @@ test "cross-origin redirect strips Authorization" {
 
 ///|
 test "connector pools connections and close removes them" {
-  let stream = regression_mock_stream("", 1, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let first_stream = regression_mock_stream("", 1, 0)
+  let second_stream = regression_mock_stream("", 1, 0)
+  let streams : Array[&Stream] = [first_stream, second_stream]
+  let dialer = RegressionQueueDialer::{ streams, index: 0 }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let url = Url::parse("http://example.com/").unwrap()
   let first = connector.connect(url).unwrap()
   let second = connector.connect(url).unwrap()
-  assert_eq(dialer.count, 1)
+  // The second call reused the pooled stream instead of dialing again.
+  assert_eq(dialer.index, 1)
   let _ = first
   let _ = second
   assert_true(connector.close(url) is Ok(_))
+  // The reused stream had been handed back to the pool by `connect`, so close
+  // tears it down instead of leaving an untracked live connection behind.
+  assert_false(first_stream.is_open)
   let _ = connector.connect(url).unwrap()
-  assert_eq(dialer.count, 2)
+  assert_eq(dialer.index, 2)
+  assert_true(second_stream.is_open)
 }
 
 ///|

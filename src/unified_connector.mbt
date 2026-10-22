@@ -1458,7 +1458,7 @@ pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpEr
   // stream first would leave a closed socket in the idle pool when
   // `set_timeout` fails, so a later checkout could hand it out again.
   match self.connect_impl(url, false, false, connect_timeout) {
-    Ok((stream, reused, negotiated_protocol, h2)) => {
+    Ok((stream, _reused, negotiated_protocol, h2)) => {
       // The connect timeout only bounds dialing and the TLS handshake; restore
       // the request timeout for the bytes exchanged after the connection is up.
       // A pooled stream may still carry the timeout from its previous request,
@@ -1470,7 +1470,11 @@ pub fn Connector::connect(self : Connector, url : Url) -> Result[&Stream, HttpEr
           return Err(http_error_from_net(err))
         }
       }
-      if !reused && h2 is None && negotiated_protocol != Some("h2") {
+      // `connect` documents that the returned stream is also reachable through
+      // the pool. `take_idle_connection_at` removed a reused entry, so publish
+      // it again; otherwise `close` could not find the connection and the next
+      // `connect` would dial a fresh socket while the returned one leaked.
+      if h2 is None && negotiated_protocol != Some("h2") {
         self.pool.val.cache_idle_with_protocol(
           self.connection_key(url),
           stream,
