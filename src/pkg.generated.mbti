@@ -21,6 +21,8 @@ pub fn get(String) -> Result[Response, HttpError]
 
 pub fn gunzip(Bytes, Int32) -> Result[Bytes, HttpError]
 
+pub fn h2_request(&Stream, Request) -> Result[Response, HttpError]
+
 pub fn hpack_encode(Array[(String, String)]) -> Bytes
 
 pub fn hpack_encode_header(@buffer.Buffer, String, String) -> Unit
@@ -147,7 +149,14 @@ pub fn H1Codec::new_with_completion(&Stream, (Bool) -> Unit) -> Self
 pub fn H1Codec::new_with_limit(&Stream, Int32) -> Self
 pub fn H1Codec::new_with_limit_and_completion(&Stream, Int32, (Bool) -> Unit) -> Self
 
+type H2BodyStream
+pub impl Stream for H2BodyStream
+
+type H2FlowState
+
 type H2Frame
+
+type H2ResponseState
 
 pub struct Header {
   name : String
