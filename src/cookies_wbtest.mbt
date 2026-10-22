@@ -861,3 +861,20 @@ test "host-only and domain cookies with the same name coexist" {
     Some("a=host2; a=domain"),
   )
 }
+
+///|
+test "__Host- cookies require an explicit root Path value" {
+  let jar = CookieJar::new()
+  let root = cookie_test_url("https://example.com/")
+  // A non-root Path attribute resolves to the default path "/" on this URL,
+  // but it still is not the required explicit Path=/ for the prefix.
+  jar.store_at(root, "__Host-invalid=1; Secure; Path=account", 1000)
+  assert_eq(jar.length(), 0)
+  jar.store_at(root, "__Host-invalid=2; Secure; Path=", 1000)
+  assert_eq(jar.length(), 0)
+  jar.store_at(root, "__Host-invalid=3; Secure; Path=/account", 1000)
+  assert_eq(jar.length(), 0)
+  // The last Path attribute decides, so a later valid root path is accepted.
+  jar.store_at(root, "__Host-valid=1; Secure; Path=account; Path=/", 1000)
+  assert_eq(jar.cookie_header_at(root, 1000), Some("__Host-valid=1"))
+}

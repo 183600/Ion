@@ -558,6 +558,7 @@ fn cookie_from_set_cookie(
   let mut domain_attribute_seen = false
   let mut domain_attribute : String? = None
   let mut path_attribute_seen = false
+  let mut path_attribute_is_root = false
   let mut index = 1
   while index < parts.length() {
     let (raw_attribute, raw_attribute_value) = cookie_split_first(
@@ -584,6 +585,7 @@ fn cookie_from_set_cookie(
         cookie_default_path(url)
       }
       path_attribute_seen = true
+      path_attribute_is_root = attribute_value == "/"
     } else if attribute == "secure" {
       secure = true
     } else if attribute == "max-age" {
@@ -666,6 +668,7 @@ fn cookie_from_set_cookie(
     (!secure ||
       !host_only ||
       !path_attribute_seen ||
+      !path_attribute_is_root ||
       path != "/" ||
       domain_attribute_seen) {
     return None
