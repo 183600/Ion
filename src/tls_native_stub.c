@@ -417,6 +417,24 @@ int32_t feather_tls_read(FeatherTls *tls, moonbit_bytes_t buffer, int32_t capaci
 }
 
 MOONBIT_FFI_EXPORT
+int32_t feather_tls_buffered_input(FeatherTls *tls) {
+  if (tls == NULL || tls->ssl == NULL) {
+    return 0;
+  }
+  if (tls->read_eof || tls->read_failed || SSL_pending(tls->ssl) > 0) {
+    return 1;
+  }
+  // Even a partial record is unread transport state. The connection must not
+  // be pooled while the SSL read BIO still owns bytes from the previous
+  // exchange; the rest of that record may complete after the socket is reused.
+  BIO *read_bio = SSL_get_rbio(tls->ssl);
+  if (read_bio == NULL) {
+    return 0;
+  }
+  return BIO_pending(read_bio) > 0 ? 1 : 0;
+}
+
+MOONBIT_FFI_EXPORT
 int32_t feather_tls_pending(FeatherTls *tls) {
   if (tls == NULL || tls->ssl == NULL) {
     return 0;

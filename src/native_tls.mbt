@@ -35,6 +35,9 @@ extern "C" fn feather_tls_read(tls : NativeTlsHandle, buffer : Bytes, capacity :
 #borrow(tls)
 extern "C" fn feather_tls_pending(tls : NativeTlsHandle) -> Int = "feather_tls_pending"
 
+#borrow(tls)
+extern "C" fn feather_tls_buffered_input(tls : NativeTlsHandle) -> Int = "feather_tls_buffered_input"
+
 #borrow(tls, buffer)
 extern "C" fn feather_tls_write(tls : NativeTlsHandle, buffer : Bytes, offset : Int, length : Int) -> Int = "feather_tls_write"
 
@@ -323,9 +326,13 @@ pub impl Stream for NativeTlsStream with fn has_buffered_input(
   // `drain_available` feeds only already-readable transport bytes into
   // OpenSSL; it returns true when decoded application data (or EOF/error) is
   // now pending. Post-handshake records alone are consumed and do not make
-  // the connection unsafe to reuse.
+  // the connection unsafe to reuse. If it reports no application data but the
+  // SSL read BIO still holds bytes, those bytes may be a partial record from
+  // the previous exchange; a partial record is not safe to leave in a pooled
+  // connection because the next response can complete it and be misread.
   match self.drain_available() {
-    Ok(ready) => ready
+    Ok(true) => true
+    Ok(false) => feather_tls_buffered_input(self.tls) != 0
     Err(_) => true
   }
 }
