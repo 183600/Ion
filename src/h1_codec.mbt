@@ -419,6 +419,20 @@ fn headers_have_token(headers : Headers, name : String, token : String) -> Bool 
   false
 }
 
+/// Remove the `100-continue` expectation from one Expect field value while
+/// preserving any other expectations the caller supplied. A bodyless request
+/// must not advertise an expectation that only applies to request content.
+fn without_expect_continue(value : String) -> String {
+  let parts : Array[String] = []
+  for part in split_header_list(value) {
+    let token = part.trim().to_owned()
+    if token.length() > 0 && token.to_lower() != "100-continue" {
+      parts.push(token)
+    }
+  }
+  parts.join(", ")
+}
+
 fn request_content_length(headers : Headers) -> Result[Option[Int], HttpError] {
   let values = headers.get_all("Content-Length")
   if values.length() == 0 {
@@ -749,11 +763,25 @@ pub fn H1Codec::encode_request(
     headers_str += "User-Agent: Feather/0.1.0\r\n"
   }
 
+  // RFC 9110 §10.1.1: a client must not send a 100-continue expectation for a
+  // request that has no content. Trailers still count as content because they
+  // require the deferred chunked terminator to be sent.
+  let defer_body = headers_have_token(req.headers, "Expect", "100-continue") &&
+    (body_length > 0 || has_trailers)
+
   // Add other headers. RFC 6265 §5.4 requires a request to carry at most one
   // Cookie field, so combine repeated caller-supplied fragments with "; " at
   // the position of the first one instead of emitting several field lines.
   let mut cookie_written = false
   for header in req.headers.iter() {
+    if header.name.to_lower() == "expect" &&
+      headers_have_token(req.headers, "Expect", "100-continue") && !defer_body {
+      let filtered = without_expect_continue(header.value)
+      if filtered.length() > 0 {
+        headers_str += header.name + ": " + filtered + "\r\n"
+      }
+      continue
+    }
     if header.name.to_lower() == "cookie" {
       if cookie_written {
         continue
@@ -784,9 +812,8 @@ pub fn H1Codec::encode_request(
   // RFC 9110 §10.1.1: when the client advertises `Expect: 100-continue`, it
   // waits for an interim response before sending the content. The body is
   // written by `decode_response` once a 100 arrives; a final response without
-  // one means the peer does not want the body (for example 417).
-  let defer_body = headers_have_token(req.headers, "Expect", "100-continue") &&
-    (body.length() > 0 || chunked || has_trailers)
+  // one means the peer does not want the body (for example 417). A bodyless
+  // request never has a deferred body to send.
   if defer_body {
     self.deferred_body_bytes = body
     self.deferred_trailers = req.trailers
