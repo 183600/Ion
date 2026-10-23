@@ -7,3 +7,20 @@ test "opaque transfer coding leaves content encoding untouched" {
   let response = H1Codec::new(stream).decode_response().unwrap()
   assert_eq(response.read_body_decoded().unwrap(), b"payload")
 }
+
+///|
+test "opaque transfer coding still rejects unsupported content encodings" {
+  for body in ["", "payload"] {
+    let raw = "HTTP/1.1 200 OK\r\n" +
+      "Transfer-Encoding: chunked, gzip\r\n" +
+      "Content-Encoding: br\r\n\r\n" +
+      body
+    let stream = regression_mock_stream(raw, 0, 0)
+    let response = H1Codec::new(stream).decode_response().unwrap()
+    match response.read_body_decoded() {
+      Ok(_) => fail("unsupported opaque content coding was returned raw")
+      Err(err) =>
+        assert_eq(err, ProtocolError("unsupported Content-Encoding: br"))
+    }
+  }
+}

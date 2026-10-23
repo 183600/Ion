@@ -1579,13 +1579,14 @@ pub fn Response::read_body_decoded_with_limit(
     }
   }
   let has_transfer = transfer_codings_need_decode(transfer_codings)
+  let opaque_transfer = transfer_codings_are_opaque(transfer_codings)
   // A non-final `chunked` coding leaves the transfer framing opaque. Content-
   // Encoding describes a later layer applied to the payload, so it cannot be
   // undone either; return the raw bytes instead of misinterpreting them.
-  if transfer_codings_are_opaque(transfer_codings) {
+  if opaque_transfer {
     has_encoding = false
   }
-  // Its remaining coding names still have to be understood: silently
+  // The remaining coding names still have to be understood: silently
   // returning bytes whose declared encoding is unknown would violate the
   // contract of this method.
   if !has_transfer {
@@ -1595,6 +1596,19 @@ pub fn Response::read_body_decoded_with_limit(
         return Err(ProtocolError("unsupported Transfer-Encoding: " + coding))
       }
       None => ()
+    }
+  }
+  // Opaque transfer framing prevents decoding a known Content-Encoding, but an
+  // unknown coding is still unsupported and must not be silently returned as
+  // plaintext. This matches the empty-payload check below.
+  if opaque_transfer {
+    for token in combined.split(",") {
+      let token = token.trim().to_owned()
+      if token.length() > 0 && token.to_lower() != "identity" &&
+        !content_coding_supported(token) {
+        let _ = self.body.close()
+        return Err(ProtocolError("unsupported Content-Encoding: " + token))
+      }
     }
   }
   // An intermediate decoding stage can legitimately be larger than the final
