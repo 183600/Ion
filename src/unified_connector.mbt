@@ -392,6 +392,10 @@ pub struct Connector {
   // unlimited.
   mut max_connections : Int
   http2 : Bool
+  // Whether HTTP/2 was explicitly enabled or disabled. A plain Connector
+  // starts with h2 off, but a caller-supplied ALPN list is still respected
+  // until `with_http2(false)` makes the disable explicit.
+  http2_explicit : Bool
   http2_prior_knowledge : Bool
   mut cookies_enabled : Bool
   cookie_jar : @ref.Ref[CookieJar]
@@ -539,6 +543,7 @@ pub fn Connector::new(dialer : &Dialer, tls_provider : &TlsProvider) -> Connecto
     max_connections_per_host: 0,
     max_connections: 0,
     http2: false,
+    http2_explicit: false,
     http2_prior_knowledge: false,
     cookies_enabled: false,
     cookie_jar: @ref.Ref(CookieJar::new()),
@@ -561,6 +566,7 @@ fn Connector::detached(self : Connector) -> Connector {
     max_connections_per_host: self.max_connections_per_host,
     max_connections: self.max_connections,
     http2: self.http2,
+    http2_explicit: self.http2_explicit,
     http2_prior_knowledge: self.http2_prior_knowledge,
     cookies_enabled: self.cookies_enabled,
     cookie_jar: self.cookie_jar,
@@ -632,6 +638,7 @@ pub fn Connector::with_tls_config(self : Connector, config : TlsConfig) -> Conne
     max_connections_per_host: self.max_connections_per_host,
     max_connections: self.max_connections,
     http2: self.http2,
+    http2_explicit: self.http2_explicit,
     http2_prior_knowledge: self.http2_prior_knowledge,
     cookies_enabled: self.cookies_enabled,
     cookie_jar: self.cookie_jar,
@@ -655,6 +662,7 @@ pub fn Connector::with_proxy(self : Connector, proxy : Proxy) -> Connector {
     max_connections_per_host: self.max_connections_per_host,
     max_connections: self.max_connections,
     http2: self.http2,
+    http2_explicit: self.http2_explicit,
     http2_prior_knowledge: self.http2_prior_knowledge,
     cookies_enabled: self.cookies_enabled,
     cookie_jar: self.cookie_jar,
@@ -1174,7 +1182,8 @@ pub fn Connector::max_connections(self : Connector) -> Int {
 pub fn Connector::with_http2(self : Connector, enabled : Bool) -> Connector {
   // Disabling HTTP/2 also disables cleartext prior knowledge; enabling it
   // leaves the existing prior-knowledge policy untouched.
-  if self.http2 == enabled && (enabled || !self.http2_prior_knowledge) {
+  if self.http2 == enabled && self.http2_explicit &&
+    (enabled || !self.http2_prior_knowledge) {
     return self
   }
   // Existing connections negotiated the old ALPN list and cannot be reused
@@ -1184,6 +1193,7 @@ pub fn Connector::with_http2(self : Connector, enabled : Bool) -> Connector {
   Connector::{
     ..self,
     http2: enabled,
+    http2_explicit: true,
     http2_prior_knowledge: enabled && self.http2_prior_knowledge,
     pool,
   }
@@ -1213,6 +1223,7 @@ pub fn Connector::with_http2_prior_knowledge(
     // Prior knowledge is an HTTP/2 policy, so enabling it also enables the
     // normal TLS ALPN advertisement for HTTPS origins.
     http2: enabled || self.http2,
+    http2_explicit: true,
     http2_prior_knowledge: enabled,
     pool,
   }
@@ -1235,27 +1246,48 @@ fn tls_server_name_for_url(url : Url) -> String {
   }
 }
 
-/// Whether a shared TLS configuration still carries `TlsConfig::new`'s
-/// default ALPN list. Such a config was tuned for trust or client credentials,
-/// not for a specific protocol version, so the connector's HTTP/2 policy
-/// still applies. Any other ALPN list is an explicit protocol choice.
-fn tls_config_uses_default_alpn(config : TlsConfig) -> Bool {
-  let alpn = config.alpn.to_array()
-  alpn.length() == 1 && alpn[0] == "http/1.1"
+/// Whether an ALPN list advertises HTTP/2.
+fn alpn_list_has_h2(alpn : List[String]) -> Bool {
+  for protocol in alpn {
+    if protocol.to_lower() == "h2" {
+      return true
+    }
+  }
+  false
+}
+
+/// Remove h2 from a list while preserving the caller's remaining order.
+fn alpn_without_h2(alpn : List[String]) -> List[String] {
+  let filtered = alpn.filter(fn(protocol) { protocol.to_lower() != "h2" })
+  if filtered.length() == 0 {
+    @list.List(["http/1.1"])
+  } else {
+    filtered
+  }
 }
 
 fn Connector::origin_tls_config(self : Connector, host : String) -> TlsConfig {
   match self.tls_config {
-    Some(config) =>
-      if self.http2 && tls_config_uses_default_alpn(config) {
-        // Adding a CA bundle, client certificate, or verification override
-        // must not silently downgrade an HTTP/2-enabled client to HTTP/1.1.
-        // Callers that really want HTTP/1.1 set a custom ALPN list or disable
-        // HTTP/2 through `with_http2(false)`.
-        config.with_server_name(host).with_alpn(@list.List(["h2", "http/1.1"]))
+    Some(config) => {
+      let config = config.with_server_name(host)
+      if self.http2 {
+        if config.alpn_custom {
+          // An explicit list is a protocol decision, even when it contains
+          // only HTTP/1.1. Do not silently re-enable h2.
+          config
+        } else {
+          // Adding a CA bundle, client certificate, or verification override
+          // must not silently downgrade an HTTP/2-enabled client to HTTP/1.1.
+          config.with_alpn(@list.List(["h2", "http/1.1"]))
+        }
+      } else if self.http2_explicit && alpn_list_has_h2(config.alpn) {
+        // Disabling HTTP/2 must be effective even when a shared configuration
+        // carries an explicit list that still advertises h2.
+        config.with_alpn(alpn_without_h2(config.alpn))
       } else {
-        config.with_server_name(host)
+        config
       }
+    }
     None => {
       let config = TlsConfig::new(host)
       if self.http2 {
@@ -1367,6 +1399,7 @@ fn Connector::proxy_tls_config(self : Connector, proxy : Proxy) -> TlsConfig {
   TlsConfig::{
     server_name,
     alpn: @list.List(["http/1.1"]),
+    alpn_custom: true,
     root_store: base.root_store,
     client_auth: None,
     verify: base.verify,

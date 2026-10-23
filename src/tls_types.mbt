@@ -53,6 +53,7 @@ pub trait KeyLogSink {
 pub struct TlsConfig {
   server_name : String
   alpn : List[String]
+  alpn_custom : Bool
   root_store : RootStore
   client_auth : Option[ClientCert]
   verify : VerifyMode
@@ -64,6 +65,7 @@ pub fn TlsConfig::new(server_name : String) -> TlsConfig {
   TlsConfig::{
     server_name,
     alpn: @list.List(["http/1.1"]),
+    alpn_custom: false,
     root_store: RootStore::new(),
     client_auth: None,
     verify: Strict,
@@ -77,7 +79,7 @@ pub fn TlsConfig::with_server_name(self : TlsConfig, server_name : String) -> Tl
 }
 
 pub fn TlsConfig::with_alpn(self : TlsConfig, alpn : List[String]) -> TlsConfig {
-  TlsConfig::{ ..self, alpn }
+  TlsConfig::{ ..self, alpn, alpn_custom: true }
 }
 
 pub fn TlsConfig::with_root_store(self : TlsConfig, root_store : RootStore) -> TlsConfig {

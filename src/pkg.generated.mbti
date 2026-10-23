@@ -127,6 +127,7 @@ pub struct Connector {
   mut max_connections_per_host : Int32
   mut max_connections : Int32
   http2 : Bool
+  http2_explicit : Bool
   http2_prior_knowledge : Bool
   mut cookies_enabled : Bool
   cookie_jar : @ref.Ref[CookieJar]
@@ -465,6 +466,7 @@ pub impl Stream for TcpStream
 pub struct TlsConfig {
   server_name : String
   alpn : @list.List[String]
+  alpn_custom : Bool
   root_store : RootStore
   client_auth : ClientCert?
   verify : VerifyMode
