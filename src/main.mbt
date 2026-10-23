@@ -136,7 +136,7 @@ fn env_tls_config() -> Result[TlsConfig?, HttpError] {
   let mut config = TlsConfig::new("")
     .with_alpn(@list.List(["h2", "http/1.1"]))
   if insecure {
-    println("WARNING: TLS certificate verification is disabled!")
+    eprintln("WARNING: TLS certificate verification is disabled!")
     config = config.with_verify_mode(SkipVerification)
   }
   match ca_path {
@@ -163,15 +163,22 @@ fn env_tls_config() -> Result[TlsConfig?, HttpError] {
 }
 
 fn report(err : HttpError) -> Unit {
-  println("error: " + @debug.to_string(err))
+  eprintln("error: " + @debug.to_string(err))
 }
 
-fn print_response(response : Response) -> Bool {
+fn print_response(response : Response, tunnel? : Bool) -> Bool {
   println(response.version + " " + response.status.to_string())
   for header in response.headers.iter() {
     println(header.name + ": " + header.value)
   }
   println("")
+  // A switched protocol (101) or a successful CONNECT is an interactive byte
+  // stream, not a response body. Reading it as text would block until the peer
+  // closes the tunnel, so print the response head and discard the stream.
+  if tunnel.unwrap_or(false) || response.status == 101 {
+    response.close()
+    return true
+  }
   match response.text() {
     Ok(body) => {
       println(body)
@@ -194,6 +201,24 @@ fn split_proxy_bypass(value : String) -> Array[String] {
     }
   }
   patterns
+}
+
+/// The CLI's proxy exclusion list. An explicit FEATHER_NO_PROXY value wins,
+/// but an empty/whitespace-only value means it was not set, so the standard
+/// NO_PROXY variable still applies. This matches how an empty proxy variable
+/// is treated as unset elsewhere in the CLI.
+fn cli_proxy_bypass() -> Array[String] {
+  match @env.get_env_var("FEATHER_NO_PROXY") {
+    Some(value) => {
+      let patterns = split_proxy_bypass(value)
+      if patterns.length() > 0 {
+        patterns
+      } else {
+        Proxy::no_proxy_from_env()
+      }
+    }
+    None => Proxy::no_proxy_from_env()
+  }
 }
 
 fn run_request(verb : HttpMethod, url : String, body : String) -> Bool {
@@ -231,11 +256,9 @@ fn run_request(verb : HttpMethod, url : String, body : String) -> Bool {
           return false
         }
       }
-      match @env.get_env_var("FEATHER_NO_PROXY") {
-        Some(bypass) => if bypass.length() > 0 {
-          client = client.with_proxy_bypass(split_proxy_bypass(bypass))
-        }
-        None => ()
+      let bypass = cli_proxy_bypass()
+      if bypass.length() > 0 {
+        client = client.with_proxy_bypass(bypass)
       }
     }
     None =>
@@ -244,10 +267,7 @@ fn run_request(verb : HttpMethod, url : String, body : String) -> Bool {
           match Proxy::from_env(parsed) {
             Ok(Some(proxy)) => {
               client = client.with_proxy(proxy)
-              let bypass = match @env.get_env_var("FEATHER_NO_PROXY") {
-                Some(value) => split_proxy_bypass(value)
-                None => Proxy::no_proxy_from_env()
-              }
+              let bypass = cli_proxy_bypass()
               if bypass.length() > 0 {
                 client = client.with_proxy_bypass(bypass)
               }
@@ -279,7 +299,11 @@ fn run_request(verb : HttpMethod, url : String, body : String) -> Bool {
           request
         }
         match client.request(request) {
-          Ok(response) => print_response(response)
+          Ok(response) =>
+            print_response(
+              response,
+              tunnel=verb == CONNECT && response.is_success(),
+            )
           Err(err) => {
             report(err)
             false
@@ -362,7 +386,7 @@ fn main {
     match HttpMethod::custom(method_text) {
       Ok(verb) => verb
       Err(_) => {
-        println("error: unsupported method '" + method_text + "'")
+        eprintln("error: unsupported method '" + method_text + "'")
         os_exit(1)
         return
       }
