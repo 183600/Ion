@@ -629,6 +629,13 @@ fn WebSocket::read_frame_unchecked(
     }
     value.to_int()
   }
+  // RFC 6455 section 5.2 requires the minimal payload-length encoding. An
+  // overlong length would otherwise let a peer smuggle extra zero bytes past
+  // strict intermediaries or desynchronize length-based policies.
+  if (length_marker == 126 && length < 126) ||
+    (length_marker == 127 && length <= 65535) {
+    return Err(ProtocolError("Invalid WebSocket frame length"))
+  }
   if length > self.max_frame_bytes {
     return Err(ProtocolError("WebSocket frame too large"))
   }

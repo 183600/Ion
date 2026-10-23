@@ -71,3 +71,23 @@ test "websocket receiving a close finishes the handshake" {
   assert_false(socket.is_open())
   assert_true(socket.send_text("late") is Err(ConnectionClosed))
 }
+
+///|
+test "websocket rejects non-minimal payload length encodings" {
+  // A one-byte payload must use the 7-bit length form, not the 16-bit form.
+  let extended16 = ws_test_stream(b"\x81\x7e\x00\x01X")
+  match WebSocket::client(extended16).read_message() {
+    Err(ProtocolError(message)) =>
+      assert_eq(message, "Invalid WebSocket frame length")
+    _ => fail("overlong 16-bit frame length was accepted")
+  }
+  // Likewise, a one-byte payload must not use the 64-bit form.
+  let extended64 = ws_test_stream(
+    b"\x81\x7f\x00\x00\x00\x00\x00\x00\x00\x01X",
+  )
+  match WebSocket::client(extended64).read_message() {
+    Err(ProtocolError(message)) =>
+      assert_eq(message, "Invalid WebSocket frame length")
+    _ => fail("overlong 64-bit frame length was accepted")
+  }
+}
