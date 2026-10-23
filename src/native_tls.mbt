@@ -473,6 +473,16 @@ pub impl Stream for NativeTlsStream with fn is_alive(
   self.underlying.is_alive()
 }
 
+pub impl Stream for NativeTlsStream with fn get_timeout(
+  self : NativeTlsStream,
+) -> Int {
+  if !self.is_open {
+    0
+  } else {
+    self.underlying.get_timeout()
+  }
+}
+
 pub impl Stream for NativeTlsStream with fn set_timeout(
   self : NativeTlsStream,
   timeout_ms : Int,
@@ -562,10 +572,22 @@ pub impl TlsClientCtx for OpenSslTlsClientCtx with fn connect(
     let _ = feather_tls_capture_keylog(tls, 1)
   }
 
+  // A peer can keep the idle-step counter at zero by trickling one byte at a
+  // time. Bound the whole handshake by the transport's configured connection
+  // timeout as well, so it cannot outlive the caller's connect deadline.
+  let handshake_timeout = underlying.get_timeout()
+  let handshake_deadline = if handshake_timeout > 0 {
+    @env.now() + handshake_timeout.to_uint64()
+  } else {
+    0UL
+  }
   let mut total_steps = 0
   let mut idle_steps = 0
   while total_steps < NATIVE_TLS_HANDSHAKE_TOTAL_STEPS &&
     idle_steps < NATIVE_TLS_HANDSHAKE_IDLE_STEPS {
+    if handshake_deadline > 0UL && @env.now() >= handshake_deadline {
+      return Err(Timeout)
+    }
     total_steps = total_steps + 1
     let status = feather_tls_handshake(tls)
     native_tls_drain_keylog(tls, key_log)

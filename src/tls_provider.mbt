@@ -141,6 +141,14 @@ pub impl Stream for TlsStream with fn is_alive(self : TlsStream) -> Bool {
   self.underlying.is_alive()
 }
 
+pub impl Stream for TlsStream with fn get_timeout(self : TlsStream) -> Int {
+  if !self.is_open {
+    0
+  } else {
+    self.underlying.get_timeout()
+  }
+}
+
 pub impl Stream for TlsStream with fn set_timeout(self : TlsStream, timeout_ms : Int) -> Result[Unit, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)

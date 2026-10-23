@@ -85,6 +85,14 @@ pub impl Stream for PrefixStream with fn is_alive(self : PrefixStream) -> Bool {
   self.underlying.is_alive()
 }
 
+pub impl Stream for PrefixStream with fn get_timeout(self : PrefixStream) -> Int {
+  if !self.is_open {
+    0
+  } else {
+    self.underlying.get_timeout()
+  }
+}
+
 pub impl Stream for PrefixStream with fn set_timeout(self : PrefixStream, timeout_ms : Int) -> Result[Unit, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)

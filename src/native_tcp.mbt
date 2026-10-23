@@ -217,6 +217,16 @@ pub impl Stream for NativeTcpStream with fn is_alive(
   feather_tcp_is_alive(self.fd) > 0
 }
 
+pub impl Stream for NativeTcpStream with fn get_timeout(
+  self : NativeTcpStream,
+) -> Int {
+  if !self.is_open {
+    0
+  } else {
+    self.timeout_ms
+  }
+}
+
 pub impl Stream for NativeTcpStream with fn set_timeout(
   self : NativeTcpStream,
   timeout_ms : Int,

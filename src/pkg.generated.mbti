@@ -667,6 +667,7 @@ pub trait Stream {
   fn flush(Self) -> Result[Unit, NetError]
   fn close(Self) -> Result[Unit, NetError]
   fn set_timeout(Self, Int32) -> Result[Unit, NetError]
+  fn get_timeout(Self) -> Int32
   fn peer_addr(Self) -> Result[String, NetError]
   fn local_addr(Self) -> Result[String, NetError]
   fn is_alive(Self) -> Bool

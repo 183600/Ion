@@ -26,6 +26,11 @@ pub trait Stream {
   // Optional: Set read/write timeout
   fn set_timeout(Self, Int) -> Result[Unit, NetError]
 
+  // Optional: The timeout currently applied to this transport, in
+  // milliseconds. Zero means no deadline. TLS uses it to bound a trickling
+  // handshake by the same connection deadline as dialing.
+  fn get_timeout(Self) -> Int = _
+
   // Optional: Get peer address
   fn peer_addr(Self) -> Result[String, NetError]
 
@@ -61,6 +66,10 @@ pub trait Stream {
 
 impl Stream with fn is_alive(self) {
   self.peer_addr() is Ok(_)
+}
+
+impl Stream with fn get_timeout(_self) {
+  0
 }
 
 impl Stream with fn set_body_limit(_self, _limit) {
