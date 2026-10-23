@@ -1378,6 +1378,25 @@ pub fn Response::copy_body_to(
       Ok(body) => body
       Err(err) => return Err(err)
     }
+    if raw.length() == 0 {
+      // An empty payload has nothing to decode. Match `read_body_decoded`:
+      // validate that every declared coding is understood, but do not try to
+      // decode a zero-byte gzip/zlib member.
+      match first_unsupported_transfer_coding(transfer_codings) {
+        Some(coding) => {
+          let _ = self.body.close()
+          return Err(ProtocolError("unsupported Transfer-Encoding: " + coding))
+        }
+        None => ()
+      }
+      return match sink.flush() {
+        Ok(_) => Ok(0)
+        Err(err) => {
+          let _ = self.body.close()
+          Err(http_error_from_net(err))
+        }
+      }
+    }
     // Both limits are the response cap: the encoded input is bounded by the
     // same value as the decoded output, so a transfer-coding bomb cannot grow
     // beyond the caller's configured limit.
