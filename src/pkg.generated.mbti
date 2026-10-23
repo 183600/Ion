@@ -592,6 +592,7 @@ pub enum VerifyMode {
 pub struct WebSocket {
   // private fields
 }
+pub fn WebSocket::client(&Stream) -> Self
 pub fn WebSocket::close(Self) -> Result[Unit, HttpError]
 pub fn WebSocket::is_open(Self) -> Bool
 pub fn WebSocket::new(&Stream, WebSocketRole) -> Self
@@ -604,6 +605,7 @@ pub fn WebSocket::send_frame(Self, WebSocketFrame) -> Result[Unit, HttpError]
 pub fn WebSocket::send_ping(Self, Bytes) -> Result[Unit, HttpError]
 pub fn WebSocket::send_pong(Self, Bytes) -> Result[Unit, HttpError]
 pub fn WebSocket::send_text(Self, String) -> Result[Unit, HttpError]
+pub fn WebSocket::server(&Stream) -> Self
 pub fn WebSocket::with_max_frame_bytes(Self, Int32) -> Self
 pub fn WebSocket::with_max_message_bytes(Self, Int32) -> Self
 

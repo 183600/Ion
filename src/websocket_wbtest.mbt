@@ -35,6 +35,12 @@ fn ws_test_frame(opcode : Int, fin : Bool, payload : Bytes) -> Bytes {
 }
 
 ///|
+test "websocket exposes explicit client and server endpoints" {
+  assert_eq(WebSocket::client(ws_test_stream(b"")).role(), Client)
+  assert_eq(WebSocket::server(ws_test_stream(b"")).role(), Server)
+}
+
+///|
 test "websocket accept key matches RFC 6455 vector" {
   assert_eq(
     websocket_accept_key("dGhlIHNhbXBsZSBub25jZQ=="),

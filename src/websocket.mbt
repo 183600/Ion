@@ -312,6 +312,17 @@ pub fn WebSocket::new(stream : &Stream, role : WebSocketRole) -> WebSocket {
   }
 }
 
+/// Wrap a stream as the client endpoint.
+pub fn WebSocket::client(stream : &Stream) -> WebSocket {
+  WebSocket::new(stream, Client)
+}
+
+/// Wrap a stream as the server endpoint (for tests, proxies, or server-side
+/// MoonBit applications).
+pub fn WebSocket::server(stream : &Stream) -> WebSocket {
+  WebSocket::new(stream, Server)
+}
+
 pub fn WebSocket::with_max_frame_bytes(
   self : WebSocket,
   max_frame_bytes : Int,
