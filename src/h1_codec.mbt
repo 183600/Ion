@@ -567,11 +567,11 @@ fn send_deferred_request_body(
 ) -> Result[Unit, HttpError] {
   match write_request_body(stream, body, trailers, chunked) {
     Ok(_) => ()
-    Err(err) => return Err(NetworkError(err))
+    Err(err) => return Err(http_error_from_net(err))
   }
   match stream.flush() {
     Ok(_) => Ok(())
-    Err(err) => Err(NetworkError(err))
+    Err(err) => Err(http_error_from_net(err))
   }
 }
 
@@ -802,7 +802,7 @@ pub fn H1Codec::encode_request(
   let header_data = @utf8.encode(req_line + headers_str)
   match write_all(self.stream, header_data) {
     Ok(_) => ()
-    Err(err) => return Err(NetworkError(err))
+    Err(err) => return Err(http_error_from_net(err))
   }
 
   let body = match req.body {
@@ -822,7 +822,7 @@ pub fn H1Codec::encode_request(
   } else {
     match write_request_body(self.stream, body, req.trailers, chunked) {
       Ok(_) => ()
-      Err(err) => return Err(NetworkError(err))
+      Err(err) => return Err(http_error_from_net(err))
     }
   }
 
@@ -836,7 +836,7 @@ pub fn H1Codec::encode_request(
       self.close_after_request = headers_have_token(req.headers, "Connection", "close")
       Ok(())
     }
-    Err(err) => Err(NetworkError(err))
+    Err(err) => Err(http_error_from_net(err))
   }
 }
 
@@ -905,7 +905,7 @@ fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] 
     let line = match read_line(reader) {
       Ok(Some(line)) => line
       Ok(None) => return Err(ProtocolError("Invalid response line"))
-      Err(err) => return Err(NetworkError(err))
+      Err(err) => return Err(http_error_from_net(err))
     }
     head_bytes = head_bytes + reader.last_line_bytes
     if head_bytes > MAX_RESPONSE_HEAD_BYTES {
@@ -961,7 +961,7 @@ fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] 
     let line = match read_line(reader) {
       Ok(Some(line)) => line
       Ok(None) => return Err(ProtocolError("Unexpected end of response headers"))
-      Err(err) => return Err(NetworkError(err))
+      Err(err) => return Err(http_error_from_net(err))
     }
     if line.length() == 0 {
       break

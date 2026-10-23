@@ -135,3 +135,20 @@ test "a closed TLS handshake surfaces as HttpError::ConnectionClosed" {
   let url = Url::parse("https://example.com/").unwrap()
   assert_true(client.request(Request::new(GET, url)) is Err(ConnectionClosed))
 }
+
+///|
+test "direct HTTP/1 codec promotes transport write failures" {
+  let url = Url::parse("http://example.com/").unwrap()
+  let timed_out = H1Codec::new(ErroringStream::{ error: NetError::Timeout })
+  assert_true(timed_out.encode_request(Request::new(GET, url)) is Err(Timeout))
+  let closed = H1Codec::new(ErroringStream::{ error: NetError::Closed })
+  assert_true(closed.encode_request(Request::new(GET, url)) is Err(ConnectionClosed))
+}
+
+///|
+test "direct HTTP/1 codec promotes transport head read failures" {
+  let timed_out = H1Codec::new(ErroringStream::{ error: NetError::Timeout })
+  assert_true(timed_out.decode_response() is Err(Timeout))
+  let closed = H1Codec::new(ErroringStream::{ error: NetError::Closed })
+  assert_true(closed.decode_response() is Err(ConnectionClosed))
+}
