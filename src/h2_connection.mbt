@@ -2042,6 +2042,17 @@ fn H2ClientConnection::discard_buffered_stream_frames(
 ) -> Unit {
   while h2_frame_is_buffered(self.reader) {
     let offset = self.reader.pending_offset
+    let frame_length = (self.reader.pending[offset].to_int() << 16) |
+      (self.reader.pending[offset + 1].to_int() << 8) |
+      self.reader.pending[offset + 2].to_int()
+    // `h2_frame_is_buffered` reports an oversized header as available so the
+    // protocol error is observed even before the illegal payload arrives. Do
+    // not let a frame for a future stream bypass that check: the session must
+    // not be pooled with a framing violation still buffered.
+    if frame_length > H2_MAX_FRAME_SIZE {
+      self.closed = true
+      return
+    }
     let frame_type = self.reader.pending[offset + 3].to_int()
     let frame_stream_id = ((self.reader.pending[offset + 5].to_int() & 0x7f) << 24) |
       (self.reader.pending[offset + 6].to_int() << 16) |
