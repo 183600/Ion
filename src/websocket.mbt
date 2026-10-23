@@ -522,7 +522,12 @@ pub fn WebSocket::send_frame(
     }
   }
   match self.stream.flush() {
-    Ok(_) => Ok(())
+    Ok(_) => {
+      if frame.opcode == WS_OPCODE_CLOSE {
+        self.close_sent = true
+      }
+      Ok(())
+    }
     Err(err) => Err(http_error_from_net(err))
   }
 }

@@ -140,3 +140,17 @@ test "websocket send_frame rejects malformed Close payloads" {
   }).unwrap()
   assert_true(valid_stream.output.to_bytes().length() > 0)
 }
+
+///|
+test "websocket send_frame with a Close frame stops later frames" {
+  let socket = WebSocket::client(ws_test_stream(b""))
+  socket.send_frame(WebSocketFrame::{
+    fin: true,
+    opcode: WS_OPCODE_CLOSE,
+    payload: b"\x03\xe8bye",
+  }).unwrap()
+  match socket.send_text("late") {
+    Err(ConnectionClosed) => ()
+    _ => fail("data frame was sent after a Close frame written by send_frame")
+  }
+}
