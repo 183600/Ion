@@ -1579,8 +1579,13 @@ pub fn Response::read_body_decoded_with_limit(
     }
   }
   let has_transfer = transfer_codings_need_decode(transfer_codings)
-  // A non-final `chunked` coding makes the payload opaque, so it cannot be
-  // decoded. Its remaining coding names still have to be understood: silently
+  // A non-final `chunked` coding leaves the transfer framing opaque. Content-
+  // Encoding describes a later layer applied to the payload, so it cannot be
+  // undone either; return the raw bytes instead of misinterpreting them.
+  if transfer_codings_are_opaque(transfer_codings) {
+    has_encoding = false
+  }
+  // Its remaining coding names still have to be understood: silently
   // returning bytes whose declared encoding is unknown would violate the
   // contract of this method.
   if !has_transfer {
@@ -1670,6 +1675,24 @@ pub fn Response::read_body_decoded_with_limit(
 /// codings still apply and must be undone. A message that puts `chunked` before
 /// another coding is left untouched: those bytes cannot be interpreted safely
 /// as either chunked framing or an opaque close-delimited payload.
+/// Whether the transfer codings make the payload opaque because `chunked` is
+/// not the final coding. Such a message is close-delimited and cannot be
+/// safely interpreted as either chunked framing or decoded content.
+fn transfer_codings_are_opaque(codings : Array[String]) -> Bool {
+  let mut chunked_index = -1
+  let mut index = 0
+  while index < codings.length() {
+    if codings[index] == "chunked" {
+      if chunked_index >= 0 {
+        return true
+      }
+      chunked_index = index
+    }
+    index = index + 1
+  }
+  chunked_index >= 0 && chunked_index != codings.length() - 1
+}
+
 fn transfer_codings_need_decode(codings : Array[String]) -> Bool {
   let mut chunked_index = -1
   let mut index = 0
