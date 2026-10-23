@@ -13,6 +13,11 @@ const H2_STREAM_RECEIVE_WINDOW : Int = 1048576
 struct H2FlowState {
   mut connection_send_window : Int
   mut stream_send_window : Int
+  // Whether `stream_send_window` belongs to a stream that is still open. Once
+  // the stream ends or is reset, the field is stale: a later SETTINGS delta
+  // must not be applied to it (the next request initializes the window from
+  // `peer_initial_window`).
+  mut stream_send_window_active : Bool
   mut peer_initial_window : Int
   mut peer_max_frame_size : Int
   mut peer_max_header_list_size : Int
@@ -27,6 +32,7 @@ fn H2FlowState::new() -> H2FlowState {
   H2FlowState::{
     connection_send_window: H2_DEFAULT_WINDOW_SIZE,
     stream_send_window: H2_DEFAULT_WINDOW_SIZE,
+    stream_send_window_active: true,
     peer_initial_window: H2_DEFAULT_WINDOW_SIZE,
     peer_max_frame_size: H2_MAX_FRAME_SIZE,
     peer_max_header_list_size: H2_MAX_WINDOW_SIZE,
@@ -517,17 +523,24 @@ fn h2_apply_settings(
       if (value_high & 0x80) != 0 || value > H2_MAX_WINDOW_SIZE {
         return Err(ProtocolError("Invalid HTTP/2 initial window size"))
       }
-      let delta = value - flow.peer_initial_window
-      if delta > 0 {
-        if flow.stream_send_window > H2_MAX_WINDOW_SIZE - delta {
-          return Err(ProtocolError("HTTP/2 stream window overflow"))
+      if flow.stream_send_window_active {
+        let delta = value - flow.peer_initial_window
+        if delta > 0 {
+          if flow.stream_send_window > H2_MAX_WINDOW_SIZE - delta {
+            return Err(ProtocolError("HTTP/2 stream window overflow"))
+          }
+        } else if delta < 0 {
+          if flow.stream_send_window < -H2_MAX_WINDOW_SIZE - delta {
+            return Err(ProtocolError("HTTP/2 stream window overflow"))
+          }
         }
-      } else if delta < 0 {
-        if flow.stream_send_window < -H2_MAX_WINDOW_SIZE - delta {
-          return Err(ProtocolError("HTTP/2 stream window overflow"))
-        }
+        flow.stream_send_window = flow.stream_send_window + delta
+      } else {
+        // There is no stream to adjust. Keep the field coherent for callers
+        // that inspect it, but do not let a stale value trip the overflow
+        // check. The next request reinitializes the window anyway.
+        flow.stream_send_window = value
       }
-      flow.stream_send_window = flow.stream_send_window + delta
       flow.peer_initial_window = value
     } else if identifier == H2_SETTINGS_MAX_FRAME_SIZE {
       if value < H2_MAX_FRAME_SIZE || value > H2_MAX_FRAME_SIZE_LIMIT {
@@ -1310,6 +1323,9 @@ fn H2LiveBodyStream::finish(self : H2LiveBodyStream, reusable : Bool) -> Unit {
   // were already buffered with it. This acknowledges PING/SETTINGS and notices
   // a GOAWAY before the session is offered to the pool, matching the buffered
   // response path.
+  if self.state.ended {
+    self.flow.stream_send_window_active = false
+  }
   if keep && self.state.ended {
     match self.connection.drain_buffered_connection_frames(self.state, self.flow) {
       Ok(_) => ()
@@ -1391,6 +1407,7 @@ fn H2LiveBodyStream::pull(self : H2LiveBodyStream) -> Result[Unit, NetError] {
     self.pending = self.state.take_body()
     self.pending_offset = 0
     if self.state.ended {
+      self.flow.stream_send_window_active = false
       self.trailers.val = self.state.trailers
     }
     if self.pending.length() > 0 || self.state.ended {
@@ -1877,6 +1894,9 @@ fn H2ClientConnection::drain_buffered_connection_frames(
   state : H2ResponseState,
   flow : H2FlowState,
 ) -> Result[Unit, HttpError] {
+  // The response stream is complete here, so its send window is no longer
+  // live. SETTINGS must adjust only streams that are still open.
+  flow.stream_send_window_active = false
   while h2_frame_is_buffered(self.reader) {
     let header = self.reader.pending_offset
     let frame_length = (self.reader.pending[header].to_int() << 16) |
@@ -2040,6 +2060,9 @@ fn H2ClientConnection::discard_buffered_stream_frames(
   flow : H2FlowState,
   stream_id : Int,
 ) -> Unit {
+  // The affected stream is already reset/closed; a buffered SETTINGS frame
+  // must not apply its initial-window delta to that stream's stale window.
+  flow.stream_send_window_active = false
   while h2_frame_is_buffered(self.reader) {
     let offset = self.reader.pending_offset
     let frame_length = (self.reader.pending[offset].to_int() << 16) |

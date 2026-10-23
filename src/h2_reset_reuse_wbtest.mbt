@@ -58,3 +58,39 @@ test "http2 closes when an oversized future-stream frame follows a reset" {
   // the whole session unusable and it must not be returned to the pool.
   assert_false(connection.is_open())
 }
+
+///|
+test "http2 settings do not adjust a closed stream's stale window" {
+  let first_headers = hpack_encode([
+    (":status", "200"),
+    ("content-length", "2"),
+  ])
+  let second_headers = hpack_encode([(":status", "204")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, first_headers),
+    h2_test_frame(H2_FRAME_WINDOW_UPDATE, 0, 1, b"\x00\x00\x03\xe8"),
+    h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, b"ok"),
+    h2_test_frame(
+      H2_FRAME_SETTINGS,
+      0,
+      0,
+      h2_settings_payload([(H2_SETTINGS_INITIAL_WINDOW_SIZE, H2_MAX_WINDOW_SIZE)]),
+    ),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      3,
+      second_headers,
+    ),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let url = Url::parse("https://example.com/").unwrap()
+  let first = connection.request(Request::new(GET, url)).unwrap()
+  assert_eq(first.text().unwrap(), "ok")
+  assert_true(connection.is_open())
+  let second = connection.request(Request::new(GET, url)).unwrap()
+  assert_eq(second.status, 204)
+  assert_true(connection.is_open())
+}
