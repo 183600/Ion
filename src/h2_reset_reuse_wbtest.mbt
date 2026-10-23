@@ -94,3 +94,32 @@ test "http2 settings do not adjust a closed stream's stale window" {
   assert_eq(second.status, 204)
   assert_true(connection.is_open())
 }
+
+///|
+test "http2 reactivates the pending stream window for a new stream" {
+  let first_headers = hpack_encode([(":status", "200")])
+  let second_headers = hpack_encode([(":status", "200")])
+  let input = h2_test_concat([
+    h2_test_settings(),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      first_headers,
+    ),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 3, second_headers),
+    h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 3, b"ok"),
+  ])
+  let stream = h2_frame_mock_stream(input, 0)
+  let connection = H2ClientConnection::new(stream).unwrap()
+  let url = Url::parse("https://example.com/").unwrap()
+  let first = connection.request(Request::new(GET, url)).unwrap()
+  assert_eq(first.status, 200)
+  assert_false(connection.flow.stream_send_window_active)
+  let second = connection.request_streaming(Request::new(GET, url)).unwrap()
+  assert_true(connection.flow.stream_send_window_active)
+  let body = Buffer(size_hint=2)
+  assert_eq(second.body_stream().read(body).unwrap(), 2)
+  assert_eq(body.to_bytes(), b"ok")
+  assert_false(connection.flow.stream_send_window_active)
+}

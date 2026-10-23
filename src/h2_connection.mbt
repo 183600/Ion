@@ -2496,6 +2496,7 @@ fn H2ClientConnection::request_streaming_with_callback(
   self.flow.stream_send_window = self.flow.peer_initial_window +
     self.flow.pending_stream_window
   self.flow.pending_stream_window = 0
+  self.flow.stream_send_window_active = true
   let block = hpack_encode(headers)
   match h2_write_header_block(self.stream, stream_id, block, true) {
     Ok(_) => ()
@@ -2691,6 +2692,7 @@ fn H2ClientConnection::request_with_limit_and_callback(
   self.flow.stream_send_window = self.flow.peer_initial_window +
     self.flow.pending_stream_window
   self.flow.pending_stream_window = 0
+  self.flow.stream_send_window_active = true
   match h2_write_header_block(self.stream, stream_id, block, end_stream) {
     Ok(_) => ()
     Err(err) => {
