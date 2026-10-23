@@ -453,6 +453,26 @@ pub fn WebSocket::send_frame(
     (!frame.fin || frame.payload.length() > 125) {
     return Err(InvalidHeader("Invalid WebSocket control frame"))
   }
+  // RFC 6455 section 5.5.1 requires a Close payload to be either empty or a
+  // two-octet status code followed by a UTF-8 reason. Reserved status codes
+  // such as 1005/1006 are never valid on the wire. The low-level frame writer
+  // must enforce this too, not just `send_close`.
+  if frame.opcode == WS_OPCODE_CLOSE && frame.payload.length() > 0 {
+    if frame.payload.length() == 1 {
+      return Err(InvalidHeader("Invalid WebSocket close payload"))
+    }
+    let code = (frame.payload[0].to_int() << 8) | frame.payload[1].to_int()
+    if !ws_valid_close_code(code) {
+      return Err(InvalidHeader("Invalid WebSocket close code"))
+    }
+    try {
+      let _ = @utf8.decode(
+        frame.payload.exact_view(start=2, end=frame.payload.length()),
+      )
+    } catch {
+      _ => return Err(InvalidHeader("Invalid WebSocket close reason"))
+    }
+  }
   if frame.payload.length() > self.max_frame_bytes {
     return Err(ProtocolError("WebSocket frame too large"))
   }

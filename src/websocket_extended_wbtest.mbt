@@ -91,3 +91,52 @@ test "websocket rejects non-minimal payload length encodings" {
     _ => fail("overlong 64-bit frame length was accepted")
   }
 }
+
+///|
+test "websocket send_frame rejects malformed Close payloads" {
+  // One-byte Close payload.
+  let short = ws_test_stream(b"")
+  match WebSocket::client(short).send_frame(WebSocketFrame::{
+    fin: true,
+    opcode: WS_OPCODE_CLOSE,
+    payload: b"\x03",
+  }) {
+    Err(InvalidHeader(_)) => ()
+    _ => fail("one-byte Close payload was accepted")
+  }
+  assert_eq(short.output.to_bytes().length(), 0)
+
+  // 1005 is reserved and must never be sent on the wire.
+  let reserved = ws_test_stream(b"")
+  match WebSocket::client(reserved).send_frame(WebSocketFrame::{
+    fin: true,
+    opcode: WS_OPCODE_CLOSE,
+    payload: b"\x03\xed",
+  }) {
+    Err(InvalidHeader(_)) => ()
+    _ => fail("reserved Close status code was accepted")
+  }
+  assert_eq(reserved.output.to_bytes().length(), 0)
+
+  // The reason after the status code must be valid UTF-8.
+  let invalid_text = ws_test_stream(b"")
+  match WebSocket::client(invalid_text).send_frame(WebSocketFrame::{
+    fin: true,
+    opcode: WS_OPCODE_CLOSE,
+    payload: b"\x03\xe8\xff",
+  }) {
+    Err(InvalidHeader(_)) => ()
+    _ => fail("invalid UTF-8 Close reason was accepted")
+  }
+  assert_eq(invalid_text.output.to_bytes().length(), 0)
+
+  // An empty Close payload and a valid status/reason remain accepted.
+  let valid_stream = ws_test_stream(b"")
+  let valid = WebSocket::client(valid_stream)
+  valid.send_frame(WebSocketFrame::{
+    fin: true,
+    opcode: WS_OPCODE_CLOSE,
+    payload: b"\x03\xe8bye",
+  }).unwrap()
+  assert_true(valid_stream.output.to_bytes().length() > 0)
+}
