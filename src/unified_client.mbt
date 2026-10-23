@@ -411,6 +411,22 @@ pub fn UnifiedClient::with_max_connections_per_host(
   }
 }
 
+/// Cap the total number of live connections this client may own across every
+/// origin. A value below 1 means unlimited. The derived client gets an
+/// independent pool, so the source client's connections are left untouched.
+pub fn UnifiedClient::with_max_connections(
+  self : UnifiedClient,
+  max_connections : Int,
+) -> UnifiedClient {
+  let connector = self.connector.detached()
+  let _ = connector.with_max_connections(max_connections)
+  UnifiedClient::{
+    connector,
+    options: self.options,
+    redirect_count: 0,
+  }
+}
+
 /// Discard pooled connections idle for longer than `idle_timeout_ms`. A value
 /// below 1 disables idle eviction.
 pub fn UnifiedClient::with_idle_timeout(

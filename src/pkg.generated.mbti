@@ -125,6 +125,7 @@ pub struct Connector {
   mut timeout_ms : Int32
   mut connect_timeout_ms : Int32
   mut max_connections_per_host : Int32
+  mut max_connections : Int32
   http2 : Bool
   http2_prior_knowledge : Bool
   mut cookies_enabled : Bool
@@ -146,6 +147,7 @@ pub fn Connector::http2_enabled(Self) -> Bool
 pub fn Connector::http2_prior_knowledge(Self) -> Bool
 pub fn Connector::idle_connection_count(Self) -> Int32
 pub fn Connector::idle_timeout(Self) -> Int32
+pub fn Connector::max_connections(Self) -> Int32
 pub fn Connector::max_connections_per_host(Self) -> Int32
 pub fn Connector::max_idle_per_host(Self) -> Int32
 pub fn Connector::new(&Dialer, &TlsProvider) -> Self
@@ -162,6 +164,7 @@ pub fn Connector::with_cookies(Self, Bool) -> Self
 pub fn Connector::with_http2(Self, Bool) -> Self
 pub fn Connector::with_http2_prior_knowledge(Self, Bool) -> Self
 pub fn Connector::with_idle_timeout(Self, Int32) -> Self
+pub fn Connector::with_max_connections(Self, Int32) -> Self
 pub fn Connector::with_max_connections_per_host(Self, Int32) -> Self
 pub fn Connector::with_max_idle_per_host(Self, Int32) -> Self
 pub fn Connector::with_proxy(Self, Proxy) -> Self
@@ -544,6 +547,7 @@ pub fn UnifiedClient::with_http2(Self, Bool) -> Self
 pub fn UnifiedClient::with_http2_prior_knowledge(Self, Bool) -> Self
 pub fn UnifiedClient::with_http2_streaming(Self, Bool) -> Self
 pub fn UnifiedClient::with_idle_timeout(Self, Int32) -> Self
+pub fn UnifiedClient::with_max_connections(Self, Int32) -> Self
 pub fn UnifiedClient::with_max_connections_per_host(Self, Int32) -> Self
 pub fn UnifiedClient::with_max_idle_per_host(Self, Int32) -> Self
 pub fn UnifiedClient::with_max_redirects(Self, Int32) -> Self

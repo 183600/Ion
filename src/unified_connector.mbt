@@ -312,6 +312,53 @@ fn ConnectionPoolState::trim_idle(self : ConnectionPoolState) -> Unit {
   }
 }
 
+/// Close and remove the globally least-recently-used idle connection. Used
+/// when a total connection cap would otherwise prevent a new dial even though
+/// an idle socket could be retired. Returns false when the pool has no idle
+/// entries.
+fn ConnectionPoolState::evict_oldest_idle(self : ConnectionPoolState) -> Bool {
+  let mut chosen_key : String? = None
+  let mut chosen_time : UInt64 = 0UL
+  for key, entries in self.idle.iter2() {
+    match entries.last() {
+      Some(entry) =>
+        match chosen_key {
+          Some(_) =>
+            if entry.last_used_ms < chosen_time {
+              chosen_key = Some(key)
+              chosen_time = entry.last_used_ms
+            }
+          None => {
+            chosen_key = Some(key)
+            chosen_time = entry.last_used_ms
+          }
+        }
+      None => ()
+    }
+  }
+  let key = match chosen_key {
+    Some(key) => key
+    None => return false
+  }
+  let entries = match self.idle.get(key) {
+    Some(entries) => entries
+    None => return false
+  }
+  let kept = entries.take(entries.length() - 1)
+  match entries.last() {
+    Some(evicted) => {
+      let _ = evicted.stream.close()
+    }
+    None => ()
+  }
+  if kept.length() == 0 {
+    let _ = self.idle.remove(key)
+  } else {
+    self.idle.set(key, kept)
+  }
+  true
+}
+
 /// Number of idle (pooled, reusable) connections across every origin.
 fn ConnectionPoolState::idle_count(self : ConnectionPoolState) -> Int {
   let mut total = 0
@@ -333,6 +380,9 @@ pub struct Connector {
   // request timeout", preserving the historical single-timeout behavior.
   mut connect_timeout_ms : Int
   mut max_connections_per_host : Int
+  // Total live connections (active plus idle) across every origin. Zero means
+  // unlimited.
+  mut max_connections : Int
   http2 : Bool
   http2_prior_knowledge : Bool
   mut cookies_enabled : Bool
@@ -479,6 +529,7 @@ pub fn Connector::new(dialer : &Dialer, tls_provider : &TlsProvider) -> Connecto
     timeout_ms: 30000,
     connect_timeout_ms: 0,
     max_connections_per_host: 0,
+    max_connections: 0,
     http2: false,
     http2_prior_knowledge: false,
     cookies_enabled: false,
@@ -500,6 +551,7 @@ fn Connector::detached(self : Connector) -> Connector {
     timeout_ms: self.timeout_ms,
     connect_timeout_ms: self.connect_timeout_ms,
     max_connections_per_host: self.max_connections_per_host,
+    max_connections: self.max_connections,
     http2: self.http2,
     http2_prior_knowledge: self.http2_prior_knowledge,
     cookies_enabled: self.cookies_enabled,
@@ -570,6 +622,7 @@ pub fn Connector::with_tls_config(self : Connector, config : TlsConfig) -> Conne
     timeout_ms: self.timeout_ms,
     connect_timeout_ms: self.connect_timeout_ms,
     max_connections_per_host: self.max_connections_per_host,
+    max_connections: self.max_connections,
     http2: self.http2,
     http2_prior_knowledge: self.http2_prior_knowledge,
     cookies_enabled: self.cookies_enabled,
@@ -592,6 +645,7 @@ pub fn Connector::with_proxy(self : Connector, proxy : Proxy) -> Connector {
     timeout_ms: self.timeout_ms,
     connect_timeout_ms: self.connect_timeout_ms,
     max_connections_per_host: self.max_connections_per_host,
+    max_connections: self.max_connections,
     http2: self.http2,
     http2_prior_knowledge: self.http2_prior_knowledge,
     cookies_enabled: self.cookies_enabled,
@@ -1077,6 +1131,31 @@ pub fn Connector::with_max_connections_per_host(
 /// The current per-host connection cap; `0` means unlimited.
 pub fn Connector::max_connections_per_host(self : Connector) -> Int {
   self.max_connections_per_host
+}
+
+/// Cap the total number of live connections (checked-out plus idle) across
+/// every origin. A value below 1 means unlimited (the default). When a new
+/// dial would exceed the cap, the globally oldest idle connection is retired
+/// first; if every connection is currently checked out the request fails
+/// without opening another socket.
+pub fn Connector::with_max_connections(
+  self : Connector,
+  max_connections : Int,
+) -> Connector {
+  self.max_connections = if max_connections < 1 { 0 } else { max_connections }
+  if self.max_connections > 0 {
+    while self.connection_count() > self.max_connections {
+      if !self.pool.val.evict_oldest_idle() {
+        break
+      }
+    }
+  }
+  self
+}
+
+/// The current total connection cap; `0` means unlimited.
+pub fn Connector::max_connections(self : Connector) -> Int {
+  self.max_connections
 }
 
 /// Advertise HTTP/2 through ALPN. A shared configuration that keeps the
@@ -1648,6 +1727,19 @@ fn Connector::connect_impl(
       return Ok((stream, true, negotiated_protocol, h2))
     }
     None => ()
+  }
+
+  // The total cap counts checked-out and idle sockets. Reusing an idle
+  // connection above did not increase the total; a new dial must first retire
+  // an idle connection if one exists, or fail when everything is in use.
+  if self.max_connections > 0 &&
+    self.pool.val.active.length() + self.pool.val.idle_count() >=
+    self.max_connections {
+    if !self.pool.val.evict_oldest_idle() {
+      return Err(NetworkError(ConnectionFailed(
+        "total connection limit reached",
+      )))
+    }
   }
 
   // Dial the proxy when one is configured, otherwise dial the origin. Keep
