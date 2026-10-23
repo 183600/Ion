@@ -7,6 +7,7 @@
 #include <openssl/ssl.h>
 #include <openssl/x509v3.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #ifndef TLS1_3_VERSION
@@ -29,6 +30,13 @@ typedef struct {
   char keylog[8192];
   int keylog_length;
   char error_message[256];
+  // A record removed from OpenSSL's write BIO is retained here until the
+  // underlying transport confirms that it was written. A write timeout must
+  // not discard part of a TLS record: the next flush retries the exact
+  // unwritten tail instead of emitting a later record after a truncated one.
+  unsigned char *write_pending;
+  int32_t write_pending_length;
+  int32_t write_pending_offset;
 } FeatherTls;
 
 static void feather_tls_keylog_callback(const SSL *ssl, const char *line) {
@@ -59,6 +67,10 @@ static void feather_tls_finalize(void *pointer) {
     SSL_CTX_free(tls->ctx);
     tls->ctx = NULL;
   }
+  free(tls->write_pending);
+  tls->write_pending = NULL;
+  tls->write_pending_length = 0;
+  tls->write_pending_offset = 0;
 }
 
 static void feather_tls_record_error(FeatherTls *tls) {
@@ -120,10 +132,6 @@ FeatherTls *feather_tls_new(
     feather_tls_record_error(tls);
     return tls;
   }
-
-#ifdef SSL_OP_IGNORE_UNEXPECTED_EOF
-  SSL_CTX_set_options(tls->ctx, SSL_OP_IGNORE_UNEXPECTED_EOF);
-#endif
 
   int version = min_version == 0 ? TLS1_2_VERSION : TLS1_3_VERSION;
   if (SSL_CTX_set_min_proto_version(tls->ctx, version) != 1) {
@@ -533,6 +541,22 @@ int32_t feather_tls_receive_pending(FeatherTls *tls, moonbit_bytes_t buffer, int
   if (capacity == 0) {
     return -1;
   }
+  // Return the unwritten tail of a record before dequeuing anything new.
+  if (tls->write_pending_offset < tls->write_pending_length) {
+    int32_t remaining = tls->write_pending_length - tls->write_pending_offset;
+    int32_t count = remaining < capacity ? remaining : capacity;
+    memcpy(
+      buffer,
+      tls->write_pending + tls->write_pending_offset,
+      (size_t)count
+    );
+    return count;
+  }
+  free(tls->write_pending);
+  tls->write_pending = NULL;
+  tls->write_pending_length = 0;
+  tls->write_pending_offset = 0;
+
   BIO *write_bio = SSL_get_wbio(tls->ssl);
   int pending = (int)BIO_pending(write_bio);
   if (pending <= 0) {
@@ -541,7 +565,45 @@ int32_t feather_tls_receive_pending(FeatherTls *tls, moonbit_bytes_t buffer, int
   if (pending > capacity) {
     pending = capacity;
   }
-  return BIO_read(write_bio, buffer, pending);
+  unsigned char *retained = (unsigned char *)malloc((size_t)pending);
+  if (retained == NULL) {
+    return -1;
+  }
+  int read = BIO_read(write_bio, retained, pending);
+  if (read <= 0) {
+    free(retained);
+    return read < 0 ? -1 : 0;
+  }
+  tls->write_pending = retained;
+  tls->write_pending_length = read;
+  tls->write_pending_offset = 0;
+  memcpy(buffer, retained, (size_t)read);
+  return read;
+}
+
+/// Mark `count` bytes of the retained record as written. The caller invokes
+/// this after each successful transport write so a later timeout can resume
+/// exactly where the previous attempt stopped.
+MOONBIT_FFI_EXPORT
+int32_t feather_tls_consume_pending(FeatherTls *tls, int32_t count) {
+  if (tls == NULL) {
+    return -1;
+  }
+  if (count <= 0) {
+    return 0;
+  }
+  int32_t remaining = tls->write_pending_length - tls->write_pending_offset;
+  if (count > remaining) {
+    count = remaining;
+  }
+  tls->write_pending_offset += count;
+  if (tls->write_pending_offset >= tls->write_pending_length) {
+    free(tls->write_pending);
+    tls->write_pending = NULL;
+    tls->write_pending_length = 0;
+    tls->write_pending_offset = 0;
+  }
+  return count;
 }
 
 MOONBIT_FFI_EXPORT

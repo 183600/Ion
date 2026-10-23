@@ -44,6 +44,9 @@ extern "C" fn feather_tls_write(tls : NativeTlsHandle, buffer : Bytes, offset : 
 #borrow(tls, buffer)
 extern "C" fn feather_tls_receive_pending(tls : NativeTlsHandle, buffer : Bytes, capacity : Int) -> Int = "feather_tls_receive_pending"
 
+#borrow(tls)
+extern "C" fn feather_tls_consume_pending(tls : NativeTlsHandle, count : Int) -> Int = "feather_tls_consume_pending"
+
 #borrow(tls, buffer)
 extern "C" fn feather_tls_send_input(tls : NativeTlsHandle, buffer : Bytes, length : Int) -> Int = "feather_tls_send_input"
 
@@ -169,12 +172,32 @@ fn native_tls_flush(
       }
     }
     let data = buffer.exact_view(start=0, end=count).to_owned()
-    match write_all(underlying, data) {
-      Ok(_) => ()
-      Err(err) => match err {
-        Timeout => return TlsIoTimeout
-        Closed => return TlsIoClosed
-        _ => return TlsIoFailure("TLS write failed")
+    let mut written = 0
+    while written < data.length() {
+      let chunk = Buffer(size_hint=data.length() - written)
+      chunk.write_bytes(data.exact_view(start=written, end=data.length()))
+      match underlying.write(chunk) {
+        Ok(count) => {
+          if count <= 0 {
+            return TlsIoFailure("TLS transport made no write progress")
+          }
+          let consumed = if count > data.length() - written {
+            data.length() - written
+          } else {
+            count
+          }
+          let _ = feather_tls_consume_pending(tls, consumed)
+          written = written + consumed
+        }
+        Err(err) => {
+          // Only the bytes confirmed by successful transport writes have been
+          // consumed. The retained tail is returned by the next pending read.
+          return match err {
+            Timeout => TlsIoTimeout
+            Closed => TlsIoClosed
+            _ => TlsIoFailure("TLS write failed")
+          }
+        }
       }
     }
   }
@@ -261,7 +284,10 @@ pub impl Stream for NativeTlsStream with fn read(
       }
       match native_tls_feed(self.tls, self.underlying) {
         TlsIoData => continue
-        TlsIoClosed => return Ok(0)
+        // A clean TLS shutdown is reported by OpenSSL as ZERO_RETURN above.
+        // Losing the transport before close_notify (FIN, reset, or EPIPE)
+        // truncates the stream and must not look like a normal end of body.
+        TlsIoClosed => return Err(NetError::Closed)
         TlsIoTimeout => return Err(NetError::Timeout)
         TlsIoFailure(message) => return Err(NetError::ReadError(message))
       }
