@@ -237,7 +237,7 @@ pub fn UnifiedClient::with_user_agent(
   user_agent : String,
 ) -> UnifiedClient {
   UnifiedClient::{
-    connector: self.connector,
+    connector: self.connector.detached(),
     options: ClientOptions::{ ..self.options, user_agent },
     redirect_count: 0,
   }
@@ -251,7 +251,7 @@ pub fn UnifiedClient::with_default_header(
   value : String,
 ) -> UnifiedClient {
   UnifiedClient::{
-    connector: self.connector,
+    connector: self.connector.detached(),
     options: self.options.with_default_header(name, value),
     redirect_count: 0,
   }
@@ -263,7 +263,7 @@ pub fn UnifiedClient::with_default_headers(
   headers : Headers,
 ) -> UnifiedClient {
   UnifiedClient::{
-    connector: self.connector,
+    connector: self.connector.detached(),
     options: self.options.with_default_headers(headers),
     redirect_count: 0,
   }
@@ -275,7 +275,7 @@ pub fn UnifiedClient::with_follow_redirects(
   follow_redirects : Bool,
 ) -> UnifiedClient {
   UnifiedClient::{
-    connector: self.connector,
+    connector: self.connector.detached(),
     options: ClientOptions::{ ..self.options, follow_redirects },
     redirect_count: 0,
   }
@@ -287,7 +287,7 @@ pub fn UnifiedClient::with_max_redirects(
   max_redirects : Int,
 ) -> UnifiedClient {
   UnifiedClient::{
-    connector: self.connector,
+    connector: self.connector.detached(),
     options: ClientOptions::{
       ..self.options,
       max_redirects: if max_redirects < 0 { 0 } else { max_redirects },
@@ -302,7 +302,7 @@ pub fn UnifiedClient::with_max_response_body_bytes(
   max_response_body_bytes : Int,
 ) -> UnifiedClient {
   UnifiedClient::{
-    connector: self.connector,
+    connector: self.connector.detached(),
     options: ClientOptions::{
       ..self.options,
       max_response_body_bytes: if max_response_body_bytes < 0 {
@@ -347,7 +347,7 @@ pub fn UnifiedClient::with_http2_streaming(
   enabled : Bool,
 ) -> UnifiedClient {
   UnifiedClient::{
-    connector: self.connector,
+    connector: self.connector.detached(),
     options: self.options.with_http2_streaming(enabled),
     redirect_count: 0,
   }
