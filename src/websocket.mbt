@@ -262,8 +262,10 @@ pub fn websocket_connect(
     (websocket_header_has_token(response.headers, "Upgrade", "websocket") &&
       websocket_header_has_token(response.headers, "Connection", "upgrade"))
   let selected = response.get_header("Sec-WebSocket-Protocol")
+  // A server may decline to select a subprotocol, but anything it does select
+  // must have been offered by the client (RFC 6455 section 4.2.2).
   let protocol_ok = match selected {
-    Some(protocol) => protocols.length() == 0 || protocols.contains(protocol)
+    Some(protocol) => protocols.contains(protocol)
     None => true
   }
   if !status_ok || !upgrade_ok || accept != Some(websocket_accept_key(key)) ||
