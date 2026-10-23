@@ -57,6 +57,12 @@ pub fn request(Request) -> Result[Response, HttpError]
 
 pub fn trace(String) -> Result[Response, HttpError]
 
+pub fn websocket_accept_key(String) -> String
+
+pub fn websocket_connect(&HttpClient, String, String, Array[String]) -> Result[WebSocket, HttpError]
+
+pub fn websocket_handshake_request(String, String, Array[String]) -> Result[Request, HttpError]
+
 // Errors
 
 // Types and methods
@@ -577,6 +583,47 @@ pub fn Url::with_query(Self, String) -> Self
 pub enum VerifyMode {
   Strict
   SkipVerification
+} derive(Eq, @debug.Debug)
+
+pub struct WebSocket {
+  // private fields
+}
+pub fn WebSocket::close(Self) -> Result[Unit, HttpError]
+pub fn WebSocket::is_open(Self) -> Bool
+pub fn WebSocket::new(&Stream, WebSocketRole) -> Self
+pub fn WebSocket::read_frame(Self) -> Result[WebSocketFrame, HttpError]
+pub fn WebSocket::read_message(Self) -> Result[WebSocketMessage, HttpError]
+pub fn WebSocket::role(Self) -> WebSocketRole
+pub fn WebSocket::send_binary(Self, Bytes) -> Result[Unit, HttpError]
+pub fn WebSocket::send_close(Self, Int32, String) -> Result[Unit, HttpError]
+pub fn WebSocket::send_frame(Self, WebSocketFrame) -> Result[Unit, HttpError]
+pub fn WebSocket::send_ping(Self, Bytes) -> Result[Unit, HttpError]
+pub fn WebSocket::send_pong(Self, Bytes) -> Result[Unit, HttpError]
+pub fn WebSocket::send_text(Self, String) -> Result[Unit, HttpError]
+pub fn WebSocket::with_max_frame_bytes(Self, Int32) -> Self
+pub fn WebSocket::with_max_message_bytes(Self, Int32) -> Self
+
+pub struct WebSocketFrame {
+  fin : Bool
+  opcode : Int32
+  payload : Bytes
+} derive(Eq, @debug.Debug)
+pub fn WebSocketFrame::binary(Bytes) -> Self
+pub fn WebSocketFrame::ping(Bytes) -> Self
+pub fn WebSocketFrame::pong(Bytes) -> Self
+pub fn WebSocketFrame::text(String) -> Self
+
+pub enum WebSocketMessage {
+  Text(String)
+  Binary(Bytes)
+  Ping(Bytes)
+  Pong(Bytes)
+  Close(Int32, String)
+} derive(Eq, @debug.Debug)
+
+pub enum WebSocketRole {
+  Client
+  Server
 } derive(Eq, @debug.Debug)
 
 // Type aliases
