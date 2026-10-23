@@ -257,7 +257,14 @@ pub fn websocket_connect(
   } else {
     response.status >= 200 && response.status < 300
   }
-  let accept = response.get_header("Sec-WebSocket-Accept")
+  // HTTP/1.1 upgrades prove acceptance with Sec-WebSocket-Accept. RFC 8441
+  // extended CONNECT on HTTP/2 does not use the key/accept exchange at all;
+  // the successful 2xx status and the extended CONNECT itself are the proof.
+  let accept_ok = if h1 {
+    response.get_header("Sec-WebSocket-Accept") == Some(websocket_accept_key(key))
+  } else {
+    true
+  }
   let upgrade_ok = !h1 ||
     (websocket_header_has_token(response.headers, "Upgrade", "websocket") &&
       websocket_header_has_token(response.headers, "Connection", "upgrade"))
@@ -268,8 +275,7 @@ pub fn websocket_connect(
     Some(protocol) => protocols.contains(protocol)
     None => true
   }
-  if !status_ok || !upgrade_ok || accept != Some(websocket_accept_key(key)) ||
-    !protocol_ok {
+  if !status_ok || !upgrade_ok || !accept_ok || !protocol_ok {
     response.close()
     return Err(ProtocolError("Invalid WebSocket handshake response"))
   }
@@ -435,6 +441,11 @@ pub fn WebSocket::send_frame(
   if !self.is_open {
     return Err(ConnectionClosed)
   }
+  // Once a Close frame has been sent, no further frames may be emitted on the
+  // connection (RFC 6455 section 5.5.1). The peer's Close can still be read.
+  if self.close_sent {
+    return Err(ConnectionClosed)
+  }
   if !ws_valid_opcode(frame.opcode) {
     return Err(InvalidHeader("WebSocket opcode"))
   }
@@ -500,13 +511,24 @@ pub fn WebSocket::send_text(
   self : WebSocket,
   text : String,
 ) -> Result[Unit, HttpError] {
-  self.send_frame(WebSocketFrame::text(text))
+  let payload = @utf8.encode(text)
+  if payload.length() > self.max_message_bytes {
+    return Err(ProtocolError("WebSocket message too large"))
+  }
+  self.send_frame(WebSocketFrame::{
+    fin: true,
+    opcode: WS_OPCODE_TEXT,
+    payload,
+  })
 }
 
 pub fn WebSocket::send_binary(
   self : WebSocket,
   data : Bytes,
 ) -> Result[Unit, HttpError] {
+  if data.length() > self.max_message_bytes {
+    return Err(ProtocolError("WebSocket message too large"))
+  }
   self.send_frame(WebSocketFrame::binary(data))
 }
 
@@ -728,6 +750,9 @@ pub fn WebSocket::read_message(
         if self.fragment_active {
           return Err(ProtocolError("Interleaved WebSocket data frames"))
         } else if frame.fin {
+          if frame.payload.length() > self.max_message_bytes {
+            return Err(ProtocolError("WebSocket message too large"))
+          }
           return decode_websocket_message(frame.opcode, frame.payload)
         } else {
           if frame.payload.length() > self.max_message_bytes {
@@ -738,7 +763,29 @@ pub fn WebSocket::read_message(
           self.fragment_opcode = frame.opcode
           self.fragment_active = true
         }
-      WS_OPCODE_CLOSE => return decode_close_message(frame.payload)
+      WS_OPCODE_CLOSE => {
+        let message = match decode_close_message(frame.payload) {
+          Ok(message) => message
+          Err(err) => return Err(err)
+        }
+        // Echo the peer's close (when we have not already sent one) and close
+        // the transport. This completes the closing handshake without leaving
+        // the socket open for later frames.
+        if !self.close_sent {
+          let _ = match self.send_frame(WebSocketFrame::{
+            fin: true,
+            opcode: WS_OPCODE_CLOSE,
+            payload: frame.payload,
+          }) {
+            Ok(_) => Ok(())
+            Err(err) => Err(err)
+          }
+          self.close_sent = true
+        }
+        self.is_open = false
+        let _ = self.stream.close()
+        return Ok(message)
+      }
       WS_OPCODE_PING => return Ok(Ping(frame.payload))
       WS_OPCODE_PONG => return Ok(Pong(frame.payload))
       _ => return Err(ProtocolError("Invalid WebSocket opcode"))
@@ -755,12 +802,12 @@ pub fn WebSocket::close(self : WebSocket) -> Result[Unit, HttpError] {
     return Ok(())
   }
   if !self.close_sent {
-    self.close_sent = true
     let _ = self.send_frame(WebSocketFrame::{
       fin: true,
       opcode: WS_OPCODE_CLOSE,
       payload: b"",
     })
+    self.close_sent = true
   }
   self.is_open = false
   match self.stream.close() {
