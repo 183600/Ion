@@ -217,10 +217,16 @@ fn h2_read_connection_frame(reader : StreamReader) -> Result[H2Frame, HttpError]
 
 /// A stream-scoped fatal error that leaves the connection usable after a
 /// RST_STREAM has been sent for the affected stream.
-fn h2_error_is_stream_reset(err : HttpError) -> Bool {
+fn h2_error_is_stream_reset(
+  err : HttpError,
+  state : H2ResponseState,
+) -> Bool {
   match err {
     ProtocolError(message) =>
-      message == "HTTP/2 stream WINDOW_UPDATE increment is zero"
+      message == "HTTP/2 stream WINDOW_UPDATE increment is zero" ||
+      // A reset after the response head is stream-scoped: the connection can
+      // still carry later requests, even though this exchange must fail.
+      (message == "HTTP/2 stream reset by server" && state.status_seen)
     _ => false
   }
 }
@@ -1368,7 +1374,7 @@ fn H2LiveBodyStream::pull(self : H2LiveBodyStream) -> Result[Unit, NetError] {
     ) {
       Ok(_) => ()
       Err(err) => {
-        if h2_error_is_stream_reset(err) {
+        if h2_error_is_stream_reset(err, self.state) {
           // The peer reset only this stream. Consume its already-buffered
           // frames so they cannot be mistaken for a later response, then
           // release the session as reusable instead of tearing it down.
@@ -2492,7 +2498,7 @@ fn H2ClientConnection::request_streaming_with_callback(
     match state.handle_frame(frame, self.flow, self.stream) {
       Ok(_) => ()
       Err(err) => {
-        if h2_error_is_stream_reset(err) {
+        if h2_error_is_stream_reset(err, state) {
           self.discard_buffered_stream_frames(state, self.flow, state.stream_id)
         } else {
           self.closed = true
@@ -2697,7 +2703,7 @@ fn H2ClientConnection::request_with_limit_and_callback(
       match state.handle_frame(frame, flow, self.stream) {
         Ok(_) => ()
         Err(err) => {
-          if h2_error_is_stream_reset(err) {
+          if h2_error_is_stream_reset(err, state) {
             self.discard_buffered_stream_frames(state, flow, state.stream_id)
           } else {
             self.closed = true
@@ -2769,7 +2775,7 @@ fn H2ClientConnection::request_with_limit_and_callback(
     match state.handle_frame(frame, flow, self.stream) {
       Ok(_) => ()
       Err(err) => {
-        if h2_error_is_stream_reset(err) {
+        if h2_error_is_stream_reset(err, state) {
           self.discard_buffered_stream_frames(state, flow, state.stream_id)
         } else {
           self.closed = true
