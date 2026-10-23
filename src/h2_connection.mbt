@@ -2042,6 +2042,41 @@ fn H2ClientConnection::discard_buffered_stream_frames(
       (self.reader.pending[offset + 7].to_int() << 8) |
       self.reader.pending[offset + 8].to_int()
     if frame_stream_id != stream_id {
+      if frame_stream_id == 0 {
+        // A connection-level frame between the reset stream and its remaining
+        // frames must not make the discard stop: stale frames behind it would
+        // otherwise be consumed as part of the next response.
+        let frame = match h2_read_connection_frame(self.reader) {
+          Ok(frame) => frame
+          Err(_) => {
+            self.closed = true
+            return
+          }
+        }
+        match frame.frame_type {
+          H2_FRAME_SETTINGS | H2_FRAME_PING | H2_FRAME_WINDOW_UPDATE =>
+            match state.handle_frame(frame, flow, self.stream) {
+              Ok(_) => ()
+              Err(_) => {
+                self.closed = true
+                return
+              }
+            }
+          H2_FRAME_GOAWAY => {
+            self.closed = true
+            return
+          }
+          H2_FRAME_PRIORITY => ()
+          _ =>
+            if frame.frame_type > H2_FRAME_CONTINUATION {
+              // Unknown extension frame types are safe to discard.
+            } else {
+              self.closed = true
+              return
+            }
+        }
+        continue
+      }
       return
     }
     let frame = match h2_read_connection_frame(self.reader) {
