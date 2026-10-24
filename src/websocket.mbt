@@ -268,6 +268,10 @@ pub fn websocket_connect(
   let upgrade_ok = !h1 ||
     (websocket_header_has_token(response.headers, "Upgrade", "websocket") &&
       websocket_header_has_token(response.headers, "Connection", "upgrade"))
+  // The client never offers extensions, so a server must not select any
+  // (RFC 6455 section 4.1). Ignoring one would leave the payload encoding
+  // unknown to the frame parser.
+  let extensions_ok = !response.headers.contains("Sec-WebSocket-Extensions")
   let selected = response.get_header("Sec-WebSocket-Protocol")
   // A server may decline to select a subprotocol, but anything it does select
   // must have been offered by the client (RFC 6455 section 4.2.2).
@@ -275,7 +279,7 @@ pub fn websocket_connect(
     Some(protocol) => protocols.contains(protocol)
     None => true
   }
-  if !status_ok || !upgrade_ok || !accept_ok || !protocol_ok {
+  if !status_ok || !upgrade_ok || !accept_ok || !extensions_ok || !protocol_ok {
     response.close()
     return Err(ProtocolError("Invalid WebSocket handshake response"))
   }
