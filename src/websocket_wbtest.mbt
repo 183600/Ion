@@ -191,6 +191,22 @@ test "websocket handshake request and response are validated" {
 }
 
 ///|
+test "websocket handshake rejects malformed keys" {
+  for key in [
+    "",
+    "not base64!",
+    "AAAA",
+    "c2hvcnQ=",
+    "dGhlIHNhbXBsZSBub25jZQ===",
+  ] {
+    match websocket_handshake_request("ws://example.com/chat", key, []) {
+      Err(InvalidHeader(name)) => assert_eq(name, "Sec-WebSocket-Key")
+      _ => fail("a malformed WebSocket key was accepted")
+    }
+  }
+}
+
+///|
 test "websocket rejects an unoffered subprotocol" {
   let key = "dGhlIHNhbXBsZSBub25jZQ=="
   let raw = "HTTP/1.1 101 Switching Protocols\r\n" +
