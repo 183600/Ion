@@ -178,6 +178,29 @@ fn valid_websocket_key(key : String) -> Bool {
   key.length() > 0
 }
 
+/// RFC 6455 section 4.1: `Sec-WebSocket-Protocol` is a non-empty `1#token`
+/// list and the offered subprotocols must be unique. Reject invalid elements
+/// before joining them so a comma or whitespace cannot turn one array element
+/// into multiple protocol offers on the wire.
+fn valid_websocket_subprotocols(protocols : Array[String]) -> Bool {
+  let seen : Array[String] = []
+  for protocol in protocols {
+    if protocol.length() == 0 {
+      return false
+    }
+    for ch in protocol {
+      if !is_header_token_char(ch) {
+        return false
+      }
+    }
+    if seen.contains(protocol) {
+      return false
+    }
+    seen.push(protocol)
+  }
+  true
+}
+
 /// Build the HTTP request that starts a WebSocket handshake. `url` must use
 /// `ws`, `wss`, `http`, or `https`; the latter two are accepted so the same
 /// function works with a `UnifiedClient` that already parsed the target.
@@ -188,6 +211,9 @@ pub fn websocket_handshake_request(
 ) -> Result[Request, HttpError] {
   if !valid_websocket_key(key) {
     return Err(InvalidHeader("Sec-WebSocket-Key"))
+  }
+  if !valid_websocket_subprotocols(protocols) {
+    return Err(InvalidHeader("Sec-WebSocket-Protocol"))
   }
   let url = normalize_websocket_url(url)
   let url = match url {
