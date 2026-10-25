@@ -272,12 +272,21 @@ pub fn websocket_connect(
   // (RFC 6455 section 4.1). Ignoring one would leave the payload encoding
   // unknown to the frame parser.
   let extensions_ok = !response.headers.contains("Sec-WebSocket-Extensions")
-  let selected = response.get_header("Sec-WebSocket-Protocol")
+  let selected = response.headers.get_all("Sec-WebSocket-Protocol")
   // A server may decline to select a subprotocol, but anything it does select
-  // must have been offered by the client (RFC 6455 section 4.2.2).
-  let protocol_ok = match selected {
-    Some(protocol) => protocols.contains(protocol)
-    None => true
+  // must have been offered by the client (RFC 6455 section 4.2.2). The server
+  // selects at most one value, so repeated field lines or a comma-separated
+  // list are malformed and must not let a later offered token hide an earlier
+  // unoffered one.
+  let protocol_ok = if selected.length() == 0 {
+    true
+  } else if selected.length() == 1 {
+    let parts = split_header_list(selected.nth(0).unwrap())
+    parts.length() == 1 &&
+    parts[0].trim().length() > 0 &&
+    protocols.contains(parts[0].trim().to_owned())
+  } else {
+    false
   }
   if !status_ok || !upgrade_ok || !accept_ok || !extensions_ok || !protocol_ok {
     response.close()
