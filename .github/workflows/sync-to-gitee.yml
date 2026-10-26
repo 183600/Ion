@@ -14,7 +14,6 @@ on:
       - 'CI'
       - 'Continuous Loop'
       - 'iflow-cabal-autoloop'
-      - '.github/workflows/sync-to-gitee.yml'
     types: [completed]
 concurrency:
   group: sync-to-gitee
