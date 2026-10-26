@@ -289,8 +289,12 @@ pub fn websocket_connect(
   // HTTP/1.1 upgrades prove acceptance with Sec-WebSocket-Accept. RFC 8441
   // extended CONNECT on HTTP/2 does not use the key/accept exchange at all;
   // the successful 2xx status and the extended CONNECT itself are the proof.
+  let accept_values = response.headers.get_all("Sec-WebSocket-Accept")
   let accept_ok = if h1 {
-    response.get_header("Sec-WebSocket-Accept") == Some(websocket_accept_key(key))
+    // Sec-WebSocket-Accept is a singleton field: a repeated header would make
+    // the handshake ambiguous even when one of the values matches.
+    accept_values.length() == 1 &&
+    accept_values.nth(0).unwrap() == websocket_accept_key(key)
   } else {
     true
   }
@@ -553,6 +557,12 @@ pub fn WebSocket::send_frame(
     header.write_bytes(mask)
   }
   let head = header.to_bytes()
+  // Once any part of a Close frame may have reached the transport, no later
+  // frame is allowed even if a subsequent write or flush reports an error.
+  // Mark it before writing so a failed flush cannot leave the socket writable.
+  if frame.opcode == WS_OPCODE_CLOSE {
+    self.close_sent = true
+  }
   match ws_write_all(self.stream, head) {
     Ok(_) => ()
     Err(err) => return Err(err)
@@ -564,12 +574,7 @@ pub fn WebSocket::send_frame(
     }
   }
   match self.stream.flush() {
-    Ok(_) => {
-      if frame.opcode == WS_OPCODE_CLOSE {
-        self.close_sent = true
-      }
-      Ok(())
-    }
+    Ok(_) => Ok(())
     Err(err) => Err(http_error_from_net(err))
   }
 }
