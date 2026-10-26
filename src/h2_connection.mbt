@@ -2129,9 +2129,13 @@ fn H2ClientConnection::discard_buffered_stream_frames(
     match state.handle_frame(frame, flow, self.stream) {
       Ok(_) => ()
       Err(_) => {
-        // Header blocks that fail to decode can leave HPACK state unusable.
+        // Header blocks that fail to decode can leave HPACK state unusable,
+        // and malformed DATA/push frames are connection-level protocol errors
+        // even when they target a stream that was already reset.
         if frame.frame_type == H2_FRAME_HEADERS ||
-          frame.frame_type == H2_FRAME_CONTINUATION {
+          frame.frame_type == H2_FRAME_CONTINUATION ||
+          frame.frame_type == H2_FRAME_DATA ||
+          frame.frame_type == H2_FRAME_PUSH_PROMISE {
           self.closed = true
           return
         }
@@ -2213,6 +2217,17 @@ fn H2ClientConnection::drain_buffered_settings(
 ) -> Result[Unit, HttpError] {
   while h2_frame_is_buffered(self.reader) {
     let offset = self.reader.pending_offset
+    let frame_length = (self.reader.pending[offset].to_int() << 16) |
+      (self.reader.pending[offset + 1].to_int() << 8) |
+      self.reader.pending[offset + 2].to_int()
+    // `h2_frame_is_buffered` treats an oversized header as complete so the
+    // protocol error is observed without waiting for the illegal payload.
+    // Do not let that frame survive into the next request: close before any
+    // HEADERS are written instead of failing only after the request is sent.
+    if frame_length > H2_MAX_FRAME_SIZE {
+      self.closed = true
+      return Err(ProtocolError("HTTP/2 frame exceeds advertised maximum"))
+    }
     let frame_type = self.reader.pending[offset + 3].to_int()
     // A received GOAWAY forbids opening any further stream on this connection
     // (RFC 9113 §6.8), regardless of the last-stream-id it advertises. Let the
