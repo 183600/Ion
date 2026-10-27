@@ -2156,15 +2156,38 @@ fn H2ClientConnection::discard_buffered_stream_frames(
         return
       }
     }
+    if frame.frame_type == H2_FRAME_DATA {
+      // DATA for the reset stream is ignored (RFC 9113 §5.1), but its padding
+      // still has to be valid and its payload still consumes the connection
+      // receive window. Do not feed it through the response state: doing so
+      // would apply Content-Length/body limits to a stream that is already
+      // closed and could tear down an otherwise reusable session.
+      match h2_data_payload(frame) {
+        Ok(_) => ()
+        Err(_) => {
+          self.closed = true
+          return
+        }
+      }
+      if frame.payload.length() > 0 {
+        match h2_send_window_update(self.stream, 0, frame.payload.length(), flush=true) {
+          Ok(_) => ()
+          Err(_) => {
+            self.closed = true
+            return
+          }
+        }
+      }
+      continue
+    }
     match state.handle_frame(frame, flow, self.stream) {
       Ok(_) => ()
       Err(_) => {
         // Header blocks that fail to decode can leave HPACK state unusable,
-        // and malformed DATA/push frames are connection-level protocol errors
-        // even when they target a stream that was already reset.
+        // and malformed push frames are connection-level protocol errors even
+        // when they target a stream that was already reset.
         if frame.frame_type == H2_FRAME_HEADERS ||
           frame.frame_type == H2_FRAME_CONTINUATION ||
-          frame.frame_type == H2_FRAME_DATA ||
           frame.frame_type == H2_FRAME_PUSH_PROMISE {
           self.closed = true
           return
