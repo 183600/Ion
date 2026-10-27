@@ -2141,6 +2141,9 @@ pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buf
             }
             self.remaining = size
             self.chunk_state = ChunkData
+            if produced > 0 && !self.has_more_input() {
+              break
+            }
           }
           ChunkData => {
             if self.remaining == 0 {
@@ -2154,6 +2157,9 @@ pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buf
                 return Err(self.fail(NetError::ReadError("invalid chunk terminator")))
               }
               self.chunk_state = ChunkSize
+              if produced > 0 && !self.has_more_input() {
+                break
+              }
               continue
             }
             let want = if self.remaining < limit - produced {
