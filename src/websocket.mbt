@@ -174,11 +174,12 @@ pub fn websocket_accept_key(key : String) -> String {
 
 fn valid_websocket_key(key : String) -> Bool {
   // RFC 6455 section 4.1 requires a base64-encoded 16-byte nonce. Decode at
-  // the wire boundary so a malformed or predictable key cannot be sent.
+  // the wire boundary and require the canonical padded encoding so a
+  // malformed or predictable key cannot be sent.
   let decoded = try @base64.decode(key) catch {
     _ => return false
   }
-  decoded.length() == 16
+  decoded.length() == 16 && @base64.encode(decoded) == key
 }
 
 /// RFC 6455 section 4.1: `Sec-WebSocket-Protocol` is a non-empty `1#token`
