@@ -273,6 +273,24 @@ fn h2_forbidden_header(name : String) -> Bool {
   }
 }
 
+/// HTTP/2 permits the TE field only to advertise support for trailers
+/// (RFC 9113 §8.2.2). Empty list elements are ignored, but every supplied
+/// transfer coding must be exactly `trailers`.
+fn h2_te_allows_only_trailers(value : String) -> Bool {
+  let mut saw_trailers = false
+  for part in split_header_list(value) {
+    let token = trim_header_ows(part).to_lower()
+    if token.length() == 0 {
+      continue
+    }
+    if token != "trailers" {
+      return false
+    }
+    saw_trailers = true
+  }
+  saw_trailers
+}
+
 fn h2_forbidden_trailer_field(name : String) -> Bool {
   let name = name.to_lower()
   // Existing HTTP/2 callers treat these response metadata fields as ordinary
@@ -1068,7 +1086,12 @@ fn h2_request_headers_with_protocol(
       h2_name_in_array(connection_nominated, name) {
       continue
     }
-    if name == "te" && header.value.trim().to_lower() != "trailers" {
+    if name == "te" {
+      if !h2_valid_field_value(header.value) ||
+        !h2_te_allows_only_trailers(header.value) {
+        return Err(InvalidHeader(header.name))
+      }
+      headers.push((name, header.value))
       continue
     }
     if name == "content-length" {

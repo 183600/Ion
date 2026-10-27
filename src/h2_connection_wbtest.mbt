@@ -1363,6 +1363,19 @@ test "http2 strips connection-nominated Content-Length without validating it" {
   assert_eq(h2_test_header_value(headers, ":method"), Some("POST"))
 }
 
+test "http2 request TE only permits trailers" {
+  let url = Url::parse("https://example.com/").unwrap()
+  for value in ["trailers", "Trailers", "trailers,", ", trailers"] {
+    let request = Request::new(GET, url).with_header("TE", value)
+    let headers = h2_request_headers(request).unwrap()
+    assert_eq(h2_test_header_value(headers, "te"), Some(value))
+  }
+  for value in ["gzip", "trailers, gzip", "", " trailers", "trailers "] {
+    let request = Request::new(GET, url).with_header("TE", value)
+    assert_eq(h2_request_headers(request), Err(InvalidHeader("TE")))
+  }
+}
+
 test "http2 rejects TE in responses" {
   let response_headers = hpack_encode([(":status", "200"), ("te", "trailers")])
   let input = h2_test_concat([
