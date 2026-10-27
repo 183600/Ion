@@ -60,3 +60,19 @@ test "http2 keeps a single cookie field unchanged" {
   let fields = HpackDecoder::new().decode(header_frame.unwrap().payload).unwrap()
   assert_eq(h2_test_header_value(fields, "cookie"), Some("session=abc"))
 }
+
+///|
+test "http2 validates every cookie fragment before combining them" {
+  let url = Url::parse("https://example.com/").unwrap()
+  for value in ["a=1\r\nx-injected: 1", "a=1\n", " session=abc", "session=abc "] {
+    let request = Request::new(GET, url)
+      .with_header("Cookie", value)
+      .with_header("Cookie", "next=2")
+    assert_eq(h2_request_headers(request), Err(InvalidHeader("Cookie")))
+  }
+  let valid = Request::new(GET, url)
+    .with_header("Cookie", "a=1")
+    .with_header("Cookie", "b=2")
+  let fields = h2_request_headers(valid).unwrap()
+  assert_eq(h2_test_header_value(fields, "cookie"), Some("a=1; b=2"))
+}
