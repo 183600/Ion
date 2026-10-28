@@ -1,7 +1,8 @@
 # Feather (Ion) — build & test notes
 
 MoonBit network stack: unified `Stream` / `Dialer` / `TlsProvider` / `HttpClient`
-abstraction (TCP, TLS via OpenSSL, HTTP/1.1, unified client). See `PLAN.md`.
+abstraction (TCP, TLS via OpenSSL, HTTP/1.1 and HTTP/2, WebSocket,
+HTTP(S)/SOCKS5 proxies, cookies, unified client). See `PLAN.md`.
 
 ## Layout
 
@@ -15,15 +16,19 @@ All sources live flat under `src/`:
 - `h2_codec.mbt`, `h2_hpack.mbt`, `h2_connection.mbt` — HTTP/2 framing,
   HPACK, and persistent client sessions.
 - `inflate.mbt` — DEFLATE / zlib / gzip decompression (puff-style).
+- `charset.mbt` — response text decoding (UTF-8, ASCII, Latin-1,
+  Windows-1252, UTF-16).
 - `cookies.mbt` — RFC 6265 cookie jar and matching.
-- `proxy.mbt` — HTTP forward proxy and CONNECT tunnel support.
+- `proxy.mbt` — HTTP(S) forward proxy and CONNECT tunnel support.
+- `socks5.mbt` — SOCKS5/SOCKS5H client handshake and tunnel support.
+- `websocket.mbt` — RFC 6455 WebSocket handshake, framing, and messages.
 - `compat.mbt` — shared validation helpers (digits, charset checks, `List` alias).
 - `unified_connector.mbt`, `unified_client.mbt` — pooling connector + client.
 - `main.mbt` — CLI entry point.
 
 ## Gates
 
-Run both of these before committing:
+Run all of these before committing:
 
 ```sh
 moon check --target all   # compiles wasm, wasm-gc, js and native sources

@@ -68,7 +68,7 @@
 
 ## 2) 统一“http + https”的连接建立流程
 
-一个统一的 `Connector`（或 `Transport`) 做这件事：
+一个统一的 `Connector`（或 `Transport`）做这件事：
 
 1. 解析 URL：得到 scheme/host/port
 2. `dialer.dial_tcp(host, port)` 得到 `raw_stream`

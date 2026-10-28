@@ -13,8 +13,8 @@ if [[ -n "$bad" ]]; then
   exit 1
 fi
 
-# The transports that PLAN.md lists as planned (HTTP/2, WASI/browser) must
-# stay documented as "not yet implemented", not silently advertised as done.
+# WASI/browser transports are still planned and must stay documented as
+# "not yet implemented", not silently advertised as done.
 if grep -q 'WASI/browser transports are implemented' README.md; then
   echo "error: README advertises transports that are not implemented" >&2
   exit 1
