@@ -679,7 +679,8 @@ pub fn H1Codec::encode_request(
   // identical to the authority-form request-target. Accepting a different
   // value would make the tunnel endpoint ambiguous for proxies.
   if is_connect && host_values.length() == 1 &&
-    host_values.nth(0).unwrap().to_lower() != host_header_value.to_lower() {
+    lowercase_host_preserving_zone(host_values.nth(0).unwrap()) !=
+      lowercase_host_preserving_zone(host_header_value) {
     return Err(InvalidHeader("Host"))
   }
 

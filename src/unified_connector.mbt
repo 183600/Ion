@@ -696,11 +696,13 @@ pub fn Connector::proxy_bypass(self : Connector) -> Array[String] {
 }
 
 fn normalize_bypass_host(host : String) -> String {
-  let lower = host.to_lower()
-  if lower.length() > 0 && lower.get_char(lower.length() - 1) == Some('.') {
-    lower[0:lower.length() - 1].to_owned()
+  let normalized = lowercase_host_preserving_zone(host)
+  if normalized.length() > 0 &&
+    normalized.get_char(normalized.length() - 1) == Some('.') &&
+    !is_ipv6_literal_with_zone(normalized) {
+    normalized[0:normalized.length() - 1].to_owned()
   } else {
-    lower
+    normalized
   }
 }
 
@@ -984,14 +986,14 @@ fn proxy_bypass_matches(
   bracketed? : Bool,
 ) -> Bool {
   let bracketed = bracketed.unwrap_or(false)
-  let trimmed = pattern.trim().to_lower()
+  let trimmed : StringView = pattern.trim()
   if trimmed.length() == 0 {
     return false
   }
   if trimmed == "*" {
     return true
   }
-  let mut candidate = trimmed.to_owned()
+  let mut candidate : String = trimmed.to_owned()
   match candidate.find("://") {
     Some(index) => candidate = candidate[index + 3:].to_owned()
     None => ()
@@ -1002,7 +1004,7 @@ fn proxy_bypass_matches(
   // The `<local>` convention bypasses the proxy for single-label host names
   // (for example `localhost` or an intranet machine name) but never for an IP
   // literal or a fully qualified name.
-  if candidate == "<local>" {
+  if candidate.to_lower() == "<local>" {
     let local_host = normalize_bypass_host(host)
     return !bracketed && local_host.length() > 0 && !local_host.contains(".") &&
       !local_host.contains(":")
@@ -1045,7 +1047,7 @@ fn proxy_bypass_matches(
   if bracketed && !pattern_bracketed && is_ipvfuture_literal(host) {
     return false
   }
-  let mut pattern_host = raw_pattern_host.to_lower()
+  let mut pattern_host = lowercase_host_preserving_zone(raw_pattern_host)
   let explicit_domain = pattern_host.has_prefix("*.") ||
     pattern_host.has_prefix(".")
   if pattern_host.has_prefix("*.") {
@@ -1363,14 +1365,17 @@ fn Connector::connection_key(self : Connector, url : Url) -> String {
   // IP literals and DNS names can have the same text (IPvFuture); keep the
   // bracketing distinction so a connection verified for one authority is
   // never reused for the other.
-  let authority = url_authority_host(url.host.to_lower(), url.bracketed)
+  let authority = url_authority_host(
+    lowercase_host_preserving_zone(url.host),
+    url.bracketed,
+  )
   let origin = url.scheme.to_lower() + "://" + authority + ":" + url.port.to_string()
   match self.proxy_for_url(url) {
     Some(proxy) => {
       // Preserve the proxy authority form as well: an IPvFuture literal that
       // looks like a DNS name must not share a key with that DNS name.
       let proxy_authority = url_authority_host(
-        proxy.url.host.to_lower(),
+        lowercase_host_preserving_zone(proxy.url.host),
         proxy.url.bracketed,
       )
       "proxy:" +

@@ -267,3 +267,42 @@ fn is_ipv6_literal_with_zone(value : String) -> Bool {
 fn is_ip_literal(value : String) -> Bool {
   is_ipvfuture_literal(value) || is_ipv6_literal_with_zone(value)
 }
+
+/// Fold a host to lowercase without changing the case of an IPv6 zone
+/// identifier. Zone identifiers name local interfaces on Unix, where names
+/// are case-sensitive; the address portion remains case-insensitive.
+fn lowercase_host_preserving_zone(host : String) -> String {
+  if host.has_prefix("[") {
+    match host.find("]") {
+      Some(close) => {
+        if close > 1 {
+          let inner = host[1:close].to_owned()
+          if is_ipv6_literal_with_zone(inner) {
+            match inner.find("%") {
+              Some(index) => {
+                let address = inner[0:index].to_owned().to_lower()
+                let zone = inner[index:].to_owned()
+                let suffix = host[close:].to_owned()
+                return "[" + address + zone + suffix
+              }
+              None => ()
+            }
+          }
+        }
+      }
+      None => ()
+    }
+    return host.to_lower()
+  }
+  if !is_ipv6_literal_with_zone(host) {
+    return host.to_lower()
+  }
+  match host.find("%") {
+    Some(index) => {
+      let address = host[0:index].to_owned().to_lower()
+      let zone = host[index:].to_owned()
+      address + zone
+    }
+    None => host.to_lower()
+  }
+}

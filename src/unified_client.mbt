@@ -581,7 +581,8 @@ fn resolve_redirect_url(base : Url, location : String) -> Result[Url, HttpError]
 /// must not trigger another HTTP request.
 fn same_request_target(first : Url, second : Url) -> Bool {
   first.scheme.to_lower() == second.scheme.to_lower() &&
-  first.host.to_lower() == second.host.to_lower() &&
+  lowercase_host_preserving_zone(first.host) ==
+    lowercase_host_preserving_zone(second.host) &&
   first.bracketed == second.bracketed &&
   first.port == second.port &&
   first.path == second.path &&
@@ -991,7 +992,8 @@ fn UnifiedClient::do_request_once(
       next_headers = without_request_content(next_headers)
     }
     if parsed_url.scheme.to_lower() != request.url.scheme.to_lower() ||
-      parsed_url.host.to_lower() != request.url.host.to_lower() ||
+      lowercase_host_preserving_zone(parsed_url.host) !=
+        lowercase_host_preserving_zone(request.url.host) ||
       parsed_url.bracketed != request.url.bracketed ||
       parsed_url.port != request.url.port {
       next_headers = next_headers

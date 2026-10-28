@@ -279,8 +279,9 @@ fn cookie_format_ipv6(address : Bytes) -> String {
 
 ///|
 fn cookie_canonical_host(host : String) -> String {
-  let host = host.to_lower()
-  let host = if host.length() > 1 && host.has_suffix(".") {
+  let host = lowercase_host_preserving_zone(host)
+  let host = if host.length() > 1 && host.has_suffix(".") &&
+    !is_ipv6_literal_with_zone(host) {
     host[0:host.length() - 1].to_owned()
   } else {
     host
