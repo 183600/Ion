@@ -252,6 +252,9 @@ jobs:
           PROMPT_IMPROVE='改进这个项目（Ion：MoonBit 网络栈，目标见 PLAN.md）。先通读 PLAN.md、README.md（如果存在）和现有代码，理解项目目标与当前进度，然后做出实质性的改进：补全缺失的功能、完善核心实现、提升代码质量与可用性，让项目向目标推进。如果发现 src/ 下某些源文件（例如 http、net、tls、unified 子目录）没有被 moon check 或 moon test 覆盖，优先补齐构建配置，让门禁真正检查它们。每次改动后运行 moon check 与 moon test 自检，不通过就自己修好。不要输出或写入“改进了哪些内容”的报告。另外，.github 目录是 CI 配置，绝对不要删除、修改或移动其中任何文件；LICENSE、README*.md（含所有语言版本的 README）同样绝对不能删除、修改或移动；PLAN.md 是项目规划文档，不能删除；所有测试文件（*_test.mbt 等）不能删除或削弱。每完成一个可验证的改动就立即 git commit（不要 push、不要 amend），避免阶段被超时中断时丢失进度。'
           PROMPT_COMPLETE='确保项目功能完整。先通读 PLAN.md、README.md（如果存在）与现有代码，逐项核对 PLAN.md 里的路线图是否真的完整可用：补齐未实现或只做了一半的路径，修好跑不通的入口，让核心功能端到端可用。每次改动后运行 moon check 与 moon test 自检，不通过就自己修好。不要输出或写入“补齐了哪些内容”的报告。另外，.github 目录是 CI 配置，绝对不要删除、修改或移动其中任何文件；LICENSE、README*.md（含所有语言版本的 README）同样绝对不能删除、修改或移动；PLAN.md 是项目规划文档，不能删除；所有测试文件（*_test.mbt 等）不能删除或削弱。每完成一个可验证的改动就立即 git commit（不要 push、不要 amend），避免阶段被超时中断时丢失进度。'
           PROMPT_CLEAN='确保远程仓库里没有实验结果文件、REPORT*.md、临时调试脚本与调试输出等杂物；确保仓库中没有任何关于修复了哪些bug、优化或改进了哪些内容的记录（包括注释）。删除所有其他多余的内容。注意：.github 目录是 CI 配置，必须原样保留，绝对不能删除、修改或移动其中任何文件，它不属于“多余的内容”；LICENSE 是开源许可证文件，同样必须原样保留，也不属于“多余的内容”；README*.md（含所有语言版本的 README）是项目说明文档，同样必须原样保留，不能删除或移动；PLAN.md（如果存在）是项目规划文档，不能删除；所有测试文件（*_test.mbt 等）必须原样保留；仍被项目引用的数据文件不属于“多余的内容”，必须保留。'
+          # ================= 新增：docs 阶段提示词（每次循环 1/10 概率执行） =================
+          PROMPT_DOCS='优化 Ion（MoonBit 网络栈：TCP/TLS/HTTP 的 Stream+Dialer 统一抽象）的代码和文档。代码方面：只做不改变功能语义的重构（命名、注释、消除重复、结构清晰），保持对外接口与行为完全不变；每次改动后运行 moon check 与 moon test 自检，不通过就自己修好。文档方面：改进 README.md 与 PLAN.md 的表述、结构与示例；可以修改内容，但不得删除或移动文件，也不得添加关于修复了哪些bug、优化或改进了哪些内容的记录。禁止提交 zz_/tmp_/scratch/dbg 前缀的临时测试或探针文件，临时脚本写到 /tmp。不要输出或写入“优化了哪些内容”的报告。另外，.github 目录是 CI 配置，绝对不要删除、修改或移动其中任何文件；LICENSE、README*.md（含所有语言版本的 README）、PLAN.md 与所有测试文件（*_test.mbt 等）同样绝对不能删除、修改或移动。'
+
 
           # 每阶段单次调用的最大时长（秒）
           PERF_TIMEOUT=$((3*3600))     # 3h
@@ -259,6 +262,8 @@ jobs:
           IMPROVE_TIMEOUT=$((3*3600))   # 3h
           COMPLETE_TIMEOUT=$((3*3600))  # 3h
           CLEAN_TIMEOUT=$((3*3600))    # 3h
+          DOCS_TIMEOUT=$((3*3600))    # 3h（docs 阶段：优化代码与文档，1/10 概率执行）
+
 
           # ================= workflow 防删自愈 =================
           # agent 的 clean 阶段可能把 .github 当作“多余内容”删除。
@@ -813,6 +818,33 @@ jobs:
 
               sleep 5
             done
+
+            # ================= 新增：docs 阶段（每次循环 1/10 概率执行） =================
+            # 每次循环迭代掷一次骰子：1/10 概率命中才执行「优化代码和文档」阶段。
+            # 未命中时直接跳过、不占用本轮预算；命中时复用既有 run_phase / 质量门禁 / commit 机制。
+            DOCS_ROLL=$(( RANDOM % 10 ))
+            if [ "$DOCS_ROLL" -eq 0 ]; then
+              echo "[info] docs 阶段命中 1/10 概率（roll=0），本轮执行代码与文档优化"
+              P="$PROMPT_DOCS"
+              T="$DOCS_TIMEOUT"
+              REMAIN=$(( DEADLINE - $(date +%s) ))
+              if [ "$REMAIN" -le 0 ]; then
+                echo "[info] 全局时间已到，跳过 docs 阶段"
+              else
+                if [ "$T" -gt "$REMAIN" ]; then T="$REMAIN"; fi
+                echo ">>> iteration #$i | phase=docs | budget=${T}s"
+                PHASE_BASE="$(git rev-parse HEAD)"
+                run_phase docs "$P" "$T"
+                # ---- 质量门禁：通过才提交；不通过则整段撤销 ----
+                if gate_check; then
+                  commit_and_push "$i-docs"
+                else
+                  reject_phase
+                fi
+              fi
+            else
+              echo "[info] docs 阶段未命中 1/10 概率（roll=$DOCS_ROLL），本轮跳过"
+            fi
           done
       - name: Cleanup repo artifacts
         if: always()
