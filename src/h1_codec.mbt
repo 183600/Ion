@@ -1948,17 +1948,33 @@ fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
 fn ResponseStream::complete_if_empty(
   self : ResponseStream,
 ) -> Result[Unit, NetError] {
-  if response_transfer_encoding(self.headers) is Ok(TransferEncodingAbsent) &&
-    response_content_length(self.headers) is Ok(Some(0)) {
-    match self.prepare() {
-      Ok(_) => {
-        self.finish()
-        Ok(())
+  // Validate the framing fields even when the response is not completed
+  // early. With a completion callback the caller may never read the body, so
+  // a malformed Content-Length or Transfer-Encoding would otherwise be
+  // silently hidden and the connection would remain unreleased.
+  let transfer_encoding = match response_transfer_encoding(self.headers) {
+    Ok(value) => value
+    Err(err) => return Err(self.fail(err))
+  }
+  match transfer_encoding {
+    TransferEncodingAbsent => {
+      let content_length = match response_content_length(self.headers) {
+        Ok(value) => value
+        Err(err) => return Err(self.fail(err))
       }
-      Err(err) => Err(err)
+      match content_length {
+        Some(0) =>
+          match self.prepare() {
+            Ok(_) => {
+              self.finish()
+              Ok(())
+            }
+            Err(err) => Err(err)
+          }
+        _ => Ok(())
+      }
     }
-  } else {
-    Ok(())
+    _ => Ok(())
   }
 }
 
