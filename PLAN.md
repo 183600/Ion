@@ -1,4 +1,4 @@
-下面给你一个“可落地”的统一抽象层方案：把 **TCP / TLS / HTTP(S)** 分成清晰的三层，用同一套 `Stream + Dialer` 抽象把 TLS 作为“可插拔的装饰层”，HTTP/HTTPS 则是“在某种 Stream 上跑的协议层”。这样你最后对外只暴露一个 `Client`，既能 `http://` 也能 `https://`，并且后续加 HTTP/2、代理、WASM 环境都不需要推翻架构。
+下面给你一个“可落地”的统一抽象层方案：把 **TCP / TLS / HTTP(S)** 分成清晰的三层，用同一套 `Stream + Dialer` 抽象把 TLS 作为“可插拔的装饰层”，HTTP/HTTPS 则是“在某种 Stream 上跑的协议层”。这样你最后对外只暴露一个 `Client`，既能 `http://` 也能 `https://`，并且加入 HTTP/2、代理、WASM 环境都不需要推翻架构。当前 HTTP/2 与 HTTP(S)/SOCKS5 代理已经实现；WASI/browser 传输仍属计划，尚未实现。
 
 ---
 
@@ -104,8 +104,8 @@
    - 默认必须开启验证
    - `server_name` 同时用于 SNI 与 hostname 验证（避免 MITM）
 3. **ALPN**  
-   - 先支持 `http/1.1`
-   - 预留 `"h2"`，未来加 HTTP/2 时不改抽象
+   - 支持 `http/1.1` 与 `h2`
+   - HTTP/2 已通过 ALPN 协商启用（明文 `http://` 也支持 prior knowledge），无需改动抽象层
 4. **错误映射**  
    TLS 库错误 → 统一 `TlsError { kind, message, source }`，再上抛到 `NetError/HttpError`
 
@@ -129,33 +129,34 @@
 - 状态行、headers
 - 决定 body 读取策略（length/chunked/connection-close）
 
-### 4.2 连接复用与池化（可迭代）
-先做单连接直连版；再加：
+### 4.2 连接复用与池化（已实现）
+`Connector` / `UnifiedConnector` 中已实现：
 - keep-alive（默认开）
 - 连接池 key：`(scheme, host, port, alpn/http_version, proxy?)`
 - 空闲超时
 - 最大并发连接数
+- 可复用的 HTTP/2 会话
 
 ### 4.3 超时与取消
 在 `Stream` 层提供 deadline，或者在 `HttpClient` 层做“读写操作超时”。
 
 ---
 
-## 5) 建议的模块拆分（目录级）
+## 5) 实际的模块拆分
 
-- `net/`
-  - `stream.mb`：`Stream` 接口、基础 error
-  - `dialer.mb`：TCP dialer、DNS（可选）
-- `tls/`
-  - `tls_types.mb`：`TlsConfig/TlsError/RootStore`
-  - `provider.mb`：`TlsProvider` trait/interface
-  - `openssl_provider.mb` / `mbedtls_provider.mb`：FFI 封装
-- `http/`
-  - `types.mb`：Request/Response/Header/Url
-  - `h1_codec.mb`：HTTP/1.1 编解码
-  - `client.mb`：连接管理、重定向、pool
-- `unified/`
-  - `client.mb`：`UnifiedClient`（按 scheme 决定是否加 TLS）
+所有源码平铺在 `src/` 下（与上面的逻辑分层一一对应）：
+
+- `net_stream.mbt`、`net_dialer.mbt`：`Stream` / `Dialer` 接口与基础 error
+- `native_tcp.mbt`、`tcp_native_stub.c`：原生 POSIX TCP dialer / transport
+- `tls_types.mbt`、`tls_provider.mbt`：`TlsConfig/TlsError/RootStore` 与 `TlsProvider`
+- `native_tls.mbt`、`tls_native_stub.c`：OpenSSL FFI 封装
+- `http_types.mbt`：Request/Response/Header/Url
+- `h1_codec.mbt`：HTTP/1.1 编解码
+- `h2_codec.mbt`、`h2_hpack.mbt`、`h2_connection.mbt`：HTTP/2 framing、HPACK、会话
+- `inflate.mbt`、`charset.mbt`：gzip/deflate 解压与响应文本解码
+- `cookies.mbt`、`proxy.mbt`、`socks5.mbt`、`websocket.mbt`：协议扩展
+- `unified_connector.mbt`、`unified_client.mbt`：连接池与 `UnifiedClient`
+- `main.mbt`：`feather` CLI
 
 ---
 
@@ -213,18 +214,20 @@ fn post(url: String, body: Bytes) -> Result<Response, HttpError>
 
 ## 8) 迭代路线（按投入产出排序）
 
-1. **MVP**
+当前状态：第 1–3 阶段已实现（见 README 的 “What is implemented”）；第 4 阶段仍未实现。
+
+1. **MVP**（已实现）
    - TCP Dialer + Stream
-   - 一个 TLS provider（选 OpenSSL 或 mbedTLS）
+   - 一个 TLS provider（OpenSSL）
    - HTTP/1.1 GET/POST + 基础 header + Content-Length
-2. **完善 HTTP/1.1**
+2. **完善 HTTP/1.1**（已实现）
    - chunked
    - keep-alive + pool
-   - redirect、gzip/deflate（可选）
-3. **HTTP/2**
-   - ALPN 协商 `h2`
-   - 引入 h2 framing（可用独立模块，不影响 TLS 抽象）
-4. **跨平台**
+   - redirect、gzip/deflate
+3. **HTTP/2**（已实现）
+   - ALPN 协商 `h2`，以及明文 prior knowledge
+   - h2 framing / HPACK / 流控 / RFC 8441 扩展 CONNECT
+4. **跨平台**（计划中，尚未实现）
    - WASI sockets
    - 浏览器 fallback：实现 `HttpClient` 但内部用 fetch（不走自建 TLS）
 

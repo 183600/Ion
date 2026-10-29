@@ -1,8 +1,10 @@
 # Feather (Ion) — build & test notes
 
 MoonBit network stack: unified `Stream` / `Dialer` / `TlsProvider` / `HttpClient`
-abstraction (TCP, TLS via OpenSSL, HTTP/1.1 and HTTP/2, WebSocket,
-HTTP(S)/SOCKS5 proxies, cookies, unified client). See `PLAN.md`.
+abstraction (TCP, TLS via OpenSSL, HTTP/1.1 and HTTP/2 including RFC 8441
+extended CONNECT, WebSocket, HTTP(S)/SOCKS5 proxies, cookies, gzip/deflate
+decompression, charset decoding, unified client, and the `feather` CLI).
+See `PLAN.md`.
 
 ## Layout
 
