@@ -419,11 +419,17 @@ int32_t feather_tls_read(FeatherTls *tls, moonbit_bytes_t buffer, int32_t capaci
     tls->read_eof = 1;
     return 0;
   }
+  // OpenSSL reports a transport EOF that arrives before close_notify as
+  // SSL_ERROR_SYSCALL with result 0. Treating that as a clean end of stream
+  // hides a truncated response; only ZERO_RETURN above is a peer shutdown.
   if (error == SSL_ERROR_SYSCALL && result == 0 && ERR_peek_error() == 0) {
-    tls->read_eof = 1;
-    return 0;
+    feather_tls_set_error_message(
+      tls, "TLS peer closed the connection without close_notify");
+    tls->read_failed = 1;
+    return -3;
   }
   feather_tls_record_error(tls);
+  tls->read_failed = 1;
   return -3;
 }
 
