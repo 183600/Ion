@@ -512,8 +512,10 @@ fn normalize_url_host(host : String) -> String? {
   }
   if idna_needs_conversion(host) {
     idna_host_to_ascii(host)
-  } else {
+  } else if idna_valid_ascii_host(host) {
     Some(host)
+  } else {
+    None
   }
 }
 

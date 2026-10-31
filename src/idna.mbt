@@ -82,6 +82,191 @@ fn punycode_digit(value : Int) -> Int {
   }
 }
 
+fn punycode_digit_value(code : Int) -> Int {
+  if code >= 'a'.to_int() && code <= 'z'.to_int() {
+    code - 'a'.to_int()
+  } else if code >= 'A'.to_int() && code <= 'Z'.to_int() {
+    code - 'A'.to_int()
+  } else if code >= '0'.to_int() && code <= '9'.to_int() {
+    code - '0'.to_int() + 26
+  } else {
+    -1
+  }
+}
+
+fn punycode_threshold(k : Int, bias : Int) -> Int {
+  if k <= bias {
+    1
+  } else if k >= bias + 26 {
+    26
+  } else {
+    k - bias
+  }
+}
+
+/// Decode one Punycode label payload (RFC 3492) without the `xn--` prefix.
+/// The result is rejected when the input is malformed, overflows, contains a
+/// surrogate, or would not round-trip through the encoder. The round-trip
+/// check also rejects non-canonical spellings of the same A-label.
+fn punycode_decode(input : String) -> String? {
+  let encoded : Array[Int] = []
+  for ch in input {
+    let code = ch.to_int()
+    if code >= 0x80 ||
+      (punycode_digit_value(code) < 0 && code != '-'.to_int()) {
+      return None
+    }
+    encoded.push(code)
+  }
+  if encoded.length() == 0 {
+    return None
+  }
+  let output : Array[Int] = []
+  let mut last_delimiter = -1
+  let mut index = 0
+  while index < encoded.length() {
+    if encoded[index] == '-'.to_int() {
+      last_delimiter = index
+    }
+    index = index + 1
+  }
+  if last_delimiter >= 0 {
+    index = 0
+    while index < last_delimiter {
+      output.push(encoded[index])
+      index = index + 1
+    }
+    index = last_delimiter + 1
+  } else {
+    index = 0
+  }
+
+  let mut n = 0x80
+  let mut i = 0
+  let mut bias = 72
+  while index < encoded.length() {
+    let old_i = i
+    let mut weight = 1
+    let mut k = 36
+    while true {
+      if index >= encoded.length() {
+        return None
+      }
+      let digit = punycode_digit_value(encoded[index])
+      index = index + 1
+      if digit < 0 {
+        return None
+      }
+      if digit > 0 && weight > (0x7FFFFFFF - i) / digit {
+        return None
+      }
+      i = i + digit * weight
+      let threshold = punycode_threshold(k, bias)
+      if digit < threshold {
+        break
+      }
+      let base_minus_threshold = 36 - threshold
+      if weight > 0x7FFFFFFF / base_minus_threshold {
+        return None
+      }
+      weight = weight * base_minus_threshold
+      if k > 0x7FFFFFFF - 36 {
+        return None
+      }
+      k = k + 36
+    }
+    let output_length = output.length() + 1
+    let delta = i - old_i
+    if delta < 0 {
+      return None
+    }
+    bias = punycode_adapt(delta, output_length, old_i == 0)
+    let quotient = i / output_length
+    if quotient > 0x10FFFF - n {
+      return None
+    }
+    n = n + quotient
+    if n > 0x10FFFF || (n >= 0xD800 && n <= 0xDFFF) {
+      return None
+    }
+    i = i % output_length
+    let _ = output.insert(i, n)
+    i = i + 1
+  }
+  if output.length() == 0 || output.length() > 63 {
+    return None
+  }
+  let decoded = StringBuilder(size_hint=output.length())
+  for code in output {
+    decoded.write_char(Char::from_int(code))
+  }
+  Some(decoded.to_string())
+}
+
+fn idna_valid_decoded_label(label : String) -> Bool {
+  let mut points = 0
+  let mut has_non_ascii = false
+  for ch in label {
+    let code = ch.to_int()
+    points = points + 1
+    if points > 63 {
+      return false
+    }
+    if code > 0x7f {
+      has_non_ascii = true
+      if !ch.is_printable() || ch.is_whitespace() || idna_forbidden_unicode(code) {
+        return false
+      }
+    } else if !idna_ascii_label_char(code) {
+      return false
+    }
+  }
+  has_non_ascii && !label.has_prefix("-") && !label.has_suffix("-")
+}
+
+fn idna_valid_alabel(label : String) -> Bool {
+  if !label.has_prefix("xn--") {
+    return true
+  }
+  if label.length() > 63 {
+    return false
+  }
+  let payload = label[4:].to_owned()
+  let decoded = match punycode_decode(payload) {
+    Some(decoded) => decoded
+    None => return false
+  }
+  if !idna_valid_decoded_label(decoded) {
+    return false
+  }
+  match punycode_encode(decoded) {
+    Some(encoded) => encoded == payload
+    None => false
+  }
+}
+
+fn idna_valid_ascii_host(host : String) -> Bool {
+  let parts = host.split(".").collect()
+  let total = parts.length()
+  let mut index = 0
+  for part in parts {
+    let label = part.to_owned()
+    let is_last = index == total - 1
+    index = index + 1
+    if label.length() == 0 {
+      if is_last && index > 1 {
+        continue
+      }
+      return false
+    }
+    let lower = label.to_lower()
+    if lower.has_prefix("xn--") && !idna_valid_alabel(lower) {
+      return false
+    }
+  }
+  true
+}
+
 fn punycode_encode(input : String) -> String? {
   let code_points : Array[Int] = []
   for ch in input {
@@ -173,7 +358,7 @@ fn idna_convert_label(label : String) -> String? {
     }
     if code > 0x7f {
       needs_conversion = true
-      if ch.is_control() || ch.is_whitespace() || idna_forbidden_unicode(code) {
+      if !ch.is_printable() || ch.is_whitespace() || idna_forbidden_unicode(code) {
         return None
       }
     } else if !idna_ascii_label_char(code) {
@@ -181,7 +366,7 @@ fn idna_convert_label(label : String) -> String? {
     }
   }
   if !needs_conversion {
-    if idna_valid_ascii_label(label) {
+    if idna_valid_ascii_label(label) && idna_valid_alabel(label) {
       return Some(label)
     }
     return None
