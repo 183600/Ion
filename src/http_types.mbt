@@ -1087,6 +1087,127 @@ fn form_encode_component(value : String) -> String {
   @utf8.decode_lossy(output.to_bytes()[:])
 }
 
+fn query_decode_component(value : String) -> String {
+  @utf8.decode_lossy(percent_decode_bytes(value.replace_all(old="+", new=" "))[:])
+}
+
+fn url_query_pair_name(pair : String) -> String {
+  match pair.find("=") {
+    Some(index) => pair[0:index].to_owned()
+    None => pair
+  }
+}
+
+fn url_query_pair_value(pair : String) -> String {
+  match pair.find("=") {
+    Some(index) => pair[index + 1:].to_owned()
+    None => ""
+  }
+}
+
+fn url_query_pairs(query : String) -> Array[String] {
+  let pairs : Array[String] = []
+  if query.length() == 0 {
+    return pairs
+  }
+  for pair in query.split("&") {
+    if pair.length() > 0 {
+      pairs.push(pair.to_owned())
+    }
+  }
+  pairs
+}
+
+/// Decode the URL query as ordered application/x-www-form-urlencoded
+/// parameters. Percent escapes are decoded as UTF-8 and `+` means a space.
+/// Pairs without `=` have an empty value, and empty pairs are ignored.
+pub fn Url::query_params(self : Url) -> Array[(String, String)] {
+  let params : Array[(String, String)] = []
+  for pair in url_query_pairs(self.query) {
+    params.push((
+      query_decode_component(url_query_pair_name(pair)),
+      query_decode_component(url_query_pair_value(pair)),
+    ))
+  }
+  params
+}
+
+/// Return the first decoded value for `name`, or `None`.
+pub fn Url::query_param(self : Url, name : String) -> String? {
+  for pair in url_query_pairs(self.query) {
+    if query_decode_component(url_query_pair_name(pair)) == name {
+      return Some(query_decode_component(url_query_pair_value(pair)))
+    }
+  }
+  None
+}
+
+/// Return every decoded value for `name`, preserving query order.
+pub fn Url::query_param_all(self : Url, name : String) -> Array[String] {
+  let values : Array[String] = []
+  for pair in url_query_pairs(self.query) {
+    if query_decode_component(url_query_pair_name(pair)) == name {
+      values.push(query_decode_component(url_query_pair_value(pair)))
+    }
+  }
+  values
+}
+
+/// Replace the query with encoded parameters, preserving path and fragment.
+pub fn Url::with_query_params(
+  self : Url,
+  params : Array[(String, String)],
+) -> Url {
+  let encoded : Array[String] = []
+  for param in params {
+    let (name, value) = param
+    encoded.push(
+      form_encode_component(name) + "=" + form_encode_component(value),
+    )
+  }
+  self.with_query(encoded.join("&"))
+}
+
+/// Set `name` to `value`, replacing any existing occurrences. Other query
+/// parameters keep their original spelling and order.
+pub fn Url::with_query_param(self : Url, name : String, value : String) -> Url {
+  let encoded = form_encode_component(name) + "=" + form_encode_component(value)
+  let updated : Array[String] = []
+  let mut replaced = false
+  for pair in url_query_pairs(self.query) {
+    if query_decode_component(url_query_pair_name(pair)) == name {
+      if !replaced {
+        updated.push(encoded)
+        replaced = true
+      }
+    } else {
+      updated.push(pair)
+    }
+  }
+  if !replaced {
+    updated.push(encoded)
+  }
+  self.with_query(updated.join("&"))
+}
+
+/// Remove every occurrence of `name` from the query.
+pub fn Url::without_query_param(self : Url, name : String) -> Url {
+  let updated : Array[String] = []
+  let mut removed = false
+  for pair in url_query_pairs(self.query) {
+    if query_decode_component(url_query_pair_name(pair)) == name {
+      removed = true
+    } else {
+      updated.push(pair)
+    }
+  }
+  if removed {
+    self.with_query(updated.join("&"))
+  } else {
+    self
+  }
+}
+
 /// Encode fields as an application/x-www-form-urlencoded request body.
 pub fn Request::with_form(self : Request, fields : Array[(String, String)]) -> Request {
   let body = Buffer(size_hint=256)

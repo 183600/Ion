@@ -595,11 +595,17 @@ pub fn Url::join(Self, String) -> Result[Self, HttpError]
 pub fn Url::new(String, String, Int32) -> Self
 pub fn Url::origin(Self) -> String
 pub fn Url::parse(String) -> Result[Self, HttpError]
+pub fn Url::query_param(Self, String) -> String?
+pub fn Url::query_param_all(Self, String) -> Array[String]
+pub fn Url::query_params(Self) -> Array[(String, String)]
 pub fn Url::request_target(Self) -> String
 pub fn Url::to_string(Self) -> String
 pub fn Url::with_fragment(Self, String) -> Self
 pub fn Url::with_path(Self, String) -> Self
 pub fn Url::with_query(Self, String) -> Self
+pub fn Url::with_query_param(Self, String, String) -> Self
+pub fn Url::with_query_params(Self, Array[(String, String)]) -> Self
+pub fn Url::without_query_param(Self, String) -> Self
 
 pub enum VerifyMode {
   Strict
