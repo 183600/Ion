@@ -151,7 +151,14 @@ test "websocket rejects compressed messages without server_no_context_takeover" 
 test "websocket rejects unsupported compression parameters" {
   let key = "dGhlIHNhbXBsZSBub25jZQ=="
   for extension in [
-    "permessage-deflate; server_max_window_bits=10; server_no_context_takeover",
+    "permessage-deflate; server_max_window_bits=0; server_no_context_takeover",
+    "permessage-deflate; server_max_window_bits=7; server_no_context_takeover",
+    "permessage-deflate; server_max_window_bits=16; server_no_context_takeover",
+    "permessage-deflate; server_max_window_bits=010; server_no_context_takeover",
+    "permessage-deflate; server_max_window_bits=; server_no_context_takeover",
+    "permessage-deflate; server_max_window_bits=x; server_no_context_takeover",
+    "permessage-deflate; server_max_window_bits=10; server_max_window_bits=10; server_no_context_takeover",
+    "permessage-deflate; client_max_window_bits=10; server_no_context_takeover",
     "permessage-deflate; server_no_context_takeover; server_no_context_takeover",
     "permessage-deflate; server_no_context_takeover; unknown_parameter",
     "permessage-deflate; server_no_context_takeover, permessage-deflate",
@@ -174,6 +181,33 @@ test "websocket rejects unsupported compression parameters" {
       _ => fail("an invalid compression parameter was accepted")
     }
     assert_false(stream.is_open)
+  }
+}
+
+///|
+test "websocket accepts a server-selected window size it did not offer" {
+  let key = "dGhlIHNhbXBsZSBub25jZQ=="
+  for bits in ["8", "10", "12", "15"] {
+    let header = "HTTP/1.1 101 Switching Protocols\r\n" +
+      "Connection: Upgrade\r\nUpgrade: websocket\r\n" +
+      "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n" +
+      "Sec-WebSocket-Extensions: permessage-deflate; server_max_window_bits=" +
+      bits + "; server_no_context_takeover\r\n\r\n"
+    let raw = ws_test_concat([
+      @utf8.encode(header),
+      ws_test_frame(WS_OPCODE_TEXT, true, @utf8.encode("hi")),
+    ])
+    let (client, _) = ws_deflate_test_client(raw)
+    let http : &HttpClient = client
+    let socket = websocket_connect(
+      http,
+      "ws://example.com/chat",
+      key,
+      [],
+      permessage_deflate=true,
+    ).unwrap()
+    assert_true(socket.permessage_deflate())
+    assert_eq(socket.read_message().unwrap(), Text("hi"))
   }
 }
 

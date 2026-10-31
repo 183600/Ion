@@ -275,6 +275,26 @@ fn websocket_header_has_token(headers : Headers, name : String, token : String) 
 /// must include it. Retaining an inflate window across messages would require
 /// a streaming DEFLATE decoder; accepting the extension without that parameter
 /// would make later compressed messages undecodable.
+///
+/// RFC 7692 section 7.1.2.1 permits a server to include
+/// `server_max_window_bits` even when the offer did not. The decoder always
+/// uses a 32 KiB window, so every legal value (8 through 15) is acceptable.
+fn ws_valid_window_bits(value : String) -> Bool {
+  let text = value.trim().to_owned()
+  if text.length() < 1 || text.length() > 2 {
+    return false
+  }
+  if text.get_char(0) == Some('0') || !is_decimal_digits(text) {
+    return false
+  }
+  let parsed = try {
+    @string.parse_int(text[:])
+  } catch {
+    _ => return false
+  }
+  parsed >= 8 && parsed <= 15
+}
+
 fn ws_negotiate_permessage_deflate(
   headers : Headers,
 ) -> Result[Bool, HttpError] {
@@ -304,6 +324,7 @@ fn ws_negotiate_permessage_deflate(
   }
   let mut server_no_context_takeover = false
   let mut client_no_context_takeover = false
+  let mut server_max_window_bits = false
   let mut index = 1
   while index < fields.length() {
     let field = fields[index].trim()
@@ -311,10 +332,18 @@ fn ws_negotiate_permessage_deflate(
       return Err(ProtocolError("Invalid Sec-WebSocket-Extensions"))
     }
     match field.find("=") {
-      Some(_) =>
-        // The only parameters this client can honor are the valueless
-        // no-context-takeover flags. Window-size parameters were not offered.
-        return Err(ProtocolError("Invalid Sec-WebSocket-Extensions"))
+      Some(equals) => {
+        let name = field[0:equals].trim().to_lower()
+        let value = field[equals + 1:field.length()].trim().to_owned()
+        // `client_max_window_bits` was not offered, so the server must not
+        // select it. Only `server_max_window_bits` can be added unilaterally.
+        if name != "server_max_window_bits" ||
+          server_max_window_bits ||
+          !ws_valid_window_bits(value) {
+          return Err(ProtocolError("Invalid Sec-WebSocket-Extensions"))
+        }
+        server_max_window_bits = true
+      }
       None =>
         match field.to_lower() {
           "server_no_context_takeover" =>
