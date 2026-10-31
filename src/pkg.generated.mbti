@@ -208,6 +208,8 @@ pub fn CookieJar::store(Self, Url, String) -> Unit
 pub fn CookieJar::store_at(Self, Url, String, UInt64) -> Unit
 pub fn CookieJar::store_from_headers(Self, Url, Headers) -> Unit
 
+type DeflateBitWriter
+
 pub struct H1Codec {
   stream : &Stream
   mut last_is_head : Bool

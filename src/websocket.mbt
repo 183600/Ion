@@ -644,7 +644,23 @@ pub fn WebSocket::send_frame(
       _ => return Err(InvalidHeader("Invalid WebSocket close reason"))
     }
   }
-  if frame.payload.length() > self.max_frame_bytes {
+  // Compress complete data messages when the extension is active and the
+  // result is actually smaller. Fragmented messages are left uncompressed
+  // because the compression state spans frames; the extension permits either
+  // encoding per message.
+  let mut outgoing = frame.payload
+  let mut compressed = false
+  if self.permessage_deflate &&
+    frame.fin &&
+    (frame.opcode == WS_OPCODE_TEXT || frame.opcode == WS_OPCODE_BINARY) &&
+    frame.payload.length() >= 64 {
+    let candidate = deflate_compress(frame.payload)
+    if candidate.length() < frame.payload.length() {
+      outgoing = candidate
+      compressed = true
+    }
+  }
+  if outgoing.length() > self.max_frame_bytes {
     return Err(ProtocolError("WebSocket frame too large"))
   }
   let masked = self.role == Client
@@ -654,13 +670,15 @@ pub fn WebSocket::send_frame(
     b""
   }
   let payload = if masked {
-    ws_apply_mask(frame.payload, mask)
+    ws_apply_mask(outgoing, mask)
   } else {
-    frame.payload
+    outgoing
   }
   let header = Buffer(size_hint=14)
   header.write_byte(
-    ((if frame.fin { 0x80 } else { 0x00 }) | frame.opcode).to_byte(),
+    ((if frame.fin { 0x80 } else { 0x00 }) |
+      (if compressed { 0x40 } else { 0x00 }) |
+      frame.opcode).to_byte(),
   )
   let length = payload.length()
   let mask_bit = if masked { 0x80 } else { 0x00 }
