@@ -1360,6 +1360,7 @@ fn buffer_one_shot_response(
       stream,
     )
       .with_trailers(response.trailers)
+      .with_early_hints(response.early_hints())
       .with_max_body_bytes(response.max_body_bytes),
   )
 }
