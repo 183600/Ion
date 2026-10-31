@@ -75,10 +75,39 @@ test "environment proxy ignores empty values and reports malformed ones" {
     ("https_proxy", "http://proxy.example:not-a-port"),
   ])
   assert_true(proxy_from_env_lookup(proxy_test_url("https://example.com/"), malformed) is Err(_))
-  let unsupported = proxy_test_lookup([
+}
+
+test "environment proxy ALL_PROXY accepts SOCKS5 URLs" {
+  let lookup = proxy_test_lookup([
     ("ALL_PROXY", "socks5://proxy.example:1080"),
   ])
-  assert_true(proxy_from_env_lookup(proxy_test_url("http://example.com/"), unsupported) is Err(_))
+  let proxy = proxy_from_env_lookup(proxy_test_url("http://example.com/"), lookup).unwrap().unwrap()
+  assert_true(proxy.is_socks5())
+  assert_false(proxy.is_socks5h())
+  assert_eq(proxy.authority(), "proxy.example:1080")
+}
+
+test "environment proxy ALL_PROXY accepts SOCKS5H credentials" {
+  let lookup = proxy_test_lookup([
+    ("all_proxy", "socks5h://user:pass@proxy.example:1081"),
+  ])
+  let proxy = proxy_from_env_lookup(proxy_test_url("https://example.com/"), lookup).unwrap().unwrap()
+  assert_true(proxy.is_socks5h())
+  assert_eq(proxy.authority(), "proxy.example:1081")
+  let (username, password) = proxy.socks_credentials().unwrap()
+  assert_eq(@utf8.decode_lossy(username[:]), "user")
+  assert_eq(@utf8.decode_lossy(password[:]), "pass")
+}
+
+test "environment scheme-specific proxy variables reject SOCKS5 URLs" {
+  let secure = proxy_test_lookup([
+    ("HTTPS_PROXY", "socks5://proxy.example:1080"),
+  ])
+  assert_true(proxy_from_env_lookup(proxy_test_url("https://example.com/"), secure) is Err(_))
+  let plain = proxy_test_lookup([
+    ("http_proxy", "socks5h://proxy.example:1080"),
+  ])
+  assert_true(proxy_from_env_lookup(proxy_test_url("http://example.com/"), plain) is Err(_))
 }
 
 test "environment NO_PROXY list is trimmed" {

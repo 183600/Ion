@@ -323,14 +323,19 @@ fn proxy_env_value(
 
 /// Parse a proxy URL from an environment variable. A bare `host:port` value is
 /// treated as an HTTP proxy, matching the convention used by common HTTP
-/// clients and tools.
-fn proxy_from_env_url(value : String) -> Result[Proxy, HttpError] {
-  // Standard environment variables select HTTP(S) proxies. SOCKS5 is
-  // available through the explicit `Proxy::new_socks5` /
-  // `UnifiedClient::with_proxy_url` API instead of silently changing the
-  // meaning of existing `ALL_PROXY` values.
+/// clients and tools. SOCKS5 URLs are only accepted from `ALL_PROXY`, the
+/// conventional fallback variable for every protocol; `HTTPS_PROXY` and
+/// `http_proxy` stay limited to HTTP(S) proxies so their meaning cannot
+/// change silently.
+fn proxy_from_env_url(value : String, allow_socks : Bool) -> Result[Proxy, HttpError] {
   let lower = value.to_lower()
-  if lower.has_prefix("https://") {
+  if lower.has_prefix("socks5://") || lower.has_prefix("socks5h://") {
+    if allow_socks {
+      Proxy::new_socks5(value)
+    } else {
+      Err(InvalidUrl("SOCKS5 proxy URLs are only supported in ALL_PROXY"))
+    }
+  } else if lower.has_prefix("https://") {
     Proxy::new_https(value)
   } else if lower.contains("://") {
     Proxy::new(value)
@@ -344,6 +349,7 @@ fn proxy_from_env_lookup(
   lookup : (String) -> String?,
 ) -> Result[Proxy?, HttpError] {
   let mut candidate : String? = None
+  let mut allow_socks = false
   if url.is_secure() {
     candidate = proxy_env_value(["HTTPS_PROXY", "https_proxy"], lookup)
   } else {
@@ -357,10 +363,13 @@ fn proxy_from_env_lookup(
   }
   if candidate is None {
     candidate = proxy_env_value(["ALL_PROXY", "all_proxy"], lookup)
+    if candidate is Some(_) {
+      allow_socks = true
+    }
   }
   match candidate {
     Some(value) =>
-      match proxy_from_env_url(value) {
+      match proxy_from_env_url(value, allow_socks) {
         Ok(proxy) => Ok(Some(proxy))
         Err(err) => Err(err)
       }
@@ -371,8 +380,10 @@ fn proxy_from_env_lookup(
 /// Resolve the proxy configured through the standard environment variables for
 /// `url`: `HTTPS_PROXY` for HTTPS, `http_proxy` (and `HTTP_PROXY` outside CGI)
 /// for HTTP, with `ALL_PROXY` as a fallback. Values without a scheme are
-/// treated as plain HTTP proxies. `NO_PROXY` is not applied here; combine the
-/// result with `Proxy::no_proxy_from_env` and `Connector::with_proxy_bypass`.
+/// treated as plain HTTP proxies. `ALL_PROXY` also accepts `socks5://` and
+/// `socks5h://` URLs; the scheme-specific variables reject them. `NO_PROXY` is
+/// not applied here; combine the result with `Proxy::no_proxy_from_env` and
+/// `Connector::with_proxy_bypass`.
 pub fn Proxy::from_env(url : Url) -> Result[Proxy?, HttpError] {
   proxy_from_env_lookup(url, @env.get_env_var)
 }
