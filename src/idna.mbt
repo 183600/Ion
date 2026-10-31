@@ -68,7 +68,7 @@ fn punycode_adapt(delta : Int, points : Int, first : Bool) -> Int {
   delta = delta + delta / points
   let mut bias = 0
   while delta > ((36 - 1) * 26) / 2 {
-    delta = delta / 36
+    delta = delta / (36 - 1)
     bias = bias + 36
   }
   bias + (36 * delta) / (delta + 38)
@@ -330,7 +330,7 @@ fn punycode_encode(input : String) -> String? {
           k = k + 36
         }
         output.write_byte(punycode_digit(q).to_byte())
-        bias = punycode_adapt(delta, handled + 1, handled == 0)
+        bias = punycode_adapt(delta, handled + 1, handled == basic)
         delta = 0
         handled = handled + 1
       }
