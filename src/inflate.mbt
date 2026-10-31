@@ -726,6 +726,13 @@ fn skip_cstring(data : Bytes, offset : Int) -> Int {
   i + 1
 }
 
+/// Decompress a bare DEFLATE stream (RFC 1951) without accepting a zlib or
+/// gzip wrapper. WebSocket `permessage-deflate` payloads use this form.
+pub fn inflate_deflate(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
+  let limit = if max_bytes < 0 { 0 } else { max_bytes }
+  inflate_raw(data, limit)
+}
+
 /// Decompress a raw DEFLATE payload. Accepts an optional zlib wrapper: if a
 /// valid zlib header is present it is validated and the Adler-32 trailer is
 /// checked, otherwise the data is treated as a bare DEFLATE stream (some

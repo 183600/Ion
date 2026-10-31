@@ -212,6 +212,7 @@ pub fn websocket_handshake_request(
   url : String,
   key : String,
   protocols : Array[String],
+  permessage_deflate? : Bool,
 ) -> Result[Request, HttpError] {
   if !valid_websocket_key(key) {
     return Err(InvalidHeader("Sec-WebSocket-Key"))
@@ -230,6 +231,12 @@ pub fn websocket_handshake_request(
     .with_header("Sec-WebSocket-Key", key)
   if protocols.length() > 0 {
     request = request.with_header("Sec-WebSocket-Protocol", protocols.join(", "))
+  }
+  if permessage_deflate.unwrap_or(false) {
+    request = request.with_header(
+      "Sec-WebSocket-Extensions",
+      "permessage-deflate; client_no_context_takeover; server_no_context_takeover",
+    )
   }
   Ok(request)
 }
@@ -260,6 +267,79 @@ fn websocket_header_has_token(headers : Headers, name : String, token : String) 
   false
 }
 
+/// Validate the server's `Sec-WebSocket-Extensions` selection for a client
+/// that offered `permessage-deflate`. Returns `false` when the server declined
+/// the offer and `true` when the extension is active.
+///
+/// The client only offers `server_no_context_takeover`, so a valid selection
+/// must include it. Retaining an inflate window across messages would require
+/// a streaming DEFLATE decoder; accepting the extension without that parameter
+/// would make later compressed messages undecodable.
+fn ws_negotiate_permessage_deflate(
+  headers : Headers,
+) -> Result[Bool, HttpError] {
+  let values = headers.get_all("Sec-WebSocket-Extensions")
+  if values.length() == 0 {
+    return Ok(false)
+  }
+  let selected : Array[String] = []
+  for value in values {
+    for part in split_header_list(value) {
+      let trimmed = part.trim()
+      if trimmed.length() == 0 {
+        return Err(ProtocolError("Invalid Sec-WebSocket-Extensions"))
+      }
+      selected.push(trimmed.to_owned())
+    }
+  }
+  // Only one protocol extension was offered, so selecting it more than once
+  // (or selecting a different extension) is invalid.
+  if selected.length() != 1 {
+    return Err(ProtocolError("Invalid Sec-WebSocket-Extensions"))
+  }
+  let fields = selected[0].split(";").collect()
+  if fields.length() == 0 ||
+    fields[0].trim().to_lower() != "permessage-deflate" {
+    return Err(ProtocolError("Invalid Sec-WebSocket-Extensions"))
+  }
+  let mut server_no_context_takeover = false
+  let mut client_no_context_takeover = false
+  let mut index = 1
+  while index < fields.length() {
+    let field = fields[index].trim()
+    if field.length() == 0 {
+      return Err(ProtocolError("Invalid Sec-WebSocket-Extensions"))
+    }
+    match field.find("=") {
+      Some(_) =>
+        // The only parameters this client can honor are the valueless
+        // no-context-takeover flags. Window-size parameters were not offered.
+        return Err(ProtocolError("Invalid Sec-WebSocket-Extensions"))
+      None =>
+        match field.to_lower() {
+          "server_no_context_takeover" =>
+            if server_no_context_takeover {
+              return Err(ProtocolError("Invalid Sec-WebSocket-Extensions"))
+            } else {
+              server_no_context_takeover = true
+            }
+          "client_no_context_takeover" =>
+            if client_no_context_takeover {
+              return Err(ProtocolError("Invalid Sec-WebSocket-Extensions"))
+            } else {
+              client_no_context_takeover = true
+            }
+          _ => return Err(ProtocolError("Invalid Sec-WebSocket-Extensions"))
+        }
+    }
+    index = index + 1
+  }
+  if !server_no_context_takeover {
+    return Err(ProtocolError("Invalid Sec-WebSocket-Extensions"))
+  }
+  Ok(true)
+}
+
 /// Perform a WebSocket handshake through any `HttpClient` and return the
 /// switched byte stream as a client-side `WebSocket`.
 ///
@@ -267,13 +347,24 @@ fn websocket_header_has_token(headers : Headers, name : String, token : String) 
 /// with standard base64) chosen by the caller. Keeping randomness out of this
 /// library avoids silently using a weak in-process RNG for a value that peers
 /// expect to be unpredictable.
+///
+/// Set `permessage_deflate` to offer RFC 7692 compression. Incoming compressed
+/// messages are decoded automatically; outgoing messages stay uncompressed,
+/// which the extension permits.
 pub fn websocket_connect(
   client : &HttpClient,
   url : String,
   key : String,
   protocols : Array[String],
+  permessage_deflate? : Bool,
 ) -> Result[WebSocket, HttpError] {
-  let request = match websocket_handshake_request(url, key, protocols) {
+  let deflate_requested = permessage_deflate.unwrap_or(false)
+  let request = match websocket_handshake_request(
+    url,
+    key,
+    protocols,
+    permessage_deflate=deflate_requested,
+  ) {
     Ok(request) => request
     Err(err) => return Err(err)
   }
@@ -302,10 +393,17 @@ pub fn websocket_connect(
   let upgrade_ok = !h1 ||
     (websocket_header_has_token(response.headers, "Upgrade", "websocket") &&
       websocket_header_has_token(response.headers, "Connection", "upgrade"))
-  // The client never offers extensions, so a server must not select any
-  // (RFC 6455 section 4.1). Ignoring one would leave the payload encoding
-  // unknown to the frame parser.
-  let extensions_ok = !response.headers.contains("Sec-WebSocket-Extensions")
+  // A server must only select extensions the client offered (RFC 6455
+  // section 4.1). Validate the selection before creating the frame parser so
+  // an unsupported payload encoding is never accepted.
+  let (extensions_ok, deflate_active) = if deflate_requested {
+    match ws_negotiate_permessage_deflate(response.headers) {
+      Ok(active) => (true, active)
+      Err(_) => (false, false)
+    }
+  } else {
+    (!response.headers.contains("Sec-WebSocket-Extensions"), false)
+  }
   let selected = response.headers.get_all("Sec-WebSocket-Protocol")
   // A server may decline to select a subprotocol, but anything it does select
   // must have been offered by the client (RFC 6455 section 4.2.2). The server
@@ -326,7 +424,11 @@ pub fn websocket_connect(
     response.close()
     return Err(ProtocolError("Invalid WebSocket handshake response"))
   }
-  Ok(WebSocket::new(response.body, Client))
+  let socket = WebSocket::new(response.body, Client)
+  if deflate_active {
+    let _ = socket.with_permessage_deflate(true)
+  }
+  Ok(socket)
 }
 
 /// One WebSocket connection over an already-switched stream.
@@ -340,6 +442,9 @@ pub struct WebSocket {
   priv mut fragments : Buffer
   priv mut fragment_opcode : Int
   priv mut fragment_active : Bool
+  priv mut fragment_compressed : Bool
+  priv mut frame_compressed : Bool
+  priv mut permessage_deflate : Bool
   priv mut mask_state : UInt64
   priv mut is_open : Bool
   priv mut close_sent : Bool
@@ -358,6 +463,9 @@ pub fn WebSocket::new(stream : &Stream, role : WebSocketRole) -> WebSocket {
     fragments: Buffer(size_hint=256),
     fragment_opcode: WS_OPCODE_TEXT,
     fragment_active: false,
+    fragment_compressed: false,
+    frame_compressed: false,
+    permessage_deflate: false,
     // Mix the clock into the initial mask state; the xorshift below keeps
     // successive masks distinct. Masking prevents cache poisoning rather than
     // providing confidentiality, so this does not depend on a CSPRNG.
@@ -392,6 +500,22 @@ pub fn WebSocket::with_max_message_bytes(
 ) -> WebSocket {
   self.max_message_bytes = if max_message_bytes < 1 { 1 } else { max_message_bytes }
   self
+}
+
+/// Enable or disable RFC 7692 `permessage-deflate` decoding for a manually
+/// wrapped stream. The handshake must already have negotiated
+/// `server_no_context_takeover` (as `websocket_connect` requires). Outgoing
+/// messages are left uncompressed, which the extension permits.
+pub fn WebSocket::with_permessage_deflate(
+  self : WebSocket,
+  enabled : Bool,
+) -> WebSocket {
+  self.permessage_deflate = enabled
+  self
+}
+
+pub fn WebSocket::permessage_deflate(self : WebSocket) -> Bool {
+  self.permessage_deflate
 }
 
 pub fn WebSocket::role(self : WebSocket) -> WebSocketRole {
@@ -659,6 +783,7 @@ pub fn WebSocket::send_close(
 fn WebSocket::read_frame_unchecked(
   self : WebSocket,
 ) -> Result[WebSocketFrame, HttpError] {
+  self.frame_compressed = false
   let head = match self.read_exact(2) {
     Ok(bytes) => bytes
     Err(err) => return Err(err)
@@ -667,11 +792,23 @@ fn WebSocket::read_frame_unchecked(
   let second = head[1].to_int()
   let fin = (first & 0x80) != 0
   let opcode = first & 0x0F
-  if (first & 0x70) != 0 {
+  let rsv1 = (first & 0x40) != 0
+  if (first & 0x30) != 0 {
     return Err(ProtocolError("WebSocket reserved bits are not supported"))
   }
   if !ws_valid_opcode(opcode) {
     return Err(ProtocolError("Invalid WebSocket opcode"))
+  }
+  if rsv1 {
+    if !self.permessage_deflate {
+      return Err(ProtocolError("WebSocket reserved bits are not supported"))
+    }
+    // RFC 7692 sets RSV1 only on the first frame of a compressed data
+    // message; continuation and control frames must leave it clear.
+    if opcode != WS_OPCODE_TEXT && opcode != WS_OPCODE_BINARY {
+      return Err(ProtocolError("Invalid WebSocket RSV1 bit"))
+    }
+    self.frame_compressed = true
   }
   let masked = (second & 0x80) != 0
   let length_marker = second & 0x7F
@@ -778,6 +915,29 @@ fn decode_websocket_message(
   }
 }
 
+fn WebSocket::decompress_message(
+  self : WebSocket,
+  payload : Bytes,
+) -> Result[Bytes, HttpError] {
+  // RFC 7692 section 7.2.2: append the stripped sync-flush marker before
+  // inflating. A final empty stored block lets the one-shot decoder terminate
+  // cleanly; the negotiated server_no_context_takeover keeps each message
+  // independently decodable.
+  let framed = Buffer(size_hint=payload.length() + 9)
+  framed.write_bytes(payload)
+  framed.write_bytes(b"\x00\x00\xff\xff\x01\x00\x00\xff\xff")
+  match inflate_deflate(framed.to_bytes(), self.max_message_bytes) {
+    Ok(decoded) => Ok(decoded)
+    Err(ProtocolError(message)) =>
+      if message.contains("too large") {
+        Err(ProtocolError("WebSocket message too large"))
+      } else {
+        Err(ProtocolError("Invalid WebSocket permessage-deflate payload"))
+      }
+    Err(_) => Err(ProtocolError("Invalid WebSocket permessage-deflate payload"))
+  }
+}
+
 fn decode_close_message(payload : Bytes) -> Result[WebSocketMessage, HttpError] {
   if payload.length() == 0 {
     return Ok(Close(1005, ""))
@@ -822,9 +982,22 @@ pub fn WebSocket::read_message(
           self.fragments.write_bytes(frame.payload)
           if frame.fin {
             let opcode = self.fragment_opcode
+            let compressed = self.fragment_compressed
             let payload = self.fragments.to_bytes()
             self.fragments = Buffer(size_hint=256)
             self.fragment_active = false
+            self.fragment_compressed = false
+            let payload = if compressed {
+              match self.decompress_message(payload) {
+                Ok(payload) => payload
+                Err(err) => return Err(err)
+              }
+            } else {
+              payload
+            }
+            if payload.length() > self.max_message_bytes {
+              return Err(ProtocolError("WebSocket message too large"))
+            }
             return decode_websocket_message(opcode, payload)
           }
         }
@@ -832,10 +1005,18 @@ pub fn WebSocket::read_message(
         if self.fragment_active {
           return Err(ProtocolError("Interleaved WebSocket data frames"))
         } else if frame.fin {
-          if frame.payload.length() > self.max_message_bytes {
+          let payload = if self.frame_compressed {
+            match self.decompress_message(frame.payload) {
+              Ok(payload) => payload
+              Err(err) => return Err(err)
+            }
+          } else {
+            frame.payload
+          }
+          if payload.length() > self.max_message_bytes {
             return Err(ProtocolError("WebSocket message too large"))
           }
-          return decode_websocket_message(frame.opcode, frame.payload)
+          return decode_websocket_message(frame.opcode, payload)
         } else {
           if frame.payload.length() > self.max_message_bytes {
             return Err(ProtocolError("WebSocket message too large"))
@@ -843,6 +1024,7 @@ pub fn WebSocket::read_message(
           self.fragments = Buffer(size_hint=frame.payload.length() + 64)
           self.fragments.write_bytes(frame.payload)
           self.fragment_opcode = frame.opcode
+          self.fragment_compressed = self.frame_compressed
           self.fragment_active = true
         }
       WS_OPCODE_CLOSE => {
