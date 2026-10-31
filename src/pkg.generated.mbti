@@ -420,6 +420,7 @@ pub fn Response::charset(Self) -> String?
 pub fn Response::close(Self) -> Unit
 pub fn Response::copy_body_to(Self, &Stream) -> Result[Int32, HttpError]
 pub fn Response::drain_body(Self) -> Result[Unit, HttpError]
+pub fn Response::early_hints(Self) -> Array[(Int32, Headers)]
 pub fn Response::get_header(Self, String) -> String?
 pub fn Response::get_header_all(Self, String) -> @list.List[String]
 pub fn Response::is_client_error(Self) -> Bool

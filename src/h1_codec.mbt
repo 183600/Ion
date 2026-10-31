@@ -1109,6 +1109,7 @@ pub fn H1Codec::decode_response(
   // reading its response instead of starting a second wait.
   let mut expect_wait_done = false
   let mut informational_count = 0
+  let early_hints : Array[(Int, Headers)] = []
   while true {
     if deferred_pending && !deferred_body_sent && !expect_wait_done {
       expect_wait_done = true
@@ -1147,6 +1148,12 @@ pub fn H1Codec::decode_response(
       (response_head.headers.contains("Content-Length") ||
         response_head.headers.contains("Transfer-Encoding")) {
       return Err(ProtocolError("Informational response must not include framing headers"))
+    }
+    // Keep interim headers for callers that act on `103 Early Hints`. A 101
+    // is the final protocol switch response, not an early hint.
+    if response_head.status >= 100 && response_head.status < 200 &&
+      response_head.status != 101 {
+      early_hints.push((response_head.status, response_head.headers))
     }
     // A 100 Continue accepts the deferred request content. Other interim
     // responses (such as 103 Early Hints) do not, so the body stays pending.
@@ -1261,6 +1268,7 @@ pub fn H1Codec::decode_response(
         response_stream,
       )
         .with_trailers(trailers)
+        .with_early_hints(early_hints)
         .with_max_body_bytes(
           if connect_tunnel || upgrade_tunnel {
             TUNNEL_BODY_LIMIT

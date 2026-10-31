@@ -1252,6 +1252,7 @@ pub struct Response {
   body : &Stream // Stream for reading response body
   max_body_bytes : Int
   priv auto_decompress : Bool
+  priv early_hints : Array[(Int, Headers)]
   priv trailers : @ref.Ref[Headers]
 }
 
@@ -1263,6 +1264,7 @@ pub fn Response::new(status : Int, headers : Headers, body : &Stream) -> Respons
     body,
     max_body_bytes: DEFAULT_MAX_BODY_BYTES,
     auto_decompress: false,
+    early_hints: [],
     trailers: @ref.Ref(Headers::new()),
   }
 }
@@ -1280,6 +1282,7 @@ pub fn Response::new_with_version(
     body,
     max_body_bytes: DEFAULT_MAX_BODY_BYTES,
     auto_decompress: false,
+    early_hints: [],
     trailers: @ref.Ref(Headers::new()),
   }
 }
@@ -1314,6 +1317,21 @@ pub fn Response::with_auto_decompress(
 /// Whether body decoding is enabled for `read_body` and `copy_body_to`.
 pub fn Response::auto_decompress(self : Response) -> Bool {
   self.auto_decompress
+}
+
+/// Informational (1xx) responses received before the final response, in wire
+/// order. Each entry contains the status code and the interim headers, so
+/// callers can act on `103 Early Hints` preload links. The final 101 response
+/// is not included.
+pub fn Response::early_hints(self : Response) -> Array[(Int, Headers)] {
+  self.early_hints.copy()
+}
+
+fn Response::with_early_hints(
+  self : Response,
+  early_hints : Array[(Int, Headers)],
+) -> Response {
+  Response::{ ..self, early_hints }
 }
 
 /// The stream that yields the response body. For HTTP/1.1 this is a streaming

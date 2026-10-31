@@ -116,6 +116,7 @@ struct H2ResponseState {
   mut header_block_end_stream : Bool
   mut goaway_last_stream_id : Int?
   mut informational_count : Int
+  early_hints : Array[(Int, Headers)]
   // Tunnel data accepted from the peer whose stream-level flow-control credit
   // has not been returned yet. A tunnel is not body-capped, so its window is
   // replenished only when the application consumes the buffered bytes.
@@ -149,6 +150,7 @@ fn H2ResponseState::new(
     header_block_end_stream: false,
     goaway_last_stream_id: None,
     informational_count: 0,
+    early_hints: [],
     tunnel_unacked_bytes: 0,
   }
 }
@@ -446,6 +448,7 @@ fn H2ResponseState::apply_header_block(
     if self.informational_count > 8 {
       return Err(ProtocolError("Too many informational HTTP/2 responses"))
     }
+    self.early_hints.push((status, regular))
     return Ok(())
   }
   self.status = status
@@ -1214,7 +1217,10 @@ fn h2_make_response(state : H2ResponseState) -> Response {
     h2_body_stream(state.body.to_bytes()),
   )
   let trailers = @ref.Ref(state.trailers)
-  response.with_trailers(trailers).with_max_body_bytes(state.max_body_bytes)
+  response
+    .with_trailers(trailers)
+    .with_early_hints(state.early_hints)
+    .with_max_body_bytes(state.max_body_bytes)
 }
 
 fn h2_write_header_block(
@@ -1913,7 +1919,10 @@ fn h2_make_tunnel_response(
     state.status,
     state.headers,
     stream,
-  ).with_trailers(trailers).with_max_body_bytes(TUNNEL_BODY_LIMIT)
+  )
+    .with_trailers(trailers)
+    .with_early_hints(state.early_hints)
+    .with_max_body_bytes(TUNNEL_BODY_LIMIT)
 }
 
 /// Consume connection-level frames that were already buffered when the
@@ -2654,6 +2663,7 @@ fn H2ClientConnection::request_streaming_with_callback(
   Ok(
     response
     .with_trailers(trailers)
+    .with_early_hints(state.early_hints)
     .with_max_body_bytes(state.max_body_bytes),
   )
 }
