@@ -349,8 +349,9 @@ fn ws_negotiate_permessage_deflate(
 /// expect to be unpredictable.
 ///
 /// Set `permessage_deflate` to offer RFC 7692 compression. Incoming compressed
-/// messages are decoded automatically; outgoing messages stay uncompressed,
-/// which the extension permits.
+/// messages are decoded automatically, and complete outgoing messages are
+/// compressed when that reduces their wire size. Fragmented outgoing messages
+/// stay uncompressed, which the extension permits.
 pub fn websocket_connect(
   client : &HttpClient,
   url : String,
@@ -502,10 +503,11 @@ pub fn WebSocket::with_max_message_bytes(
   self
 }
 
-/// Enable or disable RFC 7692 `permessage-deflate` decoding for a manually
-/// wrapped stream. The handshake must already have negotiated
-/// `server_no_context_takeover` (as `websocket_connect` requires). Outgoing
-/// messages are left uncompressed, which the extension permits.
+/// Enable or disable RFC 7692 `permessage-deflate` for a manually wrapped
+/// stream. The handshake must already have negotiated
+/// `server_no_context_takeover` (as `websocket_connect` requires). Complete
+/// outgoing text/binary messages are compressed when that reduces their wire
+/// size; fragmented outgoing messages stay uncompressed.
 pub fn WebSocket::with_permessage_deflate(
   self : WebSocket,
   enabled : Bool,
