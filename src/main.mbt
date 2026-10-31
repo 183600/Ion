@@ -48,6 +48,12 @@ fn print_usage() -> Unit {
   println("       --timeout <milliseconds>               bound the whole request")
   println("       --http1.1                              disable HTTP/2 negotiation")
   println("       --http2                                enable HTTP/2 negotiation (default)")
+  println("       -k, --insecure                         DISABLE TLS verification (unsafe)")
+  println("       --ca <pem file>                        trust an extra CA certificate bundle")
+  println("       --client-cert <pem file>               client certificate for mTLS")
+  println("       --client-key <pem file>                client private key for mTLS")
+  println("       --keylog                               print TLS key material (debug)")
+  println("       --no-keylog                            disable TLS key logging")
   println("       --                                     treat remaining arguments as positional")
   println("       FEATHER_URL=<url> feather              send a GET request to FEATHER_URL")
   println("       FEATHER_PROXY=<url> feather            route through an HTTP(S) or SOCKS5 proxy")
@@ -115,28 +121,50 @@ fn env_path(name : String) -> String? {
   }
 }
 
-/// Build the TLS configuration from the FEATHER_CA / FEATHER_INSECURE /
-/// FEATHER_KEYLOG / FEATHER_CLIENT_CERT / FEATHER_CLIENT_KEY environment
-/// variables, if any is set. Client-certificate problems are hard errors:
-/// a half-configured mTLS pair would otherwise fail later as an opaque
-/// handshake failure against a server that requires client certificates.
-fn env_tls_config() -> Result[TlsConfig?, HttpError] {
-  let insecure = match @env.get_env_var("FEATHER_INSECURE") {
-    Some(value) => value == "1" || value.to_lower() == "true"
-    None => false
+/// Build the TLS configuration from command-line overrides and the
+/// FEATHER_CA / FEATHER_INSECURE / FEATHER_KEYLOG / FEATHER_CLIENT_CERT /
+/// FEATHER_CLIENT_KEY environment variables. Command-line values take
+/// precedence. Client-certificate problems are hard errors: a half-configured
+/// mTLS pair would otherwise fail later as an opaque handshake failure against
+/// a server that requires client certificates.
+fn env_tls_config(overrides : CliTlsOptions) -> Result[TlsConfig?, HttpError] {
+  let insecure = match overrides.insecure {
+    Some(value) => value
+    None =>
+      match @env.get_env_var("FEATHER_INSECURE") {
+        Some(value) => value == "1" || value.to_lower() == "true"
+        None => false
+      }
   }
-  let ca_path = env_path("FEATHER_CA")
-  let key_log = match @env.get_env_var("FEATHER_KEYLOG") {
-    Some(value) => value == "1" || value.to_lower() == "true"
-    None => false
+  let ca_path = match overrides.ca_path {
+    Some(path) => Some(path)
+    None => env_path("FEATHER_CA")
   }
-  let cert_path = env_path("FEATHER_CLIENT_CERT")
-  let key_path = env_path("FEATHER_CLIENT_KEY")
+  let key_log = match overrides.key_log {
+    Some(value) => value
+    None =>
+      match @env.get_env_var("FEATHER_KEYLOG") {
+        Some(value) => value == "1" || value.to_lower() == "true"
+        None => false
+      }
+  }
+  let cert_path = match overrides.client_cert {
+    Some(path) => Some(path)
+    None => env_path("FEATHER_CLIENT_CERT")
+  }
+  let key_path = match overrides.client_key {
+    Some(path) => Some(path)
+    None => env_path("FEATHER_CLIENT_KEY")
+  }
   match (cert_path, key_path) {
     (Some(_), None) =>
-      return Err(TlsError(InvalidConfig("FEATHER_CLIENT_KEY is required when FEATHER_CLIENT_CERT is set")))
+      return Err(TlsError(InvalidConfig(
+        "a client key (FEATHER_CLIENT_KEY or --client-key) is required when a client certificate is set",
+      )))
     (None, Some(_)) =>
-      return Err(TlsError(InvalidConfig("FEATHER_CLIENT_CERT is required when FEATHER_CLIENT_KEY is set")))
+      return Err(TlsError(InvalidConfig(
+        "a client certificate (FEATHER_CLIENT_CERT or --client-cert) is required when a client key is set",
+      )))
     (None, None) => ()
     (Some(_), Some(_)) => ()
   }
@@ -234,6 +262,14 @@ fn cli_proxy_bypass() -> Array[String] {
   }
 }
 
+struct CliTlsOptions {
+  insecure : Bool?
+  ca_path : String?
+  client_cert : String?
+  client_key : String?
+  key_log : Bool?
+}
+
 struct CliRequest {
   method_text : String
   url : String
@@ -244,6 +280,7 @@ struct CliRequest {
   max_redirects : Int
   timeout_ms : Int
   http2 : Bool
+  tls : CliTlsOptions
   help : Bool
 }
 
@@ -324,6 +361,13 @@ fn parse_cli_args(args : Array[String]) -> Result[CliRequest, String] {
   let mut max_redirects = 10
   let mut timeout_ms = -1
   let mut http2 = true
+  let mut tls = CliTlsOptions::{
+    insecure: None,
+    ca_path: None,
+    client_cert: None,
+    client_key: None,
+    key_log: None,
+  }
   let mut help = false
   let mut options_done = false
   let mut position = index
@@ -410,6 +454,51 @@ fn parse_cli_args(args : Array[String]) -> Result[CliRequest, String] {
         }
         position = next
         continue
+      } else if name == "-k" || name == "--insecure" {
+        tls = CliTlsOptions::{ ..tls, insecure: Some(true) }
+        position = position + 1
+        continue
+      } else if name == "--ca" {
+        let (value, next) = match cli_option_value(args, position, name, inline) {
+          Ok(value) => value
+          Err(err) => return Err(err)
+        }
+        if value.length() == 0 {
+          return Err("option '" + name + "' requires a non-empty path")
+        }
+        tls = CliTlsOptions::{ ..tls, ca_path: Some(value) }
+        position = next
+        continue
+      } else if name == "--client-cert" {
+        let (value, next) = match cli_option_value(args, position, name, inline) {
+          Ok(value) => value
+          Err(err) => return Err(err)
+        }
+        if value.length() == 0 {
+          return Err("option '" + name + "' requires a non-empty path")
+        }
+        tls = CliTlsOptions::{ ..tls, client_cert: Some(value) }
+        position = next
+        continue
+      } else if name == "--client-key" {
+        let (value, next) = match cli_option_value(args, position, name, inline) {
+          Ok(value) => value
+          Err(err) => return Err(err)
+        }
+        if value.length() == 0 {
+          return Err("option '" + name + "' requires a non-empty path")
+        }
+        tls = CliTlsOptions::{ ..tls, client_key: Some(value) }
+        position = next
+        continue
+      } else if name == "--keylog" {
+        tls = CliTlsOptions::{ ..tls, key_log: Some(true) }
+        position = position + 1
+        continue
+      } else if name == "--no-keylog" {
+        tls = CliTlsOptions::{ ..tls, key_log: Some(false) }
+        position = position + 1
+        continue
       } else if name == "--http1.1" || name == "--http1" {
         http2 = false
         position = position + 1
@@ -451,13 +540,14 @@ fn parse_cli_args(args : Array[String]) -> Result[CliRequest, String] {
     max_redirects,
     timeout_ms,
     http2,
+    tls,
     help,
   })
 }
 
 fn run_request(verb : HttpMethod, request : CliRequest) -> Bool {
   let mut client = UnifiedClient::new()
-  match env_tls_config() {
+  match env_tls_config(request.tls) {
     Ok(Some(config)) => client = client.with_tls_config(config)
     Ok(None) => ()
     Err(err) => {

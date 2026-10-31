@@ -77,6 +77,8 @@ type ChunkReadState
 
 type CliRequest
 
+type CliTlsOptions
+
 pub struct ClientCert {
   certificate : Bytes
   private_key : Bytes

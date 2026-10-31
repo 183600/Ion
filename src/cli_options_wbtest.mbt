@@ -145,3 +145,55 @@ test "CLI rejects negative numeric options" {
     "https://example.com/",
   ]) is Err(_))
 }
+
+///|
+test "CLI TLS options override environment-derived settings" {
+  let request = parse_cli_args([
+    "/usr/bin/feather",
+    "-k",
+    "--ca",
+    "ca.pem",
+    "--client-cert=cert.pem",
+    "--client-key",
+    "key.pem",
+    "--keylog",
+    "https://example.com/",
+  ]).unwrap()
+  assert_eq(request.tls.insecure, Some(true))
+  assert_eq(request.tls.ca_path, Some("ca.pem"))
+  assert_eq(request.tls.client_cert, Some("cert.pem"))
+  assert_eq(request.tls.client_key, Some("key.pem"))
+  assert_eq(request.tls.key_log, Some(true))
+}
+
+///|
+test "CLI can explicitly disable key logging" {
+  let request = parse_cli_args([
+    "/usr/bin/feather",
+    "--no-keylog",
+    "https://example.com/",
+  ]).unwrap()
+  assert_eq(request.tls.key_log, Some(false))
+  assert_eq(request.tls.insecure, None)
+}
+
+///|
+test "CLI rejects TLS options without required values" {
+  assert_true(parse_cli_args([
+    "/usr/bin/feather",
+    "--ca",
+  ]) is Err(_))
+  assert_true(parse_cli_args([
+    "/usr/bin/feather",
+    "--ca=",
+    "https://example.com/",
+  ]) is Err(_))
+  assert_true(parse_cli_args([
+    "/usr/bin/feather",
+    "--client-cert",
+  ]) is Err(_))
+  assert_true(parse_cli_args([
+    "/usr/bin/feather",
+    "--client-key",
+  ]) is Err(_))
+}
