@@ -152,6 +152,12 @@ fn socks5_append_target(
     output.write_byte(((address >> 8) & 0xff).to_byte())
     output.write_byte((address & 0xff).to_byte())
   } else if is_ipv6_literal_with_zone(host) {
+    // SOCKS5's ATYP_IPV6 field carries only the 16-byte address. A zone
+    // identifier is local to this host and cannot be sent to the proxy, so
+    // silently stripping it could connect through the wrong interface.
+    if host.find("%") is Some(_) {
+      return Err(InvalidUrl("SOCKS5 cannot encode an IPv6 zone identifier"))
+    }
     let bytes = match bypass_ipv6_bytes(host) {
       Some(bytes) => bytes
       None => return Err(InvalidUrl("Invalid SOCKS5 target address"))

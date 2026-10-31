@@ -261,6 +261,15 @@ test "SOCKS5 encodes IPv6 targets as binary addresses" {
   assert_eq(stream.output.to_bytes(), expected)
 }
 
+test "SOCKS5 rejects IPv6 zone identifiers it cannot encode" {
+  let output = Buffer(size_hint=24)
+  match socks5_append_target(output, "fe80::1%25eth0", 80, true) {
+    Err(InvalidUrl(message)) => assert_true(message.contains("zone"))
+    _ => abort("expected an IPv6 zone identifier to be rejected")
+  }
+  assert_eq(output.to_bytes(), b"")
+}
+
 test "SOCKS5 builder normalizes bracketed IPv6 proxy and target hosts" {
   let proxy = Proxy::new_socks5_with_auth(
     "[2001:db8::1]",
