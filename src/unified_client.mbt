@@ -781,7 +781,16 @@ fn UnifiedClient::do_request(self : UnifiedClient, req : Request) -> Result[Resp
     Ok(response) => response
     Err(err) => return Err(err)
   }
-  if self.options.auto_decompress && verb != CONNECT && response.status != 101 {
+  // A successful protocol upgrade is a tunnel, not an HTTP response body.
+  // HTTP/1.1 signals this with 101; RFC 8441 extended CONNECT over HTTP/2
+  // uses a successful 2xx response for a request that may carry GET.
+  let upgrade_tunnel = request_requests_upgrade(request.headers) &&
+    (if response.version.has_prefix("HTTP/1.") {
+      response.status == 101
+    } else {
+      response.status >= 200 && response.status < 300
+    })
+  if self.options.auto_decompress && verb != CONNECT && !upgrade_tunnel {
     Ok(response.with_auto_decompress(true))
   } else {
     Ok(response)
