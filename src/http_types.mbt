@@ -459,8 +459,57 @@ fn decode_host_unreserved(host : String) -> String {
   @utf8.decode_lossy(output.to_bytes()[:])
 }
 
+/// Decode percent-encoded UTF-8 bytes in a host name so IDNA can process
+/// percent-encoded internationalized names. Invalid UTF-8 sequences are
+/// rejected rather than replaced, because a replacement character would
+/// silently change which host is addressed.
+fn decode_host_utf8_escapes(host : String) -> String? {
+  let data = @utf8.encode(host)
+  let output = Buffer(size_hint=data.length())
+  let mut index = 0
+  while index < data.length() {
+    if data[index] == b'%' && index + 2 < data.length() {
+      let high = hex_char_value(Char::from_int(data[index + 1].to_int()))
+      let low = hex_char_value(Char::from_int(data[index + 2].to_int()))
+      if high >= 0 && low >= 0 {
+        let value = (high << 4) | low
+        if value >= 128 {
+          let encoded = Buffer(size_hint=4)
+          while index + 2 < data.length() && data[index] == b'%' {
+            let next_high = hex_char_value(Char::from_int(data[index + 1].to_int()))
+            let next_low = hex_char_value(Char::from_int(data[index + 2].to_int()))
+            if next_high < 0 || next_low < 0 {
+              break
+            }
+            let next = (next_high << 4) | next_low
+            if next < 128 {
+              break
+            }
+            encoded.write_byte(next.to_byte())
+            index = index + 3
+          }
+          try {
+            let _ = @utf8.decode(encoded.to_bytes()[:])
+          } catch {
+            _ => return None
+          }
+          output.write_bytes(encoded.to_bytes())
+          continue
+        }
+      }
+    }
+    output.write_byte(data[index])
+    index = index + 1
+  }
+  Some(@utf8.decode_lossy(output.to_bytes()[:]))
+}
+
 fn normalize_url_host(host : String) -> String? {
   let host = decode_host_unreserved(host)
+  let host = match decode_host_utf8_escapes(host) {
+    Some(host) => host
+    None => return None
+  }
   if idna_needs_conversion(host) {
     idna_host_to_ascii(host)
   } else {

@@ -56,6 +56,22 @@ test "cookie Domain attributes accept IDNA spellings" {
   assert_eq(jar.cookie_header_at(ascii, 1001UL), Some("session=1"))
 }
 
+test "percent-encoded UTF-8 host names use IDNA" {
+  let encoded = Url::parse(
+    "http://%E4%BE%8B%E3%81%88.%E3%83%86%E3%82%B9%E3%83%88/",
+  ).unwrap()
+  assert_eq(encoded.host, "xn--r8jz45g.xn--zckzah")
+  let mixed = Url::parse("http://b%C3%BCcher.example/").unwrap()
+  assert_eq(mixed.host, "xn--bcher-kva.example")
+  for input in [
+    "http://%FF.example/",
+    "http://%C3.example/",
+    "http://%E4%BE.example/",
+  ] {
+    assert_true(Url::parse(input) is Err(_))
+  }
+}
+
 test "invalid IDNA hosts are rejected" {
   for input in [
     "http://例え..テスト/",
