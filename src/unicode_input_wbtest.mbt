@@ -12,21 +12,24 @@ test "URL and request encoding accept astral characters" {
   assert_true(wire.contains("Connection: 🙂\r\n"))
 }
 
-test "astral characters in host names remain rejected" {
-  assert_true(Url::parse("http://🙂.example/") is Err(_))
+test "astral characters in host names are converted with IDNA" {
+  let url = Url::parse("http://🙂.example/").unwrap()
+  assert_eq(url.host, "xn--938h.example")
   assert_true(Url::parse("http://example.com/") is Ok(_))
 }
 
-test "raw non-ASCII host names are rejected consistently" {
-  for url in [
-    "http://éxample.com/",
-    "http://exa中mple.com/",
-    "http://example.comé/",
+test "raw non-ASCII host names are converted with IDNA" {
+  for (url, host) in [
+    ("http://éxample.com/", "xn--xample-9ua.com"),
+    ("http://exa中mple.com/", "xn--example-i43k.com"),
+    ("http://example.comé/", "example.xn--com-dma"),
   ] {
-    assert_true(Url::parse(url) is Err(_))
+    assert_eq(Url::parse(url).unwrap().host, host)
   }
   // Paths, queries, and fragments still accept non-ASCII text.
-  assert_true(Url::parse("http://example.com/é?q=中") is Ok(_))
+  let url = Url::parse("http://example.com/é?q=中").unwrap()
+  assert_eq(url.path, "/é")
+  assert_eq(url.query, "q=中")
 }
 
 test "response Connection values with astral characters do not panic" {

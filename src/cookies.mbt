@@ -815,6 +815,14 @@ fn cookie_from_set_cookie(
           // host, so the whole cookie is ignored.
           return None
         }
+        let candidate = if idna_needs_conversion(candidate) {
+          match idna_host_to_ascii(candidate) {
+            Some(candidate) => candidate
+            None => return None
+          }
+        } else {
+          candidate
+        }
         // Compare and store IP literals in one canonical spelling, so an
         // expanded Domain attribute still matches a compressed request host
         // (and vice versa).

@@ -222,6 +222,14 @@ pub fn Url::new(scheme : String, host : String, port : Int) -> Url {
   } else {
     host
   }
+  let host = if !bracketed && idna_needs_conversion(host) {
+    match idna_host_to_ascii(host) {
+      Some(host) => host
+      None => host
+    }
+  } else {
+    host
+  }
   Url::{ scheme, host, port, path: "/", query: "", fragment: "", bracketed }
 }
 
@@ -391,8 +399,8 @@ fn valid_url_host_chars(host : String) -> Bool {
       Some(ch) => ch
       None => return false
     }
-    // RFC 3986 reg-name is ASCII. This client does not implement IDNA, so a
-    // raw non-ASCII host cannot be resolved or safely written to `Host`.
+    // IDNA host names are converted to their ASCII A-label form before this
+    // ASCII-only reg-name validation runs.
     if ch > '\u{7f}' {
       return false
     }
@@ -449,6 +457,15 @@ fn decode_host_unreserved(host : String) -> String {
     index = index + 1
   }
   @utf8.decode_lossy(output.to_bytes()[:])
+}
+
+fn normalize_url_host(host : String) -> String? {
+  let host = decode_host_unreserved(host)
+  if idna_needs_conversion(host) {
+    idna_host_to_ascii(host)
+  } else {
+    Some(host)
+  }
 }
 
 pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
@@ -541,13 +558,21 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
   if bracketed && !is_ip_literal(host) {
     return Err(InvalidUrl("Invalid IPv6 host"))
   }
-  if host.contains("@") || (!bracketed && !valid_url_host_chars(host)) {
+  if host.contains("@") ||
+    (!bracketed && !valid_url_host_chars(host) && !idna_needs_conversion(host)) {
     return Err(InvalidUrl("Invalid host"))
   }
   if !bracketed && (host.contains(":") || host.contains("[") || host.contains("]")) {
     return Err(InvalidUrl("Invalid host"))
   }
-  let host = if bracketed { host } else { decode_host_unreserved(host) }
+  let host = if bracketed {
+    host
+  } else {
+    match normalize_url_host(host) {
+      Some(host) => host
+      None => return Err(InvalidUrl("Invalid host"))
+    }
+  }
 
   let default_port = if scheme == "https" { 443 } else { 80 }
   let port = match port_str {
