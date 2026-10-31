@@ -167,3 +167,24 @@ test "explicit UTF-16 endianness is not overridden by an opposite BOM" {
   )
   assert_eq(big_bom.text().unwrap(), "hi")
 }
+
+test "text strips a UTF-8 byte-order mark" {
+  let body = charset_test_bytes([0xEF, 0xBB, 0xBF, 0x68, 0x69])
+  let implicit = charset_text_response("text/plain", body)
+  assert_eq(implicit.text().unwrap(), "hi")
+  let explicit = charset_text_response("text/plain; charset=utf-8", body)
+  assert_eq(explicit.text().unwrap(), "hi")
+}
+
+test "text sniffs UTF-16 byte-order marks without a declared charset" {
+  let little = charset_text_response(
+    "text/plain",
+    charset_test_bytes([0xFF, 0xFE, 0x68, 0x00, 0x69, 0x00]),
+  )
+  assert_eq(little.text().unwrap(), "hi")
+  let big = charset_text_response(
+    "text/plain",
+    charset_test_bytes([0xFE, 0xFF, 0x00, 0x68, 0x00, 0x69]),
+  )
+  assert_eq(big.text().unwrap(), "hi")
+}

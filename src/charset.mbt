@@ -266,8 +266,34 @@ fn decode_text_body(data : Bytes, charset : String?) -> String {
     Some(value) => value.trim().to_lower().to_owned()
     None => ""
   }
+  let utf8_bom = data.length() >= 3 &&
+    data[0].to_int() == 0xEF &&
+    data[1].to_int() == 0xBB &&
+    data[2].to_int() == 0xBF
+  let utf16le_bom = data.length() >= 2 &&
+    data[0].to_int() == 0xFF &&
+    data[1].to_int() == 0xFE
+  let utf16be_bom = data.length() >= 2 &&
+    data[0].to_int() == 0xFE &&
+    data[1].to_int() == 0xFF
   match charset {
-    "" | "utf-8" | "utf8" => @utf8.decode_lossy(data[:])
+    "" =>
+      // Without a declared charset, a byte-order mark is the most reliable
+      // signal; UTF-16 text is otherwise indistinguishable from arbitrary
+      // bytes under UTF-8.
+      if utf16le_bom || utf16be_bom {
+        decode_utf16(data, "utf-16")
+      } else if utf8_bom {
+        @utf8.decode_lossy(data.exact_view(start=3, end=data.length()))
+      } else {
+        @utf8.decode_lossy(data[:])
+      }
+    "utf-8" | "utf8" =>
+      if utf8_bom {
+        @utf8.decode_lossy(data.exact_view(start=3, end=data.length()))
+      } else {
+        @utf8.decode_lossy(data[:])
+      }
     "us-ascii" | "ascii" => decode_ascii(data)
     "iso-8859-1" | "iso8859-1" | "latin1" | "latin-1" =>
       decode_single_byte(data, false)
