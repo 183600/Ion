@@ -36,6 +36,19 @@ fn cli_command_args() -> Array[String] {
 fn print_usage() -> Unit {
   println("Usage: feather <url>                          send a GET request")
   println("       feather <method> <url> [body]          send a request with the given method")
+  println("       feather [options] <url>                send a request with custom options")
+  println("Options:")
+  println("       -X, --request <method>                 override the request method")
+  println("       -H, --header <name: value>             add a request header (repeatable)")
+  println("       -d, --data <data>                      send a request body (defaults to POST)")
+  println("       -I, --head                             send a HEAD request")
+  println("       -L, --location                         follow redirects (default)")
+  println("       --no-location                          do not follow redirects")
+  println("       --max-redirects <n>                    limit followed redirects (default 10)")
+  println("       --timeout <milliseconds>               bound the whole request")
+  println("       --http1.1                              disable HTTP/2 negotiation")
+  println("       --http2                                enable HTTP/2 negotiation (default)")
+  println("       --                                     treat remaining arguments as positional")
   println("       FEATHER_URL=<url> feather              send a GET request to FEATHER_URL")
   println("       FEATHER_PROXY=<url> feather            route through an HTTP(S) or SOCKS5 proxy")
   println("       FEATHER_NO_PROXY=<list> feather        comma-separated hosts to reach directly")
@@ -221,7 +234,235 @@ fn cli_proxy_bypass() -> Array[String] {
   }
 }
 
-fn run_request(verb : HttpMethod, url : String, body : String) -> Bool {
+struct CliRequest {
+  method_text : String
+  url : String
+  body : String
+  has_body : Bool
+  headers : Array[(String, String)]
+  follow_redirects : Bool
+  max_redirects : Int
+  timeout_ms : Int
+  http2 : Bool
+  help : Bool
+}
+
+fn cli_normalize_method(value : String) -> String {
+  let text = value.trim().to_owned()
+  let lower = text.to_lower()
+  match HttpMethod::parse(lower) {
+    Ok(_) => lower
+    Err(_) => text
+  }
+}
+
+fn cli_split_option(arg : String) -> (String, String?) {
+  match arg.find("=") {
+    Some(index) => (arg[0:index].to_owned(), Some(arg[index + 1:].to_owned()))
+    None => (arg, None)
+  }
+}
+
+fn cli_option_value(
+  args : Array[String],
+  index : Int,
+  name : String,
+  inline : String?,
+) -> Result[(String, Int), String] {
+  match inline {
+    Some(value) => Ok((value, index + 1))
+    None =>
+      if index + 1 < args.length() {
+        Ok((args[index + 1], index + 2))
+      } else {
+        Err("option '" + name + "' requires a value")
+      }
+  }
+}
+
+fn cli_parse_header(value : String) -> Result[(String, String), String] {
+  match value.find(":") {
+    Some(index) => {
+      let name = value[0:index].trim().to_owned()
+      let header_value = value[index + 1:].trim().to_owned()
+      if name.length() == 0 {
+        Err("header name cannot be empty")
+      } else {
+        Ok((name, header_value))
+      }
+    }
+    None => Err("header must use the 'Name: value' form")
+  }
+}
+
+fn cli_parse_nonnegative(value : String, name : String) -> Result[Int, String] {
+  let text = value.trim().to_owned()
+  if !is_decimal_digits(text) {
+    return Err("option '" + name + "' expects a non-negative integer")
+  }
+  let parsed = try {
+    @string.parse_int(text[:])
+  } catch {
+    _ => return Err("option '" + name + "' expects a non-negative integer")
+  }
+  if parsed < 0 {
+    Err("option '" + name + "' expects a non-negative integer")
+  } else {
+    Ok(parsed)
+  }
+}
+
+fn parse_cli_args(args : Array[String]) -> Result[CliRequest, String] {
+  // The runtime argument list includes the executable name as its first entry.
+  let index = if args.length() > 0 { 1 } else { 0 }
+  let mut method_text = ""
+  let mut url = ""
+  let mut body = ""
+  let mut has_body = false
+  let headers : Array[(String, String)] = []
+  let mut follow_redirects = true
+  let mut max_redirects = 10
+  let mut timeout_ms = -1
+  let mut http2 = true
+  let mut help = false
+  let mut options_done = false
+  let mut position = index
+  while position < args.length() {
+    let arg = args[position]
+    let text = arg.trim().to_owned()
+    if !options_done && text == "--" {
+      options_done = true
+      position = position + 1
+      continue
+    }
+    if !options_done && text.length() > 1 && text.get_char(0) == Some('-') {
+      let (name, inline) = cli_split_option(text)
+      if name == "-h" || name == "--help" {
+        help = true
+        position = position + 1
+        continue
+      } else if name == "-X" || name == "--request" {
+        let (value, next) = match cli_option_value(args, position, name, inline) {
+          Ok(value) => value
+          Err(err) => return Err(err)
+        }
+        let normalized_method = cli_normalize_method(value)
+        if normalized_method.length() == 0 {
+          return Err("option '" + name + "' requires a non-empty method")
+        }
+        method_text = normalized_method
+        position = next
+        continue
+      } else if name == "-H" || name == "--header" {
+        let (value, next) = match cli_option_value(args, position, name, inline) {
+          Ok(value) => value
+          Err(err) => return Err(err)
+        }
+        match cli_parse_header(value) {
+          Ok(header) => headers.push(header)
+          Err(err) => return Err(err)
+        }
+        position = next
+        continue
+      } else if name == "-d" || name == "--data" || name == "--data-raw" {
+        let (value, next) = match cli_option_value(args, position, name, inline) {
+          Ok(value) => value
+          Err(err) => return Err(err)
+        }
+        body = value
+        has_body = true
+        if method_text.length() == 0 {
+          method_text = "post"
+        }
+        position = next
+        continue
+      } else if name == "-I" || name == "--head" {
+        method_text = "head"
+        position = position + 1
+        continue
+      } else if name == "-L" || name == "--location" {
+        follow_redirects = true
+        position = position + 1
+        continue
+      } else if name == "--no-location" || name == "--no-follow" {
+        follow_redirects = false
+        position = position + 1
+        continue
+      } else if name == "--max-redirects" {
+        let (value, next) = match cli_option_value(args, position, name, inline) {
+          Ok(value) => value
+          Err(err) => return Err(err)
+        }
+        max_redirects = match cli_parse_nonnegative(value, name) {
+          Ok(count) => count
+          Err(err) => return Err(err)
+        }
+        position = next
+        continue
+      } else if name == "--timeout" {
+        let (value, next) = match cli_option_value(args, position, name, inline) {
+          Ok(value) => value
+          Err(err) => return Err(err)
+        }
+        timeout_ms = match cli_parse_nonnegative(value, name) {
+          Ok(count) => count
+          Err(err) => return Err(err)
+        }
+        position = next
+        continue
+      } else if name == "--http1.1" || name == "--http1" {
+        http2 = false
+        position = position + 1
+        continue
+      } else if name == "--http2" {
+        http2 = true
+        position = position + 1
+        continue
+      } else {
+        return Err("unknown option '" + name + "'")
+      }
+    }
+    if url.length() == 0 {
+      let lower = text.to_lower()
+      let looks_like_url = lower.has_prefix("http://") ||
+        lower.has_prefix("https://")
+      if !looks_like_url && method_text.length() == 0 {
+        method_text = cli_normalize_method(text)
+      } else {
+        url = text
+      }
+    } else if !has_body {
+      // Request bodies are data, not configuration, and must be preserved
+      // exactly.
+      body = arg
+      has_body = true
+    } else {
+      return Err("unexpected argument '" + text + "'")
+    }
+    position = position + 1
+  }
+  Ok(CliRequest::{
+    method_text,
+    url,
+    body,
+    has_body,
+    headers,
+    follow_redirects,
+    max_redirects,
+    timeout_ms,
+    http2,
+    help,
+  })
+}
+
+fn parse_cli_request(args : Array[String]) -> (String, String, String) {
+  match parse_cli_args(args) {
+    Ok(request) => (request.method_text, request.url, request.body)
+    Err(_) => ("", "", "")
+  }
+}
+
+fn run_request(verb : HttpMethod, request : CliRequest) -> Bool {
   let mut client = UnifiedClient::new()
   match env_tls_config() {
     Ok(Some(config)) => client = client.with_tls_config(config)
@@ -231,12 +472,22 @@ fn run_request(verb : HttpMethod, url : String, body : String) -> Bool {
       return false
     }
   }
-  let h2c = match @env.get_env_var("FEATHER_H2C") {
-    Some(value) => value == "1" || value.to_lower() == "true"
-    None => false
+  if request.http2 {
+    let h2c = match @env.get_env_var("FEATHER_H2C") {
+      Some(value) => value == "1" || value.to_lower() == "true"
+      None => false
+    }
+    if h2c {
+      client = client.with_http2_prior_knowledge(true)
+    }
+  } else {
+    client = client.with_http2(false)
   }
-  if h2c {
-    client = client.with_http2_prior_knowledge(true)
+  client = client
+    .with_follow_redirects(request.follow_redirects)
+    .with_max_redirects(request.max_redirects)
+  if request.timeout_ms >= 0 {
+    client = client.with_timeout(request.timeout_ms)
   }
   let explicit_proxy = match @env.get_env_var("FEATHER_PROXY") {
     Some(value) => if value.length() > 0 {
@@ -262,7 +513,7 @@ fn run_request(verb : HttpMethod, url : String, body : String) -> Bool {
       }
     }
     None =>
-      match Url::parse(url) {
+      match Url::parse(request.url) {
         Ok(parsed) =>
           match Proxy::from_env(parsed) {
             Ok(Some(proxy)) => {
@@ -282,8 +533,8 @@ fn run_request(verb : HttpMethod, url : String, body : String) -> Bool {
         Err(_) => ()
       }
   }
-  let succeeded = if verb == GET && body.length() == 0 {
-    match client.get(url) {
+  let succeeded = if verb == GET && !request.has_body && request.headers.length() == 0 {
+    match client.get(request.url) {
       Ok(response) => print_response(response)
       Err(err) => {
         report(err)
@@ -291,14 +542,16 @@ fn run_request(verb : HttpMethod, url : String, body : String) -> Bool {
       }
     }
   } else {
-    match Request::from_url(verb, url) {
-      Ok(request) => {
-        let request = if body.length() > 0 {
-          request.with_body(@utf8.encode(body))
-        } else {
-          request
+    match Request::from_url(verb, request.url) {
+      Ok(prepared) => {
+        let mut prepared = prepared
+        for (name, value) in request.headers {
+          prepared = prepared.with_header(name, value)
         }
-        match client.request(request) {
+        if request.has_body {
+          prepared = prepared.with_body(@utf8.encode(request.body))
+        }
+        match client.request(prepared) {
           Ok(response) =>
             print_response(
               response,
@@ -320,38 +573,6 @@ fn run_request(verb : HttpMethod, url : String, body : String) -> Bool {
   succeeded
 }
 
-fn parse_cli_request(args : Array[String]) -> (String, String, String) {
-  // The runtime argument list includes the executable name as its first entry.
-  let index = if args.length() > 0 { 1 } else { 0 }
-  let mut method_text = ""
-  let mut url = ""
-  let mut body = ""
-  if index < args.length() {
-    // Whitespace around a URL or method is a common shell/ environment
-    // accident and is never meaningful in either value.
-    let first = args[index].trim().to_owned()
-    let lower = first.to_lower()
-    if lower.has_prefix("http://") || lower.has_prefix("https://") {
-      url = first
-    } else {
-      // Standard methods are case-insensitive and normalized to lower case for
-      // the CLI's convenience. Extension methods are case-sensitive tokens, so
-      // preserve their original spelling for `HttpMethod::custom`.
-      method_text = match HttpMethod::parse(lower) {
-        Ok(_) => lower
-        Err(_) => first
-      }
-      if index + 1 < args.length() {
-        url = args[index + 1].trim().to_owned()
-        if index + 2 < args.length() {
-          body = args[index + 2]
-        }
-      }
-    }
-  }
-  (method_text, url, body)
-}
-
 fn wants_help(args : Array[String]) -> Bool {
   let index = if args.length() > 0 { 1 } else { 0 }
   if index >= args.length() {
@@ -367,32 +588,42 @@ fn main {
     print_usage()
     return
   }
-  let (method_text, parsed_url, body) = parse_cli_request(command_args)
-  let mut url = parsed_url
-  if url.length() == 0 {
+  let mut request = match parse_cli_args(command_args) {
+    Ok(request) => request
+    Err(err) => {
+      eprintln("error: " + err)
+      os_exit(1)
+      return
+    }
+  }
+  if request.help {
+    print_usage()
+    return
+  }
+  if request.url.length() == 0 {
     match @env.get_env_var("FEATHER_URL") {
-      Some(value) => url = value.trim().to_owned()
+      Some(value) => request = CliRequest::{ ..request, url: value.trim().to_owned() }
       None => ()
     }
   }
-  if url.length() == 0 {
+  if request.url.length() == 0 {
     print_usage()
     os_exit(1)
     return
   }
-  let verb = if method_text.length() == 0 {
+  let verb = if request.method_text.length() == 0 {
     GET
   } else {
-    match HttpMethod::custom(method_text) {
+    match HttpMethod::custom(request.method_text) {
       Ok(verb) => verb
       Err(_) => {
-        eprintln("error: unsupported method '" + method_text + "'")
+        eprintln("error: unsupported method '" + request.method_text + "'")
         os_exit(1)
         return
       }
     }
   }
-  if !run_request(verb, url, body) {
+  if !run_request(verb, request) {
     os_exit(1)
   }
 }

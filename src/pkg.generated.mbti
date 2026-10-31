@@ -75,6 +75,8 @@ pub impl Stream for BufferedStream
 
 type ChunkReadState
 
+type CliRequest
+
 pub struct ClientCert {
   certificate : Bytes
   private_key : Bytes
