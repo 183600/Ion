@@ -228,3 +228,22 @@ test "websocket rejects an unoffered subprotocol" {
   }
   assert_false(stream.is_open)
 }
+
+///|
+test "websocket automatically answers Ping frames with a matching Pong" {
+  let stream = ws_test_stream(ws_test_frame(WS_OPCODE_PING, true, b"hi"))
+  let socket = WebSocket::new(stream, Client)
+  assert_eq(socket.read_message().unwrap(), Ping(b"hi"))
+  let wire = stream.output.to_bytes()
+  assert_eq(wire[0], b'\x8a')
+  assert_eq(wire[1], b'\x82')
+  let mask = wire.exact_view(start=2, end=6).to_owned()
+  let payload = wire.exact_view(start=6, end=wire.length()).to_owned()
+  let decoded = Buffer(size_hint=payload.length())
+  for index in 0..<payload.length() {
+    decoded.write_byte(
+      (payload[index].to_int() ^ mask[index % 4].to_int()).to_byte(),
+    )
+  }
+  assert_eq(decoded.to_bytes(), b"hi")
+}

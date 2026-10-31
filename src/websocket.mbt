@@ -800,6 +800,8 @@ fn decode_close_message(payload : Bytes) -> Result[WebSocketMessage, HttpError] 
 /// Read the next complete data message, returning control frames as they
 /// arrive. Fragmented messages are reassembled; a Ping/Pong/Close received
 /// between fragments is returned without discarding the partial message.
+/// Ping frames are answered automatically with a Pong carrying the same
+/// payload, as required by RFC 6455 section 5.5.2.
 pub fn WebSocket::read_message(
   self : WebSocket,
 ) -> Result[WebSocketMessage, HttpError] {
@@ -866,7 +868,15 @@ pub fn WebSocket::read_message(
         let _ = self.stream.close()
         return Ok(message)
       }
-      WS_OPCODE_PING => return Ok(Ping(frame.payload))
+      WS_OPCODE_PING => {
+        if !self.close_sent {
+          match self.send_pong(frame.payload) {
+            Ok(_) => ()
+            Err(err) => return Err(err)
+          }
+        }
+        return Ok(Ping(frame.payload))
+      }
       WS_OPCODE_PONG => return Ok(Pong(frame.payload))
       _ => return Err(ProtocolError("Invalid WebSocket opcode"))
     }
