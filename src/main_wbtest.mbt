@@ -1,47 +1,47 @@
 ///|
 test "CLI arguments skip the executable prefix" {
-  let (method, url, body) = parse_cli_request([
+  let request = parse_cli_args([
     "/usr/bin/feather",
     "http://example.com/path",
-  ])
-  assert_eq(method, "")
-  assert_eq(url, "http://example.com/path")
-  assert_eq(body, "")
+  ]).unwrap()
+  assert_eq(request.method_text, "")
+  assert_eq(request.url, "http://example.com/path")
+  assert_eq(request.body, "")
 }
 
 ///|
 test "CLI accepts a method, URL, and optional body" {
-  let (method, url, body) = parse_cli_request([
+  let request = parse_cli_args([
     "/usr/bin/feather",
     "post",
     "https://example.com/submit",
     "payload",
-  ])
-  assert_eq(method, "post")
-  assert_eq(url, "https://example.com/submit")
-  assert_eq(body, "payload")
+  ]).unwrap()
+  assert_eq(request.method_text, "post")
+  assert_eq(request.url, "https://example.com/submit")
+  assert_eq(request.body, "payload")
 }
 
 ///|
 test "CLI preserves extension method spelling" {
-  let (method, url, body) = parse_cli_request([
+  let request = parse_cli_args([
     "/usr/bin/feather",
     "PROPFIND",
     "https://example.com/dav",
     "depth",
-  ])
-  assert_eq(method, "PROPFIND")
-  assert_eq(url, "https://example.com/dav")
-  assert_eq(body, "depth")
-  assert_eq(HttpMethod::custom(method).unwrap(), Custom("PROPFIND"))
+  ]).unwrap()
+  assert_eq(request.method_text, "PROPFIND")
+  assert_eq(request.url, "https://example.com/dav")
+  assert_eq(request.body, "depth")
+  assert_eq(HttpMethod::custom(request.method_text).unwrap(), Custom("PROPFIND"))
 }
 
 ///|
 test "CLI handles the no-argument case" {
-  let (method, url, body) = parse_cli_request([])
-  assert_eq(method, "")
-  assert_eq(url, "")
-  assert_eq(body, "")
+  let request = parse_cli_args([]).unwrap()
+  assert_eq(request.method_text, "")
+  assert_eq(request.url, "")
+  assert_eq(request.body, "")
 }
 
 ///|

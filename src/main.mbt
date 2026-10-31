@@ -455,13 +455,6 @@ fn parse_cli_args(args : Array[String]) -> Result[CliRequest, String] {
   })
 }
 
-fn parse_cli_request(args : Array[String]) -> (String, String, String) {
-  match parse_cli_args(args) {
-    Ok(request) => (request.method_text, request.url, request.body)
-    Err(_) => ("", "", "")
-  }
-}
-
 fn run_request(verb : HttpMethod, request : CliRequest) -> Bool {
   let mut client = UnifiedClient::new()
   match env_tls_config() {
