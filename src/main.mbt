@@ -54,6 +54,9 @@ fn print_usage() -> Unit {
   println("       --client-key <pem file>                client private key for mTLS")
   println("       --keylog                               print TLS key material (debug)")
   println("       --no-keylog                            disable TLS key logging")
+  println("       -x, --proxy <url>                      route through an HTTP(S) or SOCKS5 proxy")
+  println("       --no-proxy                             connect directly, ignoring proxy settings")
+  println("       --proxy-bypass <list>                  comma-separated hosts to reach directly")
   println("       --                                     treat remaining arguments as positional")
   println("       FEATHER_URL=<url> feather              send a GET request to FEATHER_URL")
   println("       FEATHER_PROXY=<url> feather            route through an HTTP(S) or SOCKS5 proxy")
@@ -281,6 +284,9 @@ struct CliRequest {
   timeout_ms : Int
   http2 : Bool
   tls : CliTlsOptions
+  proxy : String?
+  no_proxy : Bool
+  proxy_bypass : Array[String]?
   help : Bool
 }
 
@@ -368,6 +374,9 @@ fn parse_cli_args(args : Array[String]) -> Result[CliRequest, String] {
     client_key: None,
     key_log: None,
   }
+  let mut proxy : String? = None
+  let mut no_proxy = false
+  let mut proxy_bypass : Array[String]? = None
   let mut help = false
   let mut options_done = false
   let mut position = index
@@ -499,6 +508,31 @@ fn parse_cli_args(args : Array[String]) -> Result[CliRequest, String] {
         tls = CliTlsOptions::{ ..tls, key_log: Some(false) }
         position = position + 1
         continue
+      } else if name == "-x" || name == "--proxy" {
+        let (value, next) = match cli_option_value(args, position, name, inline) {
+          Ok(value) => value
+          Err(err) => return Err(err)
+        }
+        if value.trim().length() == 0 {
+          return Err("option '" + name + "' requires a non-empty proxy URL")
+        }
+        proxy = Some(value)
+        no_proxy = false
+        position = next
+        continue
+      } else if name == "--no-proxy" {
+        no_proxy = true
+        proxy = None
+        position = position + 1
+        continue
+      } else if name == "--proxy-bypass" {
+        let (value, next) = match cli_option_value(args, position, name, inline) {
+          Ok(value) => value
+          Err(err) => return Err(err)
+        }
+        proxy_bypass = Some(split_proxy_bypass(value))
+        position = next
+        continue
       } else if name == "--http1.1" || name == "--http1" {
         http2 = false
         position = position + 1
@@ -541,6 +575,9 @@ fn parse_cli_args(args : Array[String]) -> Result[CliRequest, String] {
     timeout_ms,
     http2,
     tls,
+    proxy,
+    no_proxy,
+    proxy_bypass,
     help,
   })
 }
@@ -572,49 +609,57 @@ fn run_request(verb : HttpMethod, request : CliRequest) -> Bool {
   if request.timeout_ms >= 0 {
     client = client.with_timeout(request.timeout_ms)
   }
-  let explicit_proxy = match @env.get_env_var("FEATHER_PROXY") {
-    Some(value) => if value.length() > 0 {
-      Some(value)
-    } else {
-      None
+  if !request.no_proxy {
+    let explicit_proxy = match request.proxy {
+      Some(value) => Some(value)
+      None =>
+        match @env.get_env_var("FEATHER_PROXY") {
+          Some(value) => if value.length() > 0 {
+            Some(value)
+          } else {
+            None
+          }
+          None => None
+        }
     }
-    None => None
-  }
-  match explicit_proxy {
-    Some(value) => {
-      match client.with_proxy_url(value) {
-        Ok(updated) => client = updated
-        Err(err) => {
-          report(err)
-          let _ = client.close_all()
-          return false
+    let bypass = match request.proxy_bypass {
+      Some(patterns) => patterns
+      None => cli_proxy_bypass()
+    }
+    match explicit_proxy {
+      Some(value) => {
+        match client.with_proxy_url(value) {
+          Ok(updated) => client = updated
+          Err(err) => {
+            report(err)
+            let _ = client.close_all()
+            return false
+          }
+        }
+        if bypass.length() > 0 {
+          client = client.with_proxy_bypass(bypass)
         }
       }
-      let bypass = cli_proxy_bypass()
-      if bypass.length() > 0 {
-        client = client.with_proxy_bypass(bypass)
-      }
-    }
-    None =>
-      match Url::parse(request.url) {
-        Ok(parsed) =>
-          match Proxy::from_env(parsed) {
-            Ok(Some(proxy)) => {
-              client = client.with_proxy(proxy)
-              let bypass = cli_proxy_bypass()
-              if bypass.length() > 0 {
-                client = client.with_proxy_bypass(bypass)
+      None =>
+        match Url::parse(request.url) {
+          Ok(parsed) =>
+            match Proxy::from_env(parsed) {
+              Ok(Some(proxy)) => {
+                client = client.with_proxy(proxy)
+                if bypass.length() > 0 {
+                  client = client.with_proxy_bypass(bypass)
+                }
+              }
+              Ok(None) => ()
+              Err(err) => {
+                report(err)
+                let _ = client.close_all()
+                return false
               }
             }
-            Ok(None) => ()
-            Err(err) => {
-              report(err)
-              let _ = client.close_all()
-              return false
-            }
-          }
-        Err(_) => ()
-      }
+          Err(_) => ()
+        }
+    }
   }
   let succeeded = if verb == GET && !request.has_body && request.headers.length() == 0 {
     match client.get(request.url) {

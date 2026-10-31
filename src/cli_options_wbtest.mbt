@@ -197,3 +197,55 @@ test "CLI rejects TLS options without required values" {
     "--client-key",
   ]) is Err(_))
 }
+
+///|
+test "CLI proxy options override environment routing" {
+  let request = parse_cli_args([
+    "/usr/bin/feather",
+    "--proxy",
+    "socks5://127.0.0.1:1080",
+    "--proxy-bypass",
+    "localhost, .internal",
+    "https://example.com/",
+  ]).unwrap()
+  assert_eq(request.proxy, Some("socks5://127.0.0.1:1080"))
+  assert_false(request.no_proxy)
+  let bypass = request.proxy_bypass.unwrap()
+  assert_eq(bypass.length(), 2)
+  assert_eq(bypass[0], "localhost")
+  assert_eq(bypass[1], ".internal")
+}
+
+///|
+test "CLI no-proxy wins over an earlier proxy option" {
+  let request = parse_cli_args([
+    "/usr/bin/feather",
+    "-x",
+    "http://proxy.example:8080",
+    "--no-proxy",
+    "https://example.com/",
+  ]).unwrap()
+  assert_true(request.no_proxy)
+  assert_eq(request.proxy, None)
+}
+
+///|
+test "CLI proxy wins over an earlier no-proxy option" {
+  let request = parse_cli_args([
+    "/usr/bin/feather",
+    "--no-proxy",
+    "--proxy=http://proxy.example:8080",
+    "https://example.com/",
+  ]).unwrap()
+  assert_false(request.no_proxy)
+  assert_eq(request.proxy, Some("http://proxy.example:8080"))
+}
+
+///|
+test "CLI rejects empty proxy URLs" {
+  assert_true(parse_cli_args([
+    "/usr/bin/feather",
+    "--proxy=",
+    "https://example.com/",
+  ]) is Err(_))
+}
