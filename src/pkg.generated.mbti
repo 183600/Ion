@@ -11,6 +11,8 @@ import {
 // Values
 pub fn decode_content_encoding(String, Bytes, Int32) -> Result[Bytes, HttpError]
 
+pub fn default_browser_client() -> BrowserFetchClient
+
 pub fn default_client() -> UnifiedClient
 
 pub fn default_dialer() -> UnavailableTcpDialer
@@ -71,6 +73,13 @@ pub fn websocket_handshake_request(String, String, Array[String], permessage_def
 type ActiveConnection
 
 type BitReader
+
+pub struct BrowserFetchClient {
+  max_response_body_bytes : Int32
+} derive(Eq, @debug.Debug)
+pub fn BrowserFetchClient::new() -> Self
+pub fn BrowserFetchClient::with_max_response_body_bytes(Self, Int32) -> Self
+pub impl HttpClient for BrowserFetchClient
 
 type BufferedStream
 pub impl Stream for BufferedStream

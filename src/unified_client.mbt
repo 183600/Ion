@@ -1371,25 +1371,31 @@ fn one_shot_request(
   url : String,
   body : Bytes?,
 ) -> Result[Response, HttpError] {
-  let client = default_client()
   let request = match Request::from_url(verb, url) {
-    Ok(request) => request
-    Err(err) => {
-      let _ = client.close_all()
-      return Err(err)
-    }
+    Ok(request) =>
+      match body {
+        Some(body) => Ok(request.with_body(body))
+        None => Ok(request)
+      }
+    Err(err) => Err(err)
   }
-  let request = match body {
-    Some(body) => request.with_body(body)
-    None => request
-  }
-  buffer_one_shot_response(
-    client,
-    client.request(request),
-    connect=canonical_http_method(verb) == CONNECT,
-  )
+  one_shot_custom_request(request)
 }
 
+/// On the JavaScript target the one-shot helpers use the browser transport,
+/// because no synchronous TCP dialer is available. The browser manages TLS,
+/// redirects, cookies, and decompression for these requests.
+#cfg(target="js")
+fn one_shot_custom_request(
+  request : Result[Request, HttpError],
+) -> Result[Response, HttpError] {
+  match request {
+    Ok(request) => BrowserFetchClient::new().request(request)
+    Err(err) => Err(err)
+  }
+}
+
+#cfg(not(target="js"))
 fn one_shot_custom_request(
   request : Result[Request, HttpError],
 ) -> Result[Response, HttpError] {
