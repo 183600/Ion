@@ -790,7 +790,8 @@ fn UnifiedClient::do_request(self : UnifiedClient, req : Request) -> Result[Resp
     } else {
       response.status >= 200 && response.status < 300
     })
-  if self.options.auto_decompress && verb != CONNECT && !upgrade_tunnel {
+  if self.options.auto_decompress && verb != CONNECT &&
+    response.status != 101 && !upgrade_tunnel {
     Ok(response.with_auto_decompress(true))
   } else {
     Ok(response)

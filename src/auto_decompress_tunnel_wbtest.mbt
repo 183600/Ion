@@ -37,3 +37,25 @@ test "automatic decoding is not enabled for an HTTP/2 extended CONNECT tunnel" {
   assert_false(response.auto_decompress())
   assert_eq(response.read_body().unwrap(), b"tunnel")
 }
+
+///|
+test "automatic decoding is not enabled for an unsolicited HTTP/1.1 101" {
+  let stream = regression_mock_stream(
+    "HTTP/1.1 101 Switching Protocols\r\n\r\n",
+    0,
+    0,
+  )
+  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new()
+      .with_follow_redirects(false)
+      .with_auto_decompress(true),
+    redirect_count: 0,
+  }
+  let response = client.get("http://example.com/socket").unwrap()
+  assert_eq(response.status, 101)
+  assert_false(response.auto_decompress())
+  let _ = client.close_all()
+}
