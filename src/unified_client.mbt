@@ -19,6 +19,10 @@ pub struct ClientOptions {
   /// body before `request` returns. Disabled by default so existing callers
   /// keep the historical all-at-once behavior.
   http2_streaming : Bool
+  /// Decode gzip/deflate response bodies from `Response::read_body` and
+  /// `Response::copy_body_to`. Disabled by default so callers can inspect the
+  /// exact wire bytes; `Response::text` always decodes.
+  auto_decompress : Bool
   /// Headers added to every top-level request that does not already supply
   /// the same field. They are never re-applied after a redirect, and a
   /// cross-origin redirect drops them along with caller-supplied credentials.
@@ -36,6 +40,7 @@ pub fn ClientOptions::new() -> ClientOptions {
     http2: true,
     http2_prior_knowledge: false,
     http2_streaming: false,
+    auto_decompress: false,
     default_headers: Headers::new(),
   }
 }
@@ -99,6 +104,22 @@ pub fn ClientOptions::with_http2_streaming(
   enabled : Bool,
 ) -> ClientOptions {
   ClientOptions::{ ..self, http2_streaming: enabled }
+}
+
+/// Decode gzip and deflate response bodies automatically when callers use
+/// `Response::read_body` or `Response::copy_body_to`. `Response::text` always
+/// decodes, and `Response::read_body_with_limit` continues to return the raw
+/// bytes so callers can opt out for an individual response.
+pub fn ClientOptions::with_auto_decompress(
+  self : ClientOptions,
+  enabled : Bool,
+) -> ClientOptions {
+  ClientOptions::{ ..self, auto_decompress: enabled }
+}
+
+/// Whether known response body codings are decoded automatically.
+pub fn ClientOptions::auto_decompress(self : ClientOptions) -> Bool {
+  self.auto_decompress
 }
 
 /// Cap the number of body bytes read from a single response. A value below 1 is
@@ -349,6 +370,19 @@ pub fn UnifiedClient::with_http2_streaming(
   UnifiedClient::{
     connector: self.connector.detached(),
     options: self.options.with_http2_streaming(enabled),
+    redirect_count: 0,
+  }
+}
+
+/// Decode gzip/deflate response bodies automatically for `read_body` and
+/// `copy_body_to`. Tunnels and switched protocols are left untouched.
+pub fn UnifiedClient::with_auto_decompress(
+  self : UnifiedClient,
+  enabled : Bool,
+) -> UnifiedClient {
+  UnifiedClient::{
+    connector: self.connector.detached(),
+    options: self.options.with_auto_decompress(enabled),
     redirect_count: 0,
   }
 }
@@ -742,7 +776,16 @@ fn UnifiedClient::do_request(self : UnifiedClient, req : Request) -> Result[Resp
     req,
     self.options.default_headers,
   )
-  self.do_request_once(request, true, applied_defaults)
+  let verb = canonical_http_method(request.method)
+  let response = match self.do_request_once(request, true, applied_defaults) {
+    Ok(response) => response
+    Err(err) => return Err(err)
+  }
+  if self.options.auto_decompress && verb != CONNECT && response.status != 101 {
+    Ok(response.with_auto_decompress(true))
+  } else {
+    Ok(response)
+  }
 }
 
 fn UnifiedClient::do_request_once(

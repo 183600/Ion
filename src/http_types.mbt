@@ -1251,6 +1251,7 @@ pub struct Response {
   headers : Headers
   body : &Stream // Stream for reading response body
   max_body_bytes : Int
+  priv auto_decompress : Bool
   priv trailers : @ref.Ref[Headers]
 }
 
@@ -1261,6 +1262,7 @@ pub fn Response::new(status : Int, headers : Headers, body : &Stream) -> Respons
     headers,
     body,
     max_body_bytes: DEFAULT_MAX_BODY_BYTES,
+    auto_decompress: false,
     trailers: @ref.Ref(Headers::new()),
   }
 }
@@ -1277,6 +1279,7 @@ pub fn Response::new_with_version(
     headers,
     body,
     max_body_bytes: DEFAULT_MAX_BODY_BYTES,
+    auto_decompress: false,
     trailers: @ref.Ref(Headers::new()),
   }
 }
@@ -1296,6 +1299,21 @@ fn Response::with_max_body_bytes(
     ..self,
     max_body_bytes: if max_body_bytes < 0 { 0 } else { max_body_bytes },
   }
+}
+
+/// Make `Response::read_body` and `Response::copy_body_to` decode any
+/// `Content-Encoding` that Feather understands (`gzip`, `deflate`). The
+/// default is off so callers can still read the exact bytes from the wire.
+pub fn Response::with_auto_decompress(
+  self : Response,
+  enabled : Bool,
+) -> Response {
+  Response::{ ..self, auto_decompress: enabled }
+}
+
+/// Whether body decoding is enabled for `read_body` and `copy_body_to`.
+pub fn Response::auto_decompress(self : Response) -> Bool {
+  self.auto_decompress
 }
 
 /// The stream that yields the response body. For HTTP/1.1 this is a streaming
@@ -1352,8 +1370,9 @@ pub fn Response::read_body_with_limit(
 
 /// Stream the response body into `sink` without buffering the complete body
 /// in memory. Transfer framing and any non-chunked transfer codings are
-/// decoded; a `Content-Encoding` such as gzip remains applied for the caller.
-/// Returns the number of body bytes written. `sink` is flushed but not closed.
+/// decoded; a `Content-Encoding` such as gzip remains applied for the caller
+/// unless `auto_decompress` is enabled. Returns the number of body bytes
+/// written. `sink` is flushed but not closed.
 ///
 /// A body using a non-chunked transfer coding has to be decoded as a whole, so
 /// that case is buffered up to the response limit. Plain, fixed-length, and
@@ -1366,6 +1385,26 @@ pub fn Response::copy_body_to(
   // example a streaming HTTP/1.1 body). Authorize this response's own limit
   // before the first read, matching `read_body_with_limit`.
   self.body.set_body_limit(self.max_body_bytes)
+  if self.auto_decompress {
+    let decoded = match self.read_body_decoded_with_limit(self.max_body_bytes) {
+      Ok(body) => body
+      Err(err) => return Err(err)
+    }
+    match write_all(sink, decoded) {
+      Ok(_) => ()
+      Err(err) => {
+        let _ = self.body.close()
+        return Err(http_error_from_net(err))
+      }
+    }
+    return match sink.flush() {
+      Ok(_) => Ok(decoded.length())
+      Err(err) => {
+        let _ = self.body.close()
+        Err(http_error_from_net(err))
+      }
+    }
+  }
   let transfer_codings = match response_transfer_codings(self.headers) {
     Ok(codings) => codings
     Err(err) => {
@@ -1531,8 +1570,14 @@ pub fn Response::close(self : Response) -> Unit {
 }
 
 /// Read the complete response body, enforcing the response's size limit.
+/// When `auto_decompress` is enabled, known `Content-Encoding` values are
+/// removed first; otherwise the exact body bytes are returned.
 pub fn Response::read_body(self : Response) -> Result[Bytes, HttpError] {
-  self.read_body_with_limit(self.max_body_bytes)
+  if self.auto_decompress {
+    self.read_body_decoded()
+  } else {
+    self.read_body_with_limit(self.max_body_bytes)
+  }
 }
 
 /// Read the complete response body and transparently decode any

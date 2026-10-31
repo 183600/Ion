@@ -95,10 +95,13 @@ pub struct ClientOptions {
   http2 : Bool
   http2_prior_knowledge : Bool
   http2_streaming : Bool
+  auto_decompress : Bool
   default_headers : Headers
 } derive(Eq, @debug.Debug)
+pub fn ClientOptions::auto_decompress(Self) -> Bool
 pub fn ClientOptions::default_headers(Self) -> Headers
 pub fn ClientOptions::new() -> Self
+pub fn ClientOptions::with_auto_decompress(Self, Bool) -> Self
 pub fn ClientOptions::with_connect_timeout(Self, Int32) -> Self
 pub fn ClientOptions::with_default_header(Self, String, String) -> Self
 pub fn ClientOptions::with_default_headers(Self, Headers) -> Self
@@ -411,6 +414,7 @@ pub struct Response {
   max_body_bytes : Int32
   // private fields
 }
+pub fn Response::auto_decompress(Self) -> Bool
 pub fn Response::body_stream(Self) -> &Stream
 pub fn Response::charset(Self) -> String?
 pub fn Response::close(Self) -> Unit
@@ -431,6 +435,7 @@ pub fn Response::read_body_with_limit(Self, Int32) -> Result[Bytes, HttpError]
 pub fn Response::text(Self) -> Result[String, HttpError]
 pub fn Response::text_with_limit(Self, Int32) -> Result[String, HttpError]
 pub fn Response::trailers(Self) -> Headers
+pub fn Response::with_auto_decompress(Self, Bool) -> Self
 
 type ResponseBodyMode
 
@@ -543,6 +548,7 @@ pub fn UnifiedClient::post_form(Self, String, Array[(String, String)]) -> Result
 pub fn UnifiedClient::post_multipart(Self, String, Array[(String, String)], Array[MultipartFile]) -> Result[Response, HttpError]
 pub fn UnifiedClient::put(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::trace(Self, String) -> Result[Response, HttpError]
+pub fn UnifiedClient::with_auto_decompress(Self, Bool) -> Self
 pub fn UnifiedClient::with_connect_timeout(Self, Int32) -> Self
 pub fn UnifiedClient::with_cookie_jar(Self, CookieJar) -> Self
 pub fn UnifiedClient::with_cookies(Self) -> Self
