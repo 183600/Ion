@@ -24,3 +24,11 @@ test "CLI does not mistake a lone URL for a method" {
   assert_eq(request.url, "HTTPS://example.com/x")
   assert_eq(request.body, "")
 }
+
+///|
+test "CLI header flag is not mistaken for help" {
+  assert_false(wants_help(["/usr/bin/feather", "-H"]))
+  assert_false(wants_help(["/usr/bin/feather", "-H", "X-Test: one"]))
+  assert_true(wants_help(["/usr/bin/feather", "-h"]))
+  assert_true(wants_help(["/usr/bin/feather", "HELP"]))
+}

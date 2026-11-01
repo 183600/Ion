@@ -706,8 +706,9 @@ fn wants_help(args : Array[String]) -> Bool {
   if index >= args.length() {
     return false
   }
-  let first = args[index].trim().to_lower()
-  first == "-h" || first == "--help" || first == "help"
+  let first = args[index].trim()
+  // Short options are case-sensitive: `-H` is the header flag, not help.
+  first == "-h" || first == "--help" || first.to_lower() == "help"
 }
 
 fn main {
