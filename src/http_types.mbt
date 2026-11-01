@@ -1030,6 +1030,16 @@ pub fn Request::with_method(self : Request, verb : HttpMethod) -> Request {
   Request::{ ..self, method: verb }
 }
 
+/// Replace the request target while keeping method, headers, and body.
+pub fn Request::with_url(self : Request, url : Url) -> Request {
+  Request::{ ..self, url }
+}
+
+/// Set an RFC 6750 bearer-token `Authorization` header.
+pub fn Request::with_bearer_auth(self : Request, token : String) -> Request {
+  self.set_header("Authorization", "Bearer " + token)
+}
+
 pub fn Request::with_header(self : Request, name : String, value : String) -> Request {
   Request::{ ..self, headers: self.headers.add(name, value) }
 }

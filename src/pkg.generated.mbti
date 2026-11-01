@@ -409,6 +409,7 @@ pub fn Request::get_trailer_all(Self, String) -> @list.List[String]
 pub fn Request::new(HttpMethod, Url) -> Self
 pub fn Request::set_header(Self, String, String) -> Self
 pub fn Request::with_basic_auth(Self, String, String) -> Self
+pub fn Request::with_bearer_auth(Self, String) -> Self
 pub fn Request::with_body(Self, Bytes) -> Self
 pub fn Request::with_expect_continue(Self) -> Self
 pub fn Request::with_form(Self, Array[(String, String)]) -> Self
@@ -419,6 +420,7 @@ pub fn Request::with_timeout(Self, Int32) -> Self
 pub fn Request::with_trailer(Self, String, String) -> Self
 pub fn Request::with_trailers(Self, Headers) -> Self
 pub fn Request::with_upgrade(Self, String) -> Self
+pub fn Request::with_url(Self, Url) -> Self
 pub fn Request::without_header(Self, String) -> Self
 
 pub struct Response {
