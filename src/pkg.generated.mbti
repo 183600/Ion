@@ -65,6 +65,8 @@ pub fn websocket_accept_key(String) -> String
 
 pub fn websocket_connect(&HttpClient, String, String, Array[String], permessage_deflate? : Bool) -> Result[WebSocket, HttpError]
 
+pub fn websocket_generate_key() -> String?
+
 pub fn websocket_handshake_request(String, String, Array[String], permessage_deflate? : Bool) -> Result[Request, HttpError]
 
 // Errors

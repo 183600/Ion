@@ -172,6 +172,22 @@ pub fn websocket_accept_key(key : String) -> String {
   @base64.encode(ws_sha1(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
 }
 
+/// Generate a fresh RFC 6455 `Sec-WebSocket-Key` from the platform entropy
+/// source. Returns `None` when the target cannot provide secure random bytes;
+/// callers must not substitute a weak generator, because peers use the nonce
+/// to verify that the handshake was not replayed.
+pub fn websocket_generate_key() -> String? {
+  match @env.rand(16) {
+    Some(bytes) =>
+      if bytes.length() == 16 {
+        Some(@base64.encode(bytes))
+      } else {
+        None
+      }
+    None => None
+  }
+}
+
 fn valid_websocket_key(key : String) -> Bool {
   // RFC 6455 section 4.1 requires a base64-encoded 16-byte nonce. Decode at
   // the wire boundary and require the canonical padded encoding so a
