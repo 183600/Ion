@@ -558,7 +558,7 @@ pub fn HttpCache::lookup(
   request : Request,
   now_ms : UInt64,
 ) -> CacheLookup {
-  if canonical_http_method(request.method) != GET {
+  if canonical_http_method(request.method) != GET || request.body is Some(_) {
     return CacheLookup::Miss
   }
   if request.get_header("Authorization") is Some(_) {
@@ -630,6 +630,9 @@ pub fn HttpCache::lookup(
 }
 
 fn cache_response_cacheable(request : Request, response : Response) -> Bool {
+  if request.body is Some(_) {
+    return false
+  }
   if request.get_header("Authorization") is Some(_) {
     return false
   }
@@ -836,6 +839,13 @@ pub fn HttpCache::revalidate(
     let _ = state.entries.remove(index)
     return None
   }
+  let vary_names = match cache_vary_names(request.headers, merged) {
+    Some(names) => names
+    None => {
+      let _ = state.entries.remove(index)
+      return None
+    }
+  }
   let date_ms = match cache_header_date(cache_header_value(merged, "Date")) {
     Some(date) => date
     None => now_ms
@@ -843,6 +853,8 @@ pub fn HttpCache::revalidate(
   entry = CacheEntry::{
     ..entry,
     headers: merged,
+    vary_names,
+    vary_values: cache_vary_values(vary_names, request.headers),
     date_ms,
     response_time_ms: now_ms,
     age_header_ms: cache_header_seconds(

@@ -275,3 +275,14 @@ test "stored cache entries drop hop-by-hop headers" {
   assert_true(hit.response.get_header("Keep-Alive") is None)
   assert_eq(hit.response.get_header("X-Public"), Some("kept"))
 }
+
+///|
+test "requests with bodies are never served from cache" {
+  let cache = HttpCache::new()
+  let request = cache_test_request("http://example.com/get-body").with_body(b"payload")
+  let headers = Headers::new().add("Cache-Control", "max-age=60")
+  let response = cache_test_response(200, headers, "body")
+  let _ = cache.store(request, response, @env.now()).unwrap()
+  assert_eq(cache.length(), 0)
+  assert_true(cache.lookup(request, @env.now()) is CacheLookup::Miss)
+}
