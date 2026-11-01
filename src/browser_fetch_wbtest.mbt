@@ -272,3 +272,18 @@ test "unified client applies the browser response body limit" {
   }
   browser_test_cleanup()
 }
+
+///|
+test "browser fetch keeps the final response URL" {
+  let result = FixedArray::from_array([
+    "",
+    "200",
+    "https://example.com/final",
+    @base64.encode(b"ok"),
+  ])
+  let response = browser_fetch_response(result, 1024).unwrap()
+  assert_eq(
+    response.request_url(),
+    Some(Url::parse("https://example.com/final").unwrap()),
+  )
+}

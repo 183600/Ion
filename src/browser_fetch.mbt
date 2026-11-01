@@ -92,7 +92,7 @@ extern "js" fn browser_fetch(
   #|     const result = [
   #|       xhr.status === 0 ? "browser fetch failed" : "",
   #|       String(xhr.status),
-  #|       xhr.statusText || "",
+  #|       xhr.responseURL || "",
   #|       btoa(binary),
   #|     ];
   #|     const rawHeaders = (xhr.getAllResponseHeaders() || "").trim();
@@ -179,10 +179,17 @@ fn browser_fetch_response(
   }
   let buffered = BufferedStream::new(body)
   let stream : &Stream = buffered
-  Ok(
-    Response::new(status, headers, stream)
-      .with_max_body_bytes(max_body_bytes),
-  )
+  let response = Response::new(status, headers, stream)
+    .with_max_body_bytes(max_body_bytes)
+  // `XMLHttpRequest.responseURL` reports the final URL after redirects. Fall
+  // back to the caller-provided URL when the host does not expose it.
+  if result[2].length() > 0 {
+    match Url::parse(result[2]) {
+      Ok(url) => return Ok(response.with_request_url(url))
+      Err(_) => ()
+    }
+  }
+  Ok(response)
 }
 
 fn browser_fetch_validate_url(url : Url) -> Result[Unit, HttpError] {
@@ -229,7 +236,12 @@ pub impl HttpClient for BrowserFetchClient with fn request(
     body_base64,
   )
   match browser_fetch_response(result, self.max_response_body_bytes) {
-    Ok(response) => Ok(response.with_request_url(request.url))
+    Ok(response) =>
+      if response.request_url() is None {
+        Ok(response.with_request_url(request.url))
+      } else {
+        Ok(response)
+      }
     Err(err) => Err(err)
   }
 }
