@@ -86,6 +86,53 @@ pub impl HttpClient for BrowserFetchClient
 type BufferedStream
 pub impl Stream for BufferedStream
 
+pub struct CacheControl {
+  mut no_store : Bool
+  mut no_cache : Bool
+  mut must_revalidate : Bool
+  mut public_cache : Bool
+  mut private_cache : Bool
+  mut immutable : Bool
+  mut max_age : Int32?
+  mut s_maxage : Int32?
+  mut max_stale : Int32?
+  mut min_fresh : Int32?
+  mut only_if_cached : Bool
+} derive(Eq, @debug.Debug)
+pub fn CacheControl::from_headers(Headers) -> Self
+pub fn CacheControl::new() -> Self
+pub fn CacheControl::parse(String) -> Self
+
+type CacheEntry
+
+pub struct CacheHit {
+  response : Response
+  fresh : Bool
+  etag : String?
+  last_modified : String?
+}
+
+pub enum CacheLookup {
+  Miss
+  Hit(CacheHit)
+}
+
+type CacheState
+
+pub struct CachedClient {
+  client : UnifiedClient
+  cache : HttpCache
+}
+pub fn CachedClient::cache(Self) -> HttpCache
+pub fn CachedClient::close(Self) -> Result[Unit, HttpError]
+pub fn CachedClient::close_all(Self) -> Result[Unit, HttpError]
+pub fn CachedClient::get(Self, String) -> Result[Response, HttpError]
+pub fn CachedClient::inner(Self) -> UnifiedClient
+pub fn CachedClient::new(UnifiedClient) -> Self
+pub fn CachedClient::post(Self, String, Bytes) -> Result[Response, HttpError]
+pub fn CachedClient::with_cache(Self, HttpCache) -> Self
+pub impl HttpClient for CachedClient
+
 type ChunkReadState
 
 type CliRequest
@@ -302,6 +349,18 @@ pub struct HpackDecoder {
 pub fn HpackDecoder::decode(Self, Bytes) -> Result[Array[(String, String)], HttpError]
 pub fn HpackDecoder::new() -> Self
 pub fn HpackDecoder::with_max_size(Int32) -> Self
+
+pub struct HttpCache {
+  state : @ref.Ref[CacheState]
+}
+pub fn HttpCache::clear(Self) -> Unit
+pub fn HttpCache::invalidate(Self, Url) -> Unit
+pub fn HttpCache::length(Self) -> Int32
+pub fn HttpCache::lookup(Self, Request, UInt64) -> CacheLookup
+pub fn HttpCache::new() -> Self
+pub fn HttpCache::revalidate(Self, Request, Response, UInt64) -> Response?
+pub fn HttpCache::store(Self, Request, Response, UInt64) -> Result[Response, HttpError]
+pub fn HttpCache::with_limits(Int32, Int32, Int32) -> Self
 
 pub enum HttpError {
   NetworkError(NetError)
