@@ -1461,6 +1461,10 @@ pub struct Response {
   priv auto_decompress : Bool
   priv early_hints : Array[(Int, Headers)]
   priv trailers : @ref.Ref[Headers]
+  // The URL of the final request after any redirects. Direct codec callers
+  // leave this unset; `UnifiedClient` records the effective target so callers
+  // can resolve relative references and associate caches with the right URI.
+  priv request_url : Url?
 }
 
 pub fn Response::new(status : Int, headers : Headers, body : &Stream) -> Response {
@@ -1473,6 +1477,7 @@ pub fn Response::new(status : Int, headers : Headers, body : &Stream) -> Respons
     auto_decompress: false,
     early_hints: [],
     trailers: @ref.Ref(Headers::new()),
+    request_url: None,
   }
 }
 
@@ -1491,6 +1496,7 @@ pub fn Response::new_with_version(
     auto_decompress: false,
     early_hints: [],
     trailers: @ref.Ref(Headers::new()),
+    request_url: None,
   }
 }
 
@@ -1524,6 +1530,17 @@ pub fn Response::with_auto_decompress(
 /// Whether body decoding is enabled for `read_body` and `copy_body_to`.
 pub fn Response::auto_decompress(self : Response) -> Bool {
   self.auto_decompress
+}
+
+/// The URL of the request that produced this response after following any
+/// redirects. Returns `None` for responses built directly by a codec, where
+/// the caller already knows the target.
+pub fn Response::request_url(self : Response) -> Url? {
+  self.request_url
+}
+
+fn Response::with_request_url(self : Response, url : Url) -> Response {
+  Response::{ ..self, request_url: Some(url) }
 }
 
 /// Informational (1xx) responses received before the final response, in wire

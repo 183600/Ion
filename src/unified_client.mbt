@@ -977,6 +977,7 @@ fn UnifiedClient::do_request_once(
       return Err(normalize_http_error(err))
     }
   }
+  let response = response.with_request_url(request.url)
   let h2_tunnel = h2_tunnel_request &&
     response.status >= 200 && response.status < 300
   if is_http2 && !h2_tunnel && !h2_streaming {
