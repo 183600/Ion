@@ -9,10 +9,19 @@ pub trait Dialer {
   // Optional: Apply the connector's current dial timeout. Dialers that do not
   // support it keep their construction-time timeout.
   fn set_timeout(Self, Int) -> Unit = _
+
+  // Optional: whether this dialer can establish real connections. Targets
+  // without a socket transport use this to select a host-provided fallback
+  // instead of failing every request.
+  fn is_available(Self) -> Bool = _
 }
 
 impl Dialer with fn set_timeout(_self, _timeout_ms) {
   ()
+}
+
+impl Dialer with fn is_available(_self) {
+  true
 }
 
 fn valid_tcp_host(host : String) -> Bool {
@@ -153,6 +162,14 @@ impl Dialer for UnavailableTcpDialer with fn set_timeout(
   timeout_ms : Int,
 ) {
   self.timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
+}
+
+#cfg(not(target="native"))
+impl Dialer for UnavailableTcpDialer with fn is_available(
+  self : UnavailableTcpDialer,
+) -> Bool {
+  let _ = self
+  false
 }
 
 #cfg(not(target="native"))

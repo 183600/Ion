@@ -798,7 +798,47 @@ fn UnifiedClient::do_request(self : UnifiedClient, req : Request) -> Result[Resp
   }
 }
 
+/// On the JavaScript target there is no synchronous socket transport. When the
+/// connector has no usable dialer (the default), the unified client delegates
+/// to the browser implementation. The browser owns TLS, redirects, cookies,
+/// and decompression; the client still applies its default headers,
+/// User-Agent, and response body limit. An explicitly supplied transport, such
+/// as the in-repo mock dialer, keeps using the normal socket path.
+#cfg(target="js")
 fn UnifiedClient::do_request_once(
+  self : UnifiedClient,
+  req : Request,
+  allow_retry : Bool,
+  applied_defaults : Array[String],
+) -> Result[Response, HttpError] {
+  if self.connector.dialer.is_available() {
+    return self.do_request_once_transport(req, allow_retry, applied_defaults)
+  }
+  let _ = allow_retry
+  let _ = applied_defaults
+  let mut request = req
+  if request.get_header("User-Agent") is None {
+    request = request.with_header("User-Agent", self.options.user_agent)
+  }
+  let browser = BrowserFetchClient::new()
+    .with_max_response_body_bytes(self.options.max_response_body_bytes)
+  match browser.request(request) {
+    Ok(response) => Ok(response.with_request_url(request.url))
+    Err(err) => Err(err)
+  }
+}
+
+#cfg(not(target="js"))
+fn UnifiedClient::do_request_once(
+  self : UnifiedClient,
+  req : Request,
+  allow_retry : Bool,
+  applied_defaults : Array[String],
+) -> Result[Response, HttpError] {
+  self.do_request_once_transport(req, allow_retry, applied_defaults)
+}
+
+fn UnifiedClient::do_request_once_transport(
   self : UnifiedClient,
   req : Request,
   allow_retry : Bool,

@@ -233,3 +233,41 @@ test "one-shot helpers use the browser transport on JavaScript" {
   assert_eq(info[2], "false")
   browser_test_cleanup()
 }
+
+#cfg(target="js")
+test "unified client uses the browser transport on JavaScript" {
+  browser_test_install_mock(false)
+  let client = UnifiedClient::new()
+    .with_default_header("X-Default", "yes")
+    .with_max_response_body_bytes(1024)
+  let response = client.get("http://example.com/client").unwrap()
+  assert_eq(response.status, 201)
+  assert_eq(response.get_header("X-Test"), Some("one"))
+  assert_eq(response.read_body().unwrap(), b"hello")
+  let info = browser_test_last_request()
+  assert_eq(info[0], "GET")
+  assert_eq(info[1], "http://example.com/client")
+  assert_eq(info[2], "false")
+  let mut found_default = false
+  let mut index = 4
+  while index + 1 < info.length() {
+    if info[index] == "X-Default" && info[index + 1] == "yes" {
+      found_default = true
+    }
+    index = index + 2
+  }
+  assert_true(found_default)
+  browser_test_cleanup()
+}
+
+#cfg(target="js")
+test "unified client applies the browser response body limit" {
+  browser_test_install_mock(false)
+  let client = UnifiedClient::new().with_max_response_body_bytes(4)
+  match client.get("http://example.com/too-large") {
+    Err(NetworkError(ReadError(message))) =>
+      assert_eq(message, "response body too large")
+    _ => fail("an oversized unified browser response was accepted")
+  }
+  browser_test_cleanup()
+}

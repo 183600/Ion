@@ -746,6 +746,7 @@ pub trait Dialer {
   fn dial_tcp(Self, String, Int32) -> Result[&Stream, NetError]
   fn resolve(Self, String) -> Result[@list.List[String], NetError]
   fn set_timeout(Self, Int32) -> Unit
+  fn is_available(Self) -> Bool
 }
 
 pub trait HttpClient {
