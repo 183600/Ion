@@ -909,6 +909,99 @@ pub fn CachedClient::post(
   self.request(request)
 }
 
+pub fn CachedClient::post_form(
+  self : CachedClient,
+  url : String,
+  fields : Array[(String, String)],
+) -> Result[Response, HttpError] {
+  let request = match Request::from_url(POST, url) {
+    Ok(request) => request.with_form(fields)
+    Err(err) => return Err(err)
+  }
+  self.request(request)
+}
+
+pub fn CachedClient::post_multipart(
+  self : CachedClient,
+  url : String,
+  fields : Array[(String, String)],
+  files : Array[MultipartFile],
+) -> Result[Response, HttpError] {
+  let request = match Request::from_url(POST, url) {
+    Ok(request) => request.with_multipart(fields, files)
+    Err(err) => return Err(err)
+  }
+  self.request(request)
+}
+
+pub fn CachedClient::put(
+  self : CachedClient,
+  url : String,
+  body : Bytes,
+) -> Result[Response, HttpError] {
+  let request = match Request::from_url(PUT, url) {
+    Ok(request) => request.with_body(body)
+    Err(err) => return Err(err)
+  }
+  self.request(request)
+}
+
+pub fn CachedClient::delete(
+  self : CachedClient,
+  url : String,
+) -> Result[Response, HttpError] {
+  let request = match Request::from_url(DELETE, url) {
+    Ok(request) => request
+    Err(err) => return Err(err)
+  }
+  self.request(request)
+}
+
+pub fn CachedClient::head(
+  self : CachedClient,
+  url : String,
+) -> Result[Response, HttpError] {
+  let request = match Request::from_url(HEAD, url) {
+    Ok(request) => request
+    Err(err) => return Err(err)
+  }
+  self.request(request)
+}
+
+pub fn CachedClient::options(
+  self : CachedClient,
+  url : String,
+) -> Result[Response, HttpError] {
+  let request = match Request::from_url(OPTIONS, url) {
+    Ok(request) => request
+    Err(err) => return Err(err)
+  }
+  self.request(request)
+}
+
+pub fn CachedClient::patch(
+  self : CachedClient,
+  url : String,
+  body : Bytes,
+) -> Result[Response, HttpError] {
+  let request = match Request::from_url(PATCH, url) {
+    Ok(request) => request.with_body(body)
+    Err(err) => return Err(err)
+  }
+  self.request(request)
+}
+
+pub fn CachedClient::trace(
+  self : CachedClient,
+  url : String,
+) -> Result[Response, HttpError] {
+  let request = match Request::from_url(TRACE, url) {
+    Ok(request) => request
+    Err(err) => return Err(err)
+  }
+  self.request(request)
+}
+
 pub fn CachedClient::close(self : CachedClient) -> Result[Unit, HttpError] {
   self.client.close()
 }

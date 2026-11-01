@@ -126,10 +126,18 @@ pub struct CachedClient {
 pub fn CachedClient::cache(Self) -> HttpCache
 pub fn CachedClient::close(Self) -> Result[Unit, HttpError]
 pub fn CachedClient::close_all(Self) -> Result[Unit, HttpError]
+pub fn CachedClient::delete(Self, String) -> Result[Response, HttpError]
 pub fn CachedClient::get(Self, String) -> Result[Response, HttpError]
+pub fn CachedClient::head(Self, String) -> Result[Response, HttpError]
 pub fn CachedClient::inner(Self) -> UnifiedClient
 pub fn CachedClient::new(UnifiedClient) -> Self
+pub fn CachedClient::options(Self, String) -> Result[Response, HttpError]
+pub fn CachedClient::patch(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn CachedClient::post(Self, String, Bytes) -> Result[Response, HttpError]
+pub fn CachedClient::post_form(Self, String, Array[(String, String)]) -> Result[Response, HttpError]
+pub fn CachedClient::post_multipart(Self, String, Array[(String, String)], Array[MultipartFile]) -> Result[Response, HttpError]
+pub fn CachedClient::put(Self, String, Bytes) -> Result[Response, HttpError]
+pub fn CachedClient::trace(Self, String) -> Result[Response, HttpError]
 pub fn CachedClient::with_cache(Self, HttpCache) -> Self
 pub impl HttpClient for CachedClient
 
