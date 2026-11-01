@@ -198,6 +198,7 @@ test "browser fetch forwards a request through XMLHttpRequest" {
   assert_eq(response.status, 201)
   assert_eq(response.get_header("Content-Type"), Some("text/plain"))
   assert_eq(response.get_header("X-Test"), Some("one"))
+  assert_eq(response.request_url(), Some(Url::parse("http://example.com/upload").unwrap()))
   assert_eq(response.read_body().unwrap(), b"hello")
   let info = browser_test_last_request()
   assert_eq(info[0], "POST")

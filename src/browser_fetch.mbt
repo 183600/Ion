@@ -228,5 +228,8 @@ pub impl HttpClient for BrowserFetchClient with fn request(
     request.body is Some(_),
     body_base64,
   )
-  browser_fetch_response(result, self.max_response_body_bytes)
+  match browser_fetch_response(result, self.max_response_body_bytes) {
+    Ok(response) => Ok(response.with_request_url(request.url))
+    Err(err) => Err(err)
+  }
 }
