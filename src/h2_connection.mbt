@@ -231,10 +231,10 @@ fn h2_error_is_stream_reset(
 ) -> Bool {
   match err {
     ProtocolError(message) =>
-      message == "HTTP/2 stream WINDOW_UPDATE increment is zero" ||
+      message.contains("HTTP/2 stream WINDOW_UPDATE increment is zero") ||
       // A reset after the response head is stream-scoped: the connection can
       // still carry later requests, even though this exchange must fail.
-      (message == "HTTP/2 stream reset by server" && state.status_seen)
+      message.contains("HTTP/2 stream reset by server") && state.status_seen
     _ => false
   }
 }
