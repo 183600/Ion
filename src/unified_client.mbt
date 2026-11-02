@@ -1352,7 +1352,7 @@ pub impl Stream for BufferedStream with fn local_addr(self : BufferedStream) -> 
   Err(NetError::IoError("buffered response has no local address"))
 }
 
-fn buffer_one_shot_response(
+pub fn buffer_one_shot_response(
   client : UnifiedClient,
   result : Result[Response, HttpError],
   connect? : Bool,

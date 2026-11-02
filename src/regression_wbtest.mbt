@@ -2049,9 +2049,7 @@ test "Request with_method changes only the verb" {
   assert_eq(request.get_header("X-Test").unwrap(), "yes")
   assert_eq(request.body.unwrap(), b"body")
 }
-struct NoProgressStream {
-  mut is_open : Bool
-}
+struct NoProgressStream{}
 
 pub impl Stream for NoProgressStream with fn read(_ : NoProgressStream, buf : Buffer) -> Result[Int, NetError] {
   let _ = buf
@@ -2066,8 +2064,7 @@ pub impl Stream for NoProgressStream with fn flush(_ : NoProgressStream) -> Resu
   Ok(())
 }
 
-pub impl Stream for NoProgressStream with fn close(self : NoProgressStream) -> Result[Unit, NetError] {
-  self.is_open = false
+pub impl Stream for NoProgressStream with fn close(_ : NoProgressStream) -> Result[Unit, NetError] {
   Ok(())
 }
 
@@ -2130,14 +2127,14 @@ pub impl Stream for ReadErrorStream with fn local_addr(self : ReadErrorStream) -
 
 ///|
 test "streams reporting progress without data are rejected" {
-  let stream = NoProgressStream::{ is_open: true }
+  let stream = NoProgressStream::{}
   let codec = H1Codec::new(stream)
   assert_true(codec.decode_response() is Err(NetworkError(ReadError(_))))
 }
 
 ///|
 test "proxy CONNECT rejects streams reporting progress without data" {
-  let stream = NoProgressStream::{ is_open: true }
+  let stream = NoProgressStream::{}
   assert_true(read_connect_response(stream) is Err(NetworkError(ReadError(_))))
 }
 ///|
@@ -2181,7 +2178,7 @@ test "a non-final chunked transfer coding is close-delimited" {
 }
 ///|
 test "reading a body rejects streams that make no progress" {
-  let response = Response::new(200, Headers::new(), NoProgressStream::{ is_open: true })
+  let response = Response::new(200, Headers::new(), NoProgressStream::{})
   assert_true(response.read_body() is Err(NetworkError(ReadError(_))))
 }
 ///|
@@ -2201,7 +2198,7 @@ test "exceeding an explicit body limit closes the response stream" {
   assert_true(response.read_body_with_limit(2) is Err(NetworkError(ReadError(_))))
   assert_false(stream.is_open)
 
-  let stalled = Response::new(200, Headers::new(), NoProgressStream::{ is_open: true })
+  let stalled = Response::new(200, Headers::new(), NoProgressStream::{})
   assert_true(stalled.read_body_with_limit(4) is Err(NetworkError(ReadError(_))))
 }
 ///|
