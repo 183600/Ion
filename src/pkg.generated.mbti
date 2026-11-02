@@ -9,6 +9,8 @@ import {
 }
 
 // Values
+pub fn buffer_one_shot_response(UnifiedClient, Result[Response, HttpError], connect? : Bool, upgrade? : Bool) -> Result[Response, HttpError]
+
 pub fn decode_content_encoding(String, Bytes, Int32) -> Result[Bytes, HttpError]
 
 pub fn default_browser_client() -> BrowserFetchClient
