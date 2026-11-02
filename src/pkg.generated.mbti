@@ -4,11 +4,14 @@ package "feather"
 import {
   "moonbitlang/core/buffer",
   "moonbitlang/core/debug",
+  "moonbitlang/core/json",
   "moonbitlang/core/list",
   "moonbitlang/core/ref",
 }
 
 // Values
+pub const JSON_CONTENT_TYPE : String = "application/json"
+
 pub fn buffer_one_shot_response(UnifiedClient, Result[Response, HttpError], connect? : Bool, upgrade? : Bool) -> Result[Response, HttpError]
 
 pub fn decode_content_encoding(String, Bytes, Int32) -> Result[Bytes, HttpError]
@@ -49,6 +52,8 @@ pub fn inflate_deflate(Bytes, Int32) -> Result[Bytes, HttpError]
 
 pub fn options(String) -> Result[Response, HttpError]
 
+pub fn parse_json(String) -> Result[Json, HttpError]
+
 pub fn patch(String, Bytes) -> Result[Response, HttpError]
 
 pub fn post(String, Bytes) -> Result[Response, HttpError]
@@ -60,6 +65,8 @@ pub fn post_multipart(String, Array[(String, String)], Array[MultipartFile]) -> 
 pub fn put(String, Bytes) -> Result[Response, HttpError]
 
 pub fn request(Request) -> Result[Response, HttpError]
+
+pub fn stringify_json(Json) -> String
 
 pub fn trace(String) -> Result[Response, HttpError]
 
@@ -483,6 +490,9 @@ pub fn Request::with_body(Self, Bytes) -> Self
 pub fn Request::with_expect_continue(Self) -> Self
 pub fn Request::with_form(Self, Array[(String, String)]) -> Self
 pub fn Request::with_header(Self, String, String) -> Self
+pub fn Request::with_json(Self, Json) -> Self
+pub fn Request::with_json_text(Self, String) -> Self
+pub fn[T : ToJson] Request::with_json_value(Self, T) -> Self
 pub fn Request::with_method(Self, HttpMethod) -> Self
 pub fn Request::with_multipart(Self, Array[(String, String)], Array[MultipartFile]) -> Self
 pub fn Request::with_timeout(Self, Int32) -> Self
@@ -513,6 +523,9 @@ pub fn Response::is_client_error(Self) -> Bool
 pub fn Response::is_redirection(Self) -> Bool
 pub fn Response::is_server_error(Self) -> Bool
 pub fn Response::is_success(Self) -> Bool
+pub fn Response::json(Self) -> Result[Json, HttpError]
+pub fn[T : @json.FromJson] Response::json_as(Self) -> Result[T, HttpError]
+pub fn Response::json_with_limit(Self, Int32) -> Result[Json, HttpError]
 pub fn Response::new(Int32, Headers, &Stream) -> Self
 pub fn Response::new_with_version(String, Int32, Headers, &Stream) -> Self
 pub fn Response::read_body(Self) -> Result[Bytes, HttpError]
@@ -633,6 +646,8 @@ pub fn UnifiedClient::options(Self, String) -> Result[Response, HttpError]
 pub fn UnifiedClient::patch(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::post(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::post_form(Self, String, Array[(String, String)]) -> Result[Response, HttpError]
+pub fn UnifiedClient::post_json(Self, String, Json) -> Result[Response, HttpError]
+pub fn UnifiedClient::post_json_text(Self, String, String) -> Result[Response, HttpError]
 pub fn UnifiedClient::post_multipart(Self, String, Array[(String, String)], Array[MultipartFile]) -> Result[Response, HttpError]
 pub fn UnifiedClient::put(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::trace(Self, String) -> Result[Response, HttpError]
