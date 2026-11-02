@@ -84,7 +84,7 @@ pub impl Stream for RegressionMockStream with fn peer_addr(self : RegressionMock
   Ok("mock:0")
 }
 
-pub impl Stream for RegressionMockStream with fn local_addr(self : RegressionMockStream) -> Result[String, NetError] {
+pub impl Stream for RegressionMockStream with fn local_addr(_ : RegressionMockStream) -> Result[String, NetError] {
   Ok("mock:0")
 }
 
@@ -2053,18 +2053,16 @@ struct NoProgressStream {
   mut is_open : Bool
 }
 
-pub impl Stream for NoProgressStream with fn read(self : NoProgressStream, buf : Buffer) -> Result[Int, NetError] {
-  let _ = self
+pub impl Stream for NoProgressStream with fn read(_ : NoProgressStream, buf : Buffer) -> Result[Int, NetError] {
   let _ = buf
   Ok(1)
 }
 
-pub impl Stream for NoProgressStream with fn write(self : NoProgressStream, buf : Buffer) -> Result[Int, NetError] {
+pub impl Stream for NoProgressStream with fn write(_ : NoProgressStream, buf : Buffer) -> Result[Int, NetError] {
   Ok(buf.length())
 }
 
-pub impl Stream for NoProgressStream with fn flush(self : NoProgressStream) -> Result[Unit, NetError] {
-  let _ = self
+pub impl Stream for NoProgressStream with fn flush(_ : NoProgressStream) -> Result[Unit, NetError] {
   Ok(())
 }
 

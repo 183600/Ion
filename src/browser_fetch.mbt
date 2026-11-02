@@ -27,27 +27,26 @@ pub fn BrowserFetchClient::new() -> BrowserFetchClient {
 
 ///|
 pub fn BrowserFetchClient::with_max_response_body_bytes(
-  self : BrowserFetchClient,
+  _ : BrowserFetchClient,
   max_bytes : Int,
 ) -> BrowserFetchClient {
   BrowserFetchClient::{
-    ..self,
     max_response_body_bytes: if max_bytes < 0 { 0 } else { max_bytes },
   }
 }
 
 #cfg(target="js")
 extern "js" fn browser_fetch(
-  method : String,
+  http_method : String,
   url : String,
   headers : FixedArray[String],
   has_body : Bool,
   body_base64 : String,
 ) -> FixedArray[String] =
-  #| (method, url, headers, hasBody, bodyBase64) => {
+  #| (http_method, url, headers, hasBody, bodyBase64) => {
   #|   try {
   #|     const xhr = new XMLHttpRequest();
-  #|     xhr.open(method, url, false);
+  #|     xhr.open(http_method, url, false);
   #|     let binaryMode = false;
   #|     try {
   #|       xhr.responseType = "arraybuffer";
@@ -113,13 +112,13 @@ extern "js" fn browser_fetch(
 
 #cfg(not(target="js"))
 fn browser_fetch(
-  method : String,
+  http_method : String,
   url : String,
   headers : FixedArray[String],
   has_body : Bool,
   body_base64 : String,
 ) -> FixedArray[String] {
-  let _ = method
+  let _ = http_method
   let _ = url
   let _ = headers
   let _ = has_body

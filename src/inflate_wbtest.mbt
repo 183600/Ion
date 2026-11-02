@@ -866,7 +866,7 @@ pub impl Stream for InflateMockStream with fn read(
 }
 
 pub impl Stream for InflateMockStream with fn write(
-  self : InflateMockStream,
+  _ : InflateMockStream,
   buf : Buffer,
 ) -> Result[Int, NetError] {
   let _ = buf
@@ -874,14 +874,13 @@ pub impl Stream for InflateMockStream with fn write(
 }
 
 pub impl Stream for InflateMockStream with fn flush(
-  self : InflateMockStream,
+  _ : InflateMockStream,
 ) -> Result[Unit, NetError] {
-  let _ = self
   Ok(())
 }
 
 pub impl Stream for InflateMockStream with fn close(
-  self : InflateMockStream,
+  _ : InflateMockStream,
 ) -> Result[Unit, NetError] {
   Ok(())
 }

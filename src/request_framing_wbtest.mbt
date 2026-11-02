@@ -1,10 +1,10 @@
 ///|
 test "body-less methods that define a body send Content-Length zero" {
   let url = Url::parse("http://example.com/submit").unwrap()
-  for method in [POST, PUT, PATCH] {
+  for http_method in [POST, PUT, PATCH] {
     let stream = regression_mock_stream("", 0, 0)
     let codec = H1Codec::new(stream)
-    assert_true(codec.encode_request(Request::new(method, url)) is Ok(_))
+    assert_true(codec.encode_request(Request::new(http_method, url)) is Ok(_))
     let wire = @utf8.decode(stream.output.to_bytes()[:])
     assert_true(wire.contains("Content-Length: 0\r\n"))
   }
@@ -13,10 +13,10 @@ test "body-less methods that define a body send Content-Length zero" {
 ///|
 test "body-less methods without a body semantic omit Content-Length" {
   let url = Url::parse("http://example.com/thing").unwrap()
-  for method in [GET, DELETE, HEAD, OPTIONS] {
+  for http_method in [GET, DELETE, HEAD, OPTIONS] {
     let stream = regression_mock_stream("", 0, 0)
     let codec = H1Codec::new(stream)
-    assert_true(codec.encode_request(Request::new(method, url)) is Ok(_))
+    assert_true(codec.encode_request(Request::new(http_method, url)) is Ok(_))
     let wire = @utf8.decode(stream.output.to_bytes()[:])
     assert_true(!wire.contains("Content-Length"))
   }
