@@ -558,7 +558,7 @@ pub fn HttpCache::lookup(
   request : Request,
   now_ms : UInt64,
 ) -> CacheLookup {
-  if canonical_http_method(request.method) != GET || request.body is Some(_) {
+  if canonical_http_method(request.verb) != GET || request.body is Some(_) {
     return CacheLookup::Miss
   }
   if request.get_header("Authorization") is Some(_) {
@@ -682,7 +682,7 @@ pub fn HttpCache::store(
   response : Response,
   now_ms : UInt64,
 ) -> Result[Response, HttpError] {
-  if canonical_http_method(request.method) != GET {
+  if canonical_http_method(request.verb) != GET {
     return Ok(response)
   }
   let state = self.state.val
@@ -1045,7 +1045,7 @@ fn CachedClient::request_cached(
   self : CachedClient,
   request : Request,
 ) -> Result[Response, HttpError] {
-  if canonical_http_method(request.method) != GET {
+  if canonical_http_method(request.verb) != GET {
     let response = match self.client.request(request) {
       Ok(response) => response
       Err(err) => return Err(err)

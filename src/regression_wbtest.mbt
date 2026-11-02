@@ -2045,7 +2045,7 @@ test "Request with_method changes only the verb" {
     .with_header("X-Test", "yes")
     .with_method(POST)
     .with_body(b"body")
-  assert_eq(request.method, POST)
+  assert_eq(request.verb, POST)
   assert_eq(request.get_header("X-Test").unwrap(), "yes")
   assert_eq(request.body.unwrap(), b"body")
 }

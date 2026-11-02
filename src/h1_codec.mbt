@@ -609,7 +609,7 @@ pub fn H1Codec::encode_request(
   self.last_upgrade_protocols = []
   self.close_after_request = false
   self.deferred_pending = false
-  let resolved_method = canonical_http_method(req.method)
+  let resolved_method = canonical_http_method(req.verb)
   if !valid_url_path_chars(req.url.path) ||
     !valid_url_query_chars(req.url.query) {
     return Err(InvalidUrl("Invalid request target"))
@@ -2294,7 +2294,7 @@ pub fn H1Codec::request(
     Ok(_) => ()
     Err(err) => return Err(err)
   }
-  self.decode_response(head=canonical_http_method(request.method) == HEAD)
+  self.decode_response(head=canonical_http_method(request.verb) == HEAD)
 }
 
 /// Run HTTP/1.1 exchanges on an already established stream. The codec keeps
@@ -2309,7 +2309,7 @@ pub impl HttpClient for H1Codec with fn request(
     Ok(_) => ()
     Err(err) => return Err(err)
   }
-  self.decode_response(head=canonical_http_method(request.method) == HEAD)
+  self.decode_response(head=canonical_http_method(request.verb) == HEAD)
 }
 
 /// Encode one HTTP/1.1 request and decode its response on an already

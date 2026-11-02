@@ -766,7 +766,7 @@ fn h2_request_can_stream(request : Request) -> Bool {
     None => 0
   }
   body_length == 0 && request.trailers.length() == 0 &&
-  canonical_http_method(request.method) != CONNECT &&
+  canonical_http_method(request.verb) != CONNECT &&
   !request_requests_upgrade(request.headers)
 }
 
@@ -776,7 +776,7 @@ fn UnifiedClient::do_request(self : UnifiedClient, req : Request) -> Result[Resp
     req,
     self.options.default_headers,
   )
-  let verb = canonical_http_method(request.method)
+  let verb = canonical_http_method(request.verb)
   let response = match self.do_request_once(request, true, applied_defaults) {
     Ok(response) => response
     Err(err) => return Err(err)
@@ -927,7 +927,7 @@ fn UnifiedClient::do_request_once_transport(
   // protocol upgrade) becomes a streaming tunnel. Keep the lease checked out
   // until the tunnel body is exhausted or closed.
   let h2_tunnel_request = is_http2 &&
-    (canonical_http_method(request.method) == CONNECT ||
+    (canonical_http_method(request.verb) == CONNECT ||
       request_requests_upgrade(request.headers))
   let h2_streaming = is_http2 && !h2_tunnel_request &&
     self.options.http2_streaming && h2_request_can_stream(request)
@@ -987,7 +987,7 @@ fn UnifiedClient::do_request_once_transport(
     match codec.encode_request(request, absolute_form~) {
       Ok(_) =>
         codec.decode_response(
-          head=canonical_http_method(request.method) == HEAD,
+          head=canonical_http_method(request.verb) == HEAD,
         )
       // Leave lease handling to the common error path below. A write can fail
       // on a stale keep-alive connection before the peer processes anything,
@@ -1011,7 +1011,7 @@ fn UnifiedClient::do_request_once_transport(
       // method. Reusing a stale connection is only safe for idempotent
       // requests.
       if allow_retry &&
-        (unprocessed || (lease.reused && request_can_be_retried(request.method))) {
+        (unprocessed || (lease.reused && request_can_be_retried(request.verb))) {
         return self.do_request_once(req, false, applied_defaults)
       }
       return Err(normalize_http_error(err))
@@ -1034,7 +1034,7 @@ fn UnifiedClient::do_request_once_transport(
   // must be returned to the caller rather than turning the tunnel into a GET
   // or silently retargeting it to another authority.
   if self.options.follow_redirects && is_redirect(response.status) &&
-    canonical_http_method(request.method) != CONNECT {
+    canonical_http_method(request.verb) != CONNECT {
     let location = response.get_header("Location")
 
     if location is None {
@@ -1054,9 +1054,9 @@ fn UnifiedClient::do_request_once_transport(
     // new request. Returning the redirect response avoids an infinite loop,
     // but only when following it would not change the method or body: a 303
     // or a POST 301/302 pointing at the same path must still issue its GET.
-    let (next_method, keep_body) = redirect_method(response.status, request.method)
+    let (next_method, keep_body) = redirect_method(response.status, request.verb)
     if same_request_target(parsed_url, request.url) &&
-      next_method == canonical_http_method(request.method) &&
+      next_method == canonical_http_method(request.verb) &&
       (keep_body || request.body is None) {
       return Ok(response)
     }
@@ -1105,7 +1105,7 @@ fn UnifiedClient::do_request_once_transport(
 
     // Create new request for redirect
     let redirect_req = Request::{
-      method: next_method,
+      verb: next_method,
       url: parsed_url,
       headers: next_headers,
       body: if keep_body { request.body } else { None },
@@ -1448,7 +1448,7 @@ fn one_shot_custom_request(
       return Err(err)
     }
   }
-  let connect = canonical_http_method(request.method) == CONNECT
+  let connect = canonical_http_method(request.verb) == CONNECT
   let upgrade = request_requests_upgrade(request.headers)
   buffer_one_shot_response(client, client.request(request), connect~, upgrade~)
 }

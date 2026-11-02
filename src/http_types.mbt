@@ -914,7 +914,7 @@ pub fn Url::to_string(self : Url) -> String {
 
 /// HTTP Request
 pub struct Request {
-  method : HttpMethod
+  verb : HttpMethod
   url : Url
   headers : Headers
   body : Option[Bytes]
@@ -926,9 +926,9 @@ pub struct Request {
   timeout_explicit : Bool
 } derive(Eq, Debug)
 
-pub fn Request::new(method : HttpMethod, url : Url) -> Request {
+pub fn Request::new(verb : HttpMethod, url : Url) -> Request {
   Request::{
-    method,
+    verb,
     url,
     headers: Headers::new(),
     body: None,
@@ -1027,7 +1027,7 @@ pub fn Request::from_url(
 }
 
 pub fn Request::with_method(self : Request, verb : HttpMethod) -> Request {
-  Request::{ ..self, method: verb }
+  Request::{ ..self, verb: verb }
 }
 
 /// Replace the request target while keeping method, headers, and body.

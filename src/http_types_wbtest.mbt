@@ -67,7 +67,7 @@ test "Request creation" {
   let url = Url::new("https", "example.com", 443)
   let request = Request::new(GET, url)
   
-  assert_eq(request.method, GET)
+  assert_eq(request.verb, GET)
   assert_eq(request.url.scheme, "https")
   assert_eq(request.timeout_ms, 30000)
   assert_false(request.timeout_explicit)
@@ -82,7 +82,7 @@ test "Request with header and body" {
     .with_body(body)
     .with_timeout(5000)
   
-  assert_eq(request.method, POST)
+  assert_eq(request.verb, POST)
   assert_eq(request.timeout_ms, 5000)
   assert_true(request.timeout_explicit)
   assert_true(request.body.is_some())

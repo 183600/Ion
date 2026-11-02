@@ -462,7 +462,7 @@ pub fn Proxy::parse(String) -> Result[Self, HttpError]
 pub fn Proxy::socks_credentials(Self) -> (Bytes, Bytes)?
 
 pub struct Request {
-  method : HttpMethod
+  verb : HttpMethod
   url : Url
   headers : Headers
   body : Bytes?

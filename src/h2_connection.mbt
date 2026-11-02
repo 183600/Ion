@@ -959,7 +959,7 @@ fn h2_request_headers_with_protocol(
     h2_upgrade_protocol(request) is None {
     return Err(InvalidHeader("Upgrade"))
   }
-  let resolved_method = canonical_http_method(request.method)
+  let resolved_method = canonical_http_method(request.verb)
   let extended_connect = extended_protocol is Some(_)
   if extended_connect && resolved_method != GET && resolved_method != CONNECT {
     return Err(ProtocolError(
@@ -2494,7 +2494,7 @@ fn H2ClientConnection::request_streaming_with_callback(
   if !self.is_open() {
     return Err(ConnectionClosed)
   }
-  let resolved_method = canonical_http_method(request.method)
+  let resolved_method = canonical_http_method(request.verb)
   let body_length = match request.body {
     Some(body) => body.length()
     None => 0
@@ -2721,7 +2721,7 @@ fn H2ClientConnection::request_with_limit_and_callback(
     }
     None => None
   }
-  let resolved_method = canonical_http_method(request.method)
+  let resolved_method = canonical_http_method(request.verb)
   let tunnel = resolved_method == CONNECT || extended_protocol is Some(_)
   let headers = match h2_request_headers_with_protocol(request, extended_protocol) {
     Ok(headers) => headers

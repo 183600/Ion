@@ -5,7 +5,7 @@ test "Request::with_url replaces only the target" {
     .with_header("X-Test", "value")
     .with_body(b"body")
     .with_url(Url::parse("https://other.example/next?q=1").unwrap())
-  assert_eq(moved.method, POST)
+  assert_eq(moved.verb, POST)
   assert_eq(moved.url.to_string(), "https://other.example/next?q=1")
   assert_eq(moved.get_header("X-Test"), Some("value"))
   assert_eq(moved.body, Some(b"body"))

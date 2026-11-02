@@ -217,7 +217,7 @@ pub impl HttpClient for BrowserFetchClient with fn request(
     Ok(_) => ()
     Err(err) => return Err(err)
   }
-  if canonical_http_method(request.method) == CONNECT {
+  if canonical_http_method(request.verb) == CONNECT {
     return Err(ProtocolError("browser fetch cannot perform CONNECT"))
   }
   if request_requests_upgrade(request.headers) {
@@ -228,7 +228,7 @@ pub impl HttpClient for BrowserFetchClient with fn request(
     None => ""
   }
   let result = browser_fetch(
-    canonical_http_method(request.method).to_string(),
+    canonical_http_method(request.verb).to_string(),
     request.url.to_string(),
     browser_fetch_headers(request.headers),
     request.body is Some(_),
