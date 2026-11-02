@@ -344,6 +344,7 @@ fn cookie_path_matches(cookie_path : String, request_path : String) -> Bool {
   if cookie_path.has_suffix("/") {
     return true
   }
+  cookie_path.length() < request_path.length() &&
   request_path.get_char(cookie_path.length()) == Some('/')
 }
 
