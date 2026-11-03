@@ -785,7 +785,7 @@ pub fn gunzip(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
 /// Whether `decode_content_encoding` understands this coding (ignoring case
 /// and surrounding whitespace). Used to validate declared codings even when
 /// the body itself is empty.
-fn content_coding_supported(encoding : String) -> Bool {
+pub fn content_coding_supported(encoding : String) -> Bool {
   match encoding.trim().to_lower() {
     "" | "identity" | "gzip" | "x-gzip" | "deflate" | "x-deflate" => true
     _ => false
