@@ -33,35 +33,6 @@ extern "C" fn feather_read_file(path : Bytes, output : Bytes, capacity : Int) ->
 
 const NATIVE_TCP_READ_CHUNK : Int = 8192
 
-fn native_tcp_error(code : Int, operation : String) -> NetError {
-  if code < 0 {
-    return NetError::IoError(operation + " failed (code " + code.to_string() + ")")
-  }
-  // errno numbers differ across POSIX platforms, so match the values used by
-  // both Linux and macOS/BSD. The "other" platform's number is a different,
-  // non-socket errno there and is never produced by the socket paths in
-  // tcp_native_stub.c.
-  match code {
-    32 | 54 | 104 => Closed // EPIPE; macOS/Linux ECONNRESET
-    11 | 110 | 115 => Timeout // Linux: EAGAIN/ETIMEDOUT/EINPROGRESS
-    35 | 36 | 60 => Timeout // macOS/BSD: EAGAIN/EINPROGRESS/ETIMEDOUT
-    101 | 111 | 113 => ConnectionFailed(operation + " failed (errno " + code.to_string() + ")") // Linux
-    51 | 61 | 65 => ConnectionFailed(operation + " failed (errno " + code.to_string() + ")") // macOS/BSD
-    22 => InvalidAddress(operation + " failed: invalid address")
-    _ => IoError(operation + " failed (errno " + code.to_string() + ")")
-  }
-}
-
-fn native_tcp_address_error(code : Int) -> NetError {
-  if code >= 10000 {
-    return InvalidAddress("DNS resolution failed (code " + (code - 10000).to_string() + ")")
-  }
-  match code {
-    32 | 54 | 104 => ConnectionFailed("TCP connection failed (errno " + code.to_string() + ")")
-    _ => native_tcp_error(code, "TCP connection")
-  }
-}
-
 /// A TCP stream backed by a native operating-system socket.
 pub struct NativeTcpStream {
   mut fd : Int

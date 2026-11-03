@@ -283,6 +283,12 @@ pub fn CookieJar::store(Self, Url, String) -> Unit
 pub fn CookieJar::store_at(Self, Url, String, UInt64) -> Unit
 pub fn CookieJar::store_from_headers(Self, Url, Headers) -> Unit
 
+pub struct DatagramPacket {
+  length : Int32
+  address : String
+  port : Int32
+} derive(Eq, @debug.Debug)
+
 type DeflateBitWriter
 
 pub struct H1Codec {
@@ -759,6 +765,15 @@ pub enum WebSocketRole {
 pub using @list {type List}
 
 // Traits
+pub trait Datagram {
+  fn send_to(Self, Bytes, String, Int32) -> Result[Unit, NetError]
+  fn receive_from(Self, @buffer.Buffer) -> Result[DatagramPacket, NetError]
+  fn close(Self) -> Result[Unit, NetError]
+  fn connect(Self, String, Int32) -> Result[Unit, NetError]
+  fn set_timeout(Self, Int32) -> Result[Unit, NetError]
+  fn local_port(Self) -> Int32
+}
+
 pub trait Dialer {
   fn dial_tcp(Self, String, Int32) -> Result[&Stream, NetError]
   fn resolve(Self, String) -> Result[@list.List[String], NetError]
