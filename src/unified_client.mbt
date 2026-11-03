@@ -216,6 +216,37 @@ pub fn UnifiedClient::with_options(options : ClientOptions) -> UnifiedClient {
   }
 }
 
+/// Create a UnifiedClient with custom dialer and TLS provider using default options.
+pub fn UnifiedClient::custom(dialer : &Dialer, tls_provider : &TlsProvider) -> UnifiedClient {
+  let options = ClientOptions::new()
+  let connector = Connector::new(dialer, tls_provider)
+    .with_timeout(options.timeout_ms)
+    .with_connect_timeout(options.connect_timeout_ms)
+    .with_http2(options.http2)
+    .with_http2_prior_knowledge(options.http2_prior_knowledge)
+
+  UnifiedClient::{
+    connector,
+    options,
+    redirect_count: 0,
+  }
+}
+
+/// Create a UnifiedClient with custom dialer, TLS provider and options.
+pub fn UnifiedClient::custom_with_options(dialer : &Dialer, tls_provider : &TlsProvider, options : ClientOptions) -> UnifiedClient {
+  let connector = Connector::new(dialer, tls_provider)
+    .with_timeout(options.timeout_ms)
+    .with_connect_timeout(options.connect_timeout_ms)
+    .with_http2(options.http2)
+    .with_http2_prior_knowledge(options.http2_prior_knowledge)
+
+  UnifiedClient::{
+    connector,
+    options,
+    redirect_count: 0,
+  }
+}
+
 /// A copy of the options currently used by this client.
 pub fn UnifiedClient::client_options(self : UnifiedClient) -> ClientOptions {
   self.options
