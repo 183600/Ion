@@ -551,8 +551,9 @@ fn h2_apply_settings(
             return Err(ProtocolError("HTTP/2 stream window overflow"))
           }
         } else if delta < 0 {
-          if flow.stream_send_window < -H2_MAX_WINDOW_SIZE - delta {
-            return Err(ProtocolError("HTTP/2 stream window overflow"))
+          let new_window = flow.stream_send_window + delta
+          if new_window < 0 {
+            return Err(ProtocolError("HTTP/2 stream window underflow"))
           }
         }
         flow.stream_send_window = flow.stream_send_window + delta
