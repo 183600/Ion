@@ -9,9 +9,10 @@
 /// The returned `Response` exposes the decoded body. Browser-managed fields
 /// such as `Content-Encoding`, `Content-Length`, and `Set-Cookie` are therefore
 /// not forwarded as the client would see them on a raw socket.
+#derive(Eq, Debug)
 pub struct BrowserFetchClient {
   max_response_body_bytes : Int
-} derive(Eq, Debug)
+}
 
 /// A one-shot client using the browser transport. On targets without an
 /// `XMLHttpRequest` implementation requests fail with a clear connection

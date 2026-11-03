@@ -21,9 +21,10 @@ impl TlsClientCtx with fn negotiated_alpn(_self) {
 }
 
 /// Mock TLS Provider (placeholder for actual implementation)
+#derive(Eq, Debug)
 pub struct MockTlsProvider {
   name : String
-} derive(Eq, Debug)
+}
 
 pub fn MockTlsProvider::new(name : String) -> MockTlsProvider {
   MockTlsProvider::{ name }
@@ -184,7 +185,8 @@ const TLS_TRANSPORT_UNAVAILABLE : String =
 /// create a client context instead of silently passing plaintext through the
 /// mock provider, which would make "https" connections unencrypted.
 #cfg(not(target="native"))
-pub struct UnavailableTlsProvider {} derive(Eq, Debug)
+#derive(Eq, Debug)
+pub struct UnavailableTlsProvider {}
 
 #cfg(not(target="native"))
 pub fn UnavailableTlsProvider::new() -> UnavailableTlsProvider {

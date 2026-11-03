@@ -6,6 +6,7 @@ pub struct UnifiedClient {
 }
 
 /// Client options
+#derive(Eq, Debug)
 pub struct ClientOptions {
   user_agent : String
   timeout_ms : Int
@@ -27,7 +28,7 @@ pub struct ClientOptions {
   /// the same field. They are never re-applied after a redirect, and a
   /// cross-origin redirect drops them along with caller-supplied credentials.
   default_headers : Headers
-} derive(Eq, Debug)
+}
 
 pub fn ClientOptions::new() -> ClientOptions {
   ClientOptions::{

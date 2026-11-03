@@ -83,9 +83,10 @@ fn tcp_dial_host(host : String) -> String {
 /// hosts and returns `TcpStream` values that perform no socket I/O. Real
 /// connections come from `NativeTcpDialer` (`default_dialer()` on native
 /// targets).
+#derive(Eq, Debug)
 pub struct TcpDialer {
   mut timeout_ms : Int
-} derive(Eq, Debug)
+}
 
 pub fn TcpDialer::new() -> TcpDialer {
   TcpDialer::{ timeout_ms: 30000 }
@@ -147,9 +148,10 @@ const TCP_TRANSPORT_UNAVAILABLE : String =
 /// placeholder stream, whose empty reads surface as misleading HTTP protocol
 /// errors.
 #cfg(not(target="native"))
+#derive(Eq, Debug)
 pub struct UnavailableTcpDialer {
   mut timeout_ms : Int
-} derive(Eq, Debug)
+}
 
 #cfg(not(target="native"))
 fn UnavailableTcpDialer::with_timeout(timeout_ms : Int) -> UnavailableTcpDialer {

@@ -11,6 +11,7 @@
 /// stream-based protocol).
 
 /// A datagram received from the network.
+#derive(Eq, Debug)
 pub struct DatagramPacket {
   /// Number of bytes copied into the caller's buffer.
   length : Int
@@ -18,7 +19,7 @@ pub struct DatagramPacket {
   address : String
   /// Port of the sender.
   port : Int
-} derive(Eq, Debug)
+}
 
 /// Datagram transport used by resolvers and other request/response protocols.
 pub trait Datagram {

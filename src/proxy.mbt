@@ -6,6 +6,7 @@
 /// `CONNECT`. An `https://` proxy is reached over TLS before either form is
 /// used, so the proxy connection itself is encrypted too. SOCKS5 proxies carry
 /// both HTTP and HTTPS through a tunnel and resolve the target host themselves.
+#derive(Eq, Debug)
 pub struct Proxy {
   url : Url
   authorization : String?
@@ -13,7 +14,7 @@ pub struct Proxy {
   // and is not an HTTP Authorization header, so it is kept separately.
   socks_username : Bytes?
   socks_password : Bytes?
-} derive(Eq, Debug)
+}
 
 fn proxy_userinfo(url : String) -> String? {
   let scheme_end = match url.find("://") {
