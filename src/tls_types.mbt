@@ -1,4 +1,5 @@
 /// TLS error types
+#derive(Eq, Debug)
 pub enum TlsError {
   HandshakeFailed(String)
   CertificateValidationFailed(String)
@@ -7,24 +8,27 @@ pub enum TlsError {
   IoError(String)
   ConnectionClosed
   Timeout
-} derive(Eq, Debug)
+}
 
 /// TLS version
+#derive(Eq, Debug)
 pub enum TlsVersion {
   Tls1_2
   Tls1_3
-} derive(Eq, Debug)
+}
 
 /// Certificate verification mode
+#derive(Eq, Debug)
 pub enum VerifyMode {
   Strict
   SkipVerification // Only for testing, should have scary name
-} derive(Eq, Debug)
+}
 
 /// Root certificate store
+#derive(Eq, Debug)
 pub struct RootStore {
   certificates : List[Bytes]
-} derive(Eq, Debug)
+}
 
 pub fn RootStore::new() -> RootStore {
   RootStore::{ certificates: @list.List([]) }
@@ -35,10 +39,11 @@ pub fn RootStore::add_certificate(self : RootStore, cert : Bytes) -> RootStore {
 }
 
 /// Client certificate for mTLS
+#derive(Eq, Debug)
 pub struct ClientCert {
   certificate : Bytes
   private_key : Bytes
-} derive(Eq, Debug)
+}
 
 pub fn ClientCert::new(certificate : Bytes, private_key : Bytes) -> ClientCert {
   ClientCert::{ certificate, private_key }
