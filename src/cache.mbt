@@ -1,4 +1,5 @@
 /// RFC 9111 cache directives.
+#derive(Eq, Debug)
 pub struct CacheControl {
   mut no_store : Bool
   mut no_cache : Bool
@@ -11,7 +12,7 @@ pub struct CacheControl {
   mut max_stale : Int?
   mut min_fresh : Int?
   mut only_if_cached : Bool
-} derive(Eq, Debug)
+}
 
 pub fn CacheControl::new() -> CacheControl {
   CacheControl::{
