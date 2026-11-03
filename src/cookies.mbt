@@ -18,6 +18,7 @@ const MAX_TOTAL_COOKIES : Int = 3000
 
 ///|
 /// A single stored cookie.
+#derive(Eq, Debug)
 pub struct Cookie {
   name : String
   value : String
@@ -33,14 +34,15 @@ pub struct Cookie {
   // RFC 6265bis eviction uses last access, not creation order. Keep it
   // private so the public snapshot shape stays source-compatible.
   priv last_access_ms : UInt64
-} derive(Eq, Debug)
+}
 
 ///|
 /// An in-memory cookie store.
+#derive(Eq, Debug)
 pub struct CookieJar {
   mut cookies : List[Cookie]
   mut next_creation : Int32
-} derive(Eq, Debug)
+}
 
 ///|
 pub fn CookieJar::new() -> CookieJar {
