@@ -437,8 +437,7 @@ pub fn UnifiedClient::with_max_connections_per_host(
   self : UnifiedClient,
   max_connections : Int,
 ) -> UnifiedClient {
-  let connector = self.connector.detached()
-  let _ = connector.with_max_connections_per_host(max_connections)
+  let connector = self.connector.detached().with_max_connections_per_host(max_connections)
   UnifiedClient::{
     connector,
     options: self.options,
@@ -453,8 +452,7 @@ pub fn UnifiedClient::with_max_connections(
   self : UnifiedClient,
   max_connections : Int,
 ) -> UnifiedClient {
-  let connector = self.connector.detached()
-  let _ = connector.with_max_connections(max_connections)
+  let connector = self.connector.detached().with_max_connections(max_connections)
   UnifiedClient::{
     connector,
     options: self.options,
@@ -468,8 +466,7 @@ pub fn UnifiedClient::with_idle_timeout(
   self : UnifiedClient,
   idle_timeout_ms : Int,
 ) -> UnifiedClient {
-  let connector = self.connector.detached()
-  let _ = connector.with_idle_timeout(idle_timeout_ms)
+  let connector = self.connector.detached().with_idle_timeout(idle_timeout_ms)
   UnifiedClient::{
     connector,
     options: self.options,
@@ -482,8 +479,7 @@ pub fn UnifiedClient::with_max_idle_per_host(
   self : UnifiedClient,
   max_idle : Int,
 ) -> UnifiedClient {
-  let connector = self.connector.detached()
-  let _ = connector.with_max_idle_per_host(max_idle)
+  let connector = self.connector.detached().with_max_idle_per_host(max_idle)
   UnifiedClient::{
     connector,
     options: self.options,
@@ -495,8 +491,7 @@ pub fn UnifiedClient::with_max_idle_per_host(
 /// replayed on later requests that match their domain, path and security
 /// attributes.
 pub fn UnifiedClient::with_cookies(self : UnifiedClient) -> UnifiedClient {
-  let connector = self.connector.detached()
-  let _ = connector.with_cookies(true)
+  let connector = self.connector.detached().with_cookies(true)
   UnifiedClient::{
     connector,
     options: self.options,
