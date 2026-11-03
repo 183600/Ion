@@ -744,7 +744,7 @@ pub fn inflate(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
     // A preset dictionary is a declared zlib feature that this decoder does
     // not support; do not reinterpret the same bytes as raw DEFLATE.
     if (flg & 0x20) != 0 {
-      return inflate_zlib(data, limit)
+      return Err(inflate_error("preset dictionary is not supported"))
     }
     match inflate_zlib_body(data, limit) {
       Ok((inflated, consumed)) => {
