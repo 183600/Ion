@@ -34,13 +34,14 @@ extern "C" fn feather_read_file(path : Bytes, output : Bytes, capacity : Int) ->
 const NATIVE_TCP_READ_CHUNK : Int = 8192
 
 /// A TCP stream backed by a native operating-system socket.
+#derive(Eq, Debug)
 pub struct NativeTcpStream {
   mut fd : Int
   host : String
   port : Int
   mut is_open : Bool
   mut timeout_ms : Int
-} derive(Eq, Debug)
+}
 
 pub fn NativeTcpStream::new(host : String, port : Int) -> NativeTcpStream {
   NativeTcpStream::with_timeout(host, port, 30000)
@@ -245,9 +246,10 @@ pub impl Stream for NativeTcpStream with fn local_addr(
 }
 
 /// TCP dialer that performs real native DNS resolution and socket connections.
+#derive(Eq, Debug)
 pub struct NativeTcpDialer {
   mut timeout_ms : Int
-} derive(Eq, Debug)
+}
 
 pub fn NativeTcpDialer::new() -> NativeTcpDialer {
   NativeTcpDialer::{ timeout_ms: 30000 }

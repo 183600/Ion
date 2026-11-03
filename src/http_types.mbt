@@ -1,4 +1,5 @@
 /// HTTP error types
+#derive(Eq, Debug)
 pub enum HttpError {
   NetworkError(NetError)
   TlsError(TlsError)
@@ -9,7 +10,7 @@ pub enum HttpError {
   ConnectionClosed
   ProtocolError(String)
   RedirectLimitExceeded
-} derive(Eq, Debug)
+}
 
 /// Promote low-level network failures onto the dedicated HTTP error variants.
 /// Callers can then match `Timeout` / `ConnectionClosed` without having to
@@ -38,6 +39,7 @@ fn normalize_http_error(err : HttpError) -> HttpError {
 }
 
 /// HTTP method
+#derive(Eq, Debug)
 pub enum HttpMethod {
   GET
   POST
@@ -51,7 +53,7 @@ pub enum HttpMethod {
   /// An extension method (for example `PROPFIND` or `PURGE`). The token is
   /// stored verbatim because HTTP method names are case-sensitive.
   Custom(String)
-} derive(Eq, Debug)
+}
 
 pub fn HttpMethod::parse(value : String) -> Result[HttpMethod, HttpError] {
   match value.to_upper() {
@@ -127,19 +129,21 @@ fn canonical_http_method(verb : HttpMethod) -> HttpMethod {
 }
 
 /// HTTP header
+#derive(Eq, Debug)
 pub struct Header {
   name : String
   value : String
-} derive(Eq, Debug)
+}
 
 pub fn Header::new(name : String, value : String) -> Header {
   Header::{ name, value }
 }
 
 /// HTTP headers collection
+#derive(Eq, Debug)
 pub struct Headers {
   headers : List[Header]
-} derive(Eq, Debug)
+}
 
 pub fn Headers::new() -> Headers {
   Headers::{ headers: @list.List([]) }
@@ -196,6 +200,7 @@ pub fn Headers::length(self : Headers) -> Int {
 }
 
 /// URL structure
+#derive(Eq, Debug)
 pub struct Url {
   scheme : String
   host : String
@@ -207,7 +212,7 @@ pub struct Url {
   // for IPvFuture hosts, whose text is otherwise indistinguishable from a
   // regular DNS name.
   bracketed : Bool
-} derive(Eq, Debug)
+}
 
 pub fn Url::new(scheme : String, host : String, port : Int) -> Url {
   // Constructors accept the same bracketed IP-literal spelling as parsed
@@ -913,6 +918,7 @@ pub fn Url::to_string(self : Url) -> String {
 }
 
 /// HTTP Request
+#derive(Eq, Debug)
 pub struct Request {
   verb : HttpMethod
   url : Url
@@ -924,7 +930,7 @@ pub struct Request {
   trailers : Headers
   timeout_ms : Int
   timeout_explicit : Bool
-} derive(Eq, Debug)
+}
 
 pub fn Request::new(verb : HttpMethod, url : Url) -> Request {
   Request::{
@@ -1238,12 +1244,13 @@ pub fn Request::with_form(self : Request, fields : Array[(String, String)]) -> R
 }
 
 /// A file part in a multipart/form-data request body.
+#derive(Eq, Debug)
 pub struct MultipartFile {
   field_name : String
   file_name : String
   content_type : String
   data : Bytes
-} derive(Eq, Debug)
+}
 
 pub fn MultipartFile::new(
   field_name : String,
