@@ -52,7 +52,7 @@ pub fn inflate_deflate(Bytes, Int32) -> Result[Bytes, HttpError]
 
 pub fn options(String) -> Result[Response, HttpError]
 
-pub fn parse_json(String) -> Result[Json, HttpError]
+pub fn parse_json(String) -> Result[@json.Json, HttpError]
 
 pub fn patch(String, Bytes) -> Result[Response, HttpError]
 
@@ -66,7 +66,7 @@ pub fn put(String, Bytes) -> Result[Response, HttpError]
 
 pub fn request(Request) -> Result[Response, HttpError]
 
-pub fn stringify_json(Json) -> String
+pub fn stringify_json(@json.Json) -> String
 
 pub fn trace(String) -> Result[Response, HttpError]
 
@@ -85,9 +85,10 @@ type ActiveConnection
 
 type BitReader
 
+#derive(Eq, @debug.Debug)
 pub struct BrowserFetchClient {
   max_response_body_bytes : Int32
-} derive(Eq, @debug.Debug)
+}
 pub fn BrowserFetchClient::new() -> Self
 pub fn BrowserFetchClient::with_max_response_body_bytes(Self, Int32) -> Self
 pub impl HttpClient for BrowserFetchClient
@@ -95,6 +96,7 @@ pub impl HttpClient for BrowserFetchClient
 type BufferedStream
 pub impl Stream for BufferedStream
 
+#derive(Eq, @debug.Debug)
 pub struct CacheControl {
   mut no_store : Bool
   mut no_cache : Bool
@@ -107,7 +109,7 @@ pub struct CacheControl {
   mut max_stale : Int32?
   mut min_fresh : Int32?
   mut only_if_cached : Bool
-} derive(Eq, @debug.Debug)
+}
 pub fn CacheControl::from_headers(Headers) -> Self
 pub fn CacheControl::new() -> Self
 pub fn CacheControl::parse(String) -> Self
@@ -156,12 +158,14 @@ type CliRequest
 
 type CliTlsOptions
 
+#derive(Eq, @debug.Debug)
 pub struct ClientCert {
   certificate : Bytes
   private_key : Bytes
-} derive(Eq, @debug.Debug)
+}
 pub fn ClientCert::new(Bytes, Bytes) -> Self
 
+#derive(Eq, @debug.Debug)
 pub struct ClientOptions {
   user_agent : String
   timeout_ms : Int32
@@ -174,7 +178,7 @@ pub struct ClientOptions {
   http2_streaming : Bool
   auto_decompress : Bool
   default_headers : Headers
-} derive(Eq, @debug.Debug)
+}
 pub fn ClientOptions::auto_decompress(Self) -> Bool
 pub fn ClientOptions::default_headers(Self) -> Headers
 pub fn ClientOptions::new() -> Self
@@ -257,6 +261,7 @@ pub fn Connector::with_proxy_bypass(Self, Array[String]) -> Self
 pub fn Connector::with_timeout(Self, Int32) -> Self
 pub fn Connector::with_tls_config(Self, TlsConfig) -> Self
 
+#derive(Eq, @debug.Debug)
 pub struct Cookie {
   name : String
   value : String
@@ -267,12 +272,13 @@ pub struct Cookie {
   expires_at_ms : UInt64?
   creation : Int32
   // private fields
-} derive(Eq, @debug.Debug)
+}
 
+#derive(Eq, @debug.Debug)
 pub struct CookieJar {
   mut cookies : @list.List[Cookie]
   mut next_creation : Int32
-} derive(Eq, @debug.Debug)
+}
 pub fn CookieJar::clear(Self) -> Unit
 pub fn CookieJar::cookie_header(Self, Url) -> String?
 pub fn CookieJar::cookie_header_at(Self, Url, UInt64) -> String?
@@ -283,11 +289,12 @@ pub fn CookieJar::store(Self, Url, String) -> Unit
 pub fn CookieJar::store_at(Self, Url, String, UInt64) -> Unit
 pub fn CookieJar::store_from_headers(Self, Url, Headers) -> Unit
 
+#derive(Eq, @debug.Debug)
 pub struct DatagramPacket {
   length : Int32
   address : String
   port : Int32
-} derive(Eq, @debug.Debug)
+}
 
 type DeflateBitWriter
 
@@ -344,15 +351,17 @@ type H2ResponseState
 type H2TunnelBody
 pub impl Stream for H2TunnelBody
 
+#derive(Eq, @debug.Debug)
 pub struct Header {
   name : String
   value : String
-} derive(Eq, @debug.Debug)
+}
 pub fn Header::new(String, String) -> Self
 
+#derive(Eq, @debug.Debug)
 pub struct Headers {
   headers : @list.List[Header]
-} derive(Eq, @debug.Debug)
+}
 pub fn Headers::add(Self, String, String) -> Self
 pub fn Headers::contains(Self, String) -> Bool
 pub fn Headers::get(Self, String) -> String?
@@ -385,6 +394,7 @@ pub fn HttpCache::revalidate(Self, Request, Response, UInt64) -> Response?
 pub fn HttpCache::store(Self, Request, Response, UInt64) -> Result[Response, HttpError]
 pub fn HttpCache::with_limits(Int32, Int32, Int32) -> Self
 
+#derive(Eq, @debug.Debug)
 pub enum HttpError {
   NetworkError(NetError)
   TlsError(TlsError)
@@ -395,8 +405,9 @@ pub enum HttpError {
   ConnectionClosed
   ProtocolError(String)
   RedirectLimitExceeded
-} derive(Eq, @debug.Debug)
+}
 
+#derive(Eq, @debug.Debug)
 pub enum HttpMethod {
   GET
   POST
@@ -408,7 +419,7 @@ pub enum HttpMethod {
   TRACE
   CONNECT
   Custom(String)
-} derive(Eq, @debug.Debug)
+}
 pub fn HttpMethod::custom(String) -> Result[Self, HttpError]
 pub fn HttpMethod::parse(String) -> Result[Self, HttpError]
 pub fn HttpMethod::to_string(Self) -> String
@@ -423,20 +434,23 @@ pub struct MockTlsClientCtx {
 }
 pub impl TlsClientCtx for MockTlsClientCtx
 
+#derive(Eq, @debug.Debug)
 pub struct MockTlsProvider {
   name : String
-} derive(Eq, @debug.Debug)
+}
 pub fn MockTlsProvider::new(String) -> Self
 pub impl TlsProvider for MockTlsProvider
 
+#derive(Eq, @debug.Debug)
 pub struct MultipartFile {
   field_name : String
   file_name : String
   content_type : String
   data : Bytes
-} derive(Eq, @debug.Debug)
+}
 pub fn MultipartFile::new(String, String, String, Bytes) -> Self
 
+#derive(Eq, @debug.Debug)
 pub enum NetError {
   ConnectionFailed(String)
   ReadError(String)
@@ -445,7 +459,7 @@ pub enum NetError {
   Closed
   InvalidAddress(String)
   IoError(String)
-} derive(Eq, @debug.Debug)
+}
 
 type PrefixStream
 pub impl Stream for PrefixStream
@@ -453,12 +467,13 @@ pub impl Stream for PrefixStream
 type PrintKeyLogSink
 pub impl KeyLogSink for PrintKeyLogSink
 
+#derive(Eq, @debug.Debug)
 pub struct Proxy {
   url : Url
   authorization : String?
   socks_username : Bytes?
   socks_password : Bytes?
-} derive(Eq, @debug.Debug)
+}
 pub fn Proxy::authority(Self) -> String
 pub fn Proxy::authorization(Self) -> String?
 pub fn Proxy::from_env(Url) -> Result[Self?, HttpError]
@@ -474,6 +489,7 @@ pub fn Proxy::no_proxy_from_env() -> Array[String]
 pub fn Proxy::parse(String) -> Result[Self, HttpError]
 pub fn Proxy::socks_credentials(Self) -> (Bytes, Bytes)?
 
+#derive(Eq, @debug.Debug)
 pub struct Request {
   verb : HttpMethod
   url : Url
@@ -482,7 +498,7 @@ pub struct Request {
   trailers : Headers
   timeout_ms : Int32
   timeout_explicit : Bool
-} derive(Eq, @debug.Debug)
+}
 pub fn Request::from_url(HttpMethod, String) -> Result[Self, HttpError]
 pub fn Request::get_header(Self, String) -> String?
 pub fn Request::get_header_all(Self, String) -> @list.List[String]
@@ -496,9 +512,9 @@ pub fn Request::with_body(Self, Bytes) -> Self
 pub fn Request::with_expect_continue(Self) -> Self
 pub fn Request::with_form(Self, Array[(String, String)]) -> Self
 pub fn Request::with_header(Self, String, String) -> Self
-pub fn Request::with_json(Self, Json) -> Self
+pub fn Request::with_json(Self, @json.Json) -> Self
 pub fn Request::with_json_text(Self, String) -> Self
-pub fn[T : ToJson] Request::with_json_value(Self, T) -> Self
+pub fn[T : @json.ToJson] Request::with_json_value(Self, T) -> Self
 pub fn Request::with_method(Self, HttpMethod) -> Self
 pub fn Request::with_multipart(Self, Array[(String, String)], Array[MultipartFile]) -> Self
 pub fn Request::with_timeout(Self, Int32) -> Self
@@ -529,9 +545,9 @@ pub fn Response::is_client_error(Self) -> Bool
 pub fn Response::is_redirection(Self) -> Bool
 pub fn Response::is_server_error(Self) -> Bool
 pub fn Response::is_success(Self) -> Bool
-pub fn Response::json(Self) -> Result[Json, HttpError]
+pub fn Response::json(Self) -> Result[@json.Json, HttpError]
 pub fn[T : @json.FromJson] Response::json_as(Self) -> Result[T, HttpError]
-pub fn Response::json_with_limit(Self, Int32) -> Result[Json, HttpError]
+pub fn Response::json_with_limit(Self, Int32) -> Result[@json.Json, HttpError]
 pub fn Response::new(Int32, Headers, &Stream) -> Self
 pub fn Response::new_with_version(String, Int32, Headers, &Stream) -> Self
 pub fn Response::read_body(Self) -> Result[Bytes, HttpError]
@@ -553,9 +569,10 @@ pub impl Stream for ResponseStream
 
 type ResponseTransferEncoding
 
+#derive(Eq, @debug.Debug)
 pub struct RootStore {
   certificates : @list.List[Bytes]
-} derive(Eq, @debug.Debug)
+}
 pub fn RootStore::add_certificate(Self, Bytes) -> Self
 pub fn RootStore::new() -> Self
 
@@ -563,18 +580,20 @@ type Socks5Reader
 
 type StreamReader
 
+#derive(Eq, @debug.Debug)
 pub struct TcpDialer {
   mut timeout_ms : Int32
-} derive(Eq, @debug.Debug)
+}
 pub fn TcpDialer::new() -> Self
 pub fn TcpDialer::with_timeout(Int32) -> Self
 pub impl Dialer for TcpDialer
 
+#derive(Eq, @debug.Debug)
 pub struct TcpStream {
   host : String
   port : Int32
   mut is_open : Bool
-} derive(Eq, @debug.Debug)
+}
 pub fn TcpStream::new(String, Int32) -> Self
 pub fn TcpStream::open(Self) -> Result[Self, NetError]
 pub impl Stream for TcpStream
@@ -599,6 +618,7 @@ pub fn TlsConfig::with_root_store(Self, RootStore) -> Self
 pub fn TlsConfig::with_server_name(Self, String) -> Self
 pub fn TlsConfig::with_verify_mode(Self, VerifyMode) -> Self
 
+#derive(Eq, @debug.Debug)
 pub enum TlsError {
   HandshakeFailed(String)
   CertificateValidationFailed(String)
@@ -607,7 +627,7 @@ pub enum TlsError {
   IoError(String)
   ConnectionClosed
   Timeout
-} derive(Eq, @debug.Debug)
+}
 
 pub struct TlsStream {
   underlying : &Stream
@@ -616,17 +636,20 @@ pub struct TlsStream {
 }
 pub impl Stream for TlsStream
 
+#derive(Eq, @debug.Debug)
 pub enum TlsVersion {
   Tls1_2
   Tls1_3
-} derive(Eq, @debug.Debug)
+}
 
+#derive(Eq, @debug.Debug)
 pub struct UnavailableTcpDialer {
   mut timeout_ms : Int32
-} derive(Eq, @debug.Debug)
+}
 
+#derive(Eq, @debug.Debug)
 pub struct UnavailableTlsProvider {
-} derive(Eq, @debug.Debug)
+}
 pub fn UnavailableTlsProvider::new() -> Self
 pub impl TlsProvider for UnavailableTlsProvider
 
@@ -652,7 +675,7 @@ pub fn UnifiedClient::options(Self, String) -> Result[Response, HttpError]
 pub fn UnifiedClient::patch(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::post(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::post_form(Self, String, Array[(String, String)]) -> Result[Response, HttpError]
-pub fn UnifiedClient::post_json(Self, String, Json) -> Result[Response, HttpError]
+pub fn UnifiedClient::post_json(Self, String, @json.Json) -> Result[Response, HttpError]
 pub fn UnifiedClient::post_json_text(Self, String, String) -> Result[Response, HttpError]
 pub fn UnifiedClient::post_multipart(Self, String, Array[(String, String)], Array[MultipartFile]) -> Result[Response, HttpError]
 pub fn UnifiedClient::put(Self, String, Bytes) -> Result[Response, HttpError]
@@ -683,6 +706,7 @@ pub fn UnifiedClient::with_transport(&Dialer, &TlsProvider, ClientOptions) -> Se
 pub fn UnifiedClient::with_user_agent(Self, String) -> Self
 pub impl HttpClient for UnifiedClient
 
+#derive(Eq, @debug.Debug)
 pub struct Url {
   scheme : String
   host : String
@@ -691,7 +715,7 @@ pub struct Url {
   query : String
   fragment : String
   bracketed : Bool
-} derive(Eq, @debug.Debug)
+}
 pub fn Url::authority(Self) -> String
 pub fn Url::connect_authority(Self) -> String
 pub fn Url::is_secure(Self) -> Bool
@@ -711,10 +735,11 @@ pub fn Url::with_query_param(Self, String, String) -> Self
 pub fn Url::with_query_params(Self, Array[(String, String)]) -> Self
 pub fn Url::without_query_param(Self, String) -> Self
 
+#derive(Eq, @debug.Debug)
 pub enum VerifyMode {
   Strict
   SkipVerification
-} derive(Eq, @debug.Debug)
+}
 
 pub struct WebSocket {
   // private fields
@@ -738,28 +763,31 @@ pub fn WebSocket::with_max_frame_bytes(Self, Int32) -> Self
 pub fn WebSocket::with_max_message_bytes(Self, Int32) -> Self
 pub fn WebSocket::with_permessage_deflate(Self, Bool) -> Self
 
+#derive(Eq, @debug.Debug)
 pub struct WebSocketFrame {
   fin : Bool
   opcode : Int32
   payload : Bytes
-} derive(Eq, @debug.Debug)
+}
 pub fn WebSocketFrame::binary(Bytes) -> Self
 pub fn WebSocketFrame::ping(Bytes) -> Self
 pub fn WebSocketFrame::pong(Bytes) -> Self
 pub fn WebSocketFrame::text(String) -> Self
 
+#derive(Eq, @debug.Debug)
 pub enum WebSocketMessage {
   Text(String)
   Binary(Bytes)
   Ping(Bytes)
   Pong(Bytes)
   Close(Int32, String)
-} derive(Eq, @debug.Debug)
+}
 
+#derive(Eq, @debug.Debug)
 pub enum WebSocketRole {
   Client
   Server
-} derive(Eq, @debug.Debug)
+}
 
 // Type aliases
 pub using @list {type List}
