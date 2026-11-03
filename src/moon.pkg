@@ -13,10 +13,15 @@ import {
 options(
   name: "feather",
   is_main: true,
-  "native-stub": ["tcp_native_stub.c", "tls_native_stub.c"],
+  "native-stub": [
+    "tcp_native_stub.c",
+    "tls_native_stub.c",
+    "udp_native_stub.c",
+  ],
   targets: {
     "native_tcp.mbt": ["native"],
     "native_tls.mbt": ["native"],
+    "native_udp.mbt": ["native"],
   },
   link: {
     "native": {

@@ -40,7 +40,10 @@ static int feather_udp_socket_family(int32_t fd) {
   return (int)addr.ss_family;
 }
 
-static int feather_udp_resolve(const char *host, int port, struct sockaddr_storage *out, socklen_t *out_len) {
+// Build the destination address for `host:port`, matching the socket family.
+// An exact family match is preferred; a dual-stack IPv6 socket falls back to
+// an IPv4 destination, which is mapped to ::ffff:a.b.c.d.
+static int feather_udp_target(int32_t fd, const char *host, int port, struct sockaddr_storage *out, socklen_t *out_len) {
   char service[16];
   snprintf(service, sizeof(service), "%d", port);
 
@@ -56,48 +59,53 @@ static int feather_udp_resolve(const char *host, int port, struct sockaddr_stora
     int code = gai < 0 ? -gai : gai;
     return -(FEATHER_GAI_BASE + code);
   }
-  memcpy(out, result->ai_addr, result->ai_addrlen);
-  *out_len = result->ai_addrlen;
-  freeaddrinfo(result);
-  return 0;
-}
 
-// Build the destination address for `host:port`, matching the socket family.
-// An IPv4 destination on a dual-stack socket is mapped to ::ffff:a.b.c.d.
-static int feather_udp_target(int32_t fd, const char *host, int port, struct sockaddr_storage *out, socklen_t *out_len) {
-  struct sockaddr_storage addr;
-  socklen_t addr_len = 0;
-  int result = feather_udp_resolve(host, port, &addr, &addr_len);
-  if (result != 0) {
-    return result;
-  }
   int family = feather_udp_socket_family(fd);
   if (family < 0) {
-    return -errno;
+    int saved = errno;
+    freeaddrinfo(result);
+    return -saved;
   }
-  if (family == AF_INET6 && addr.ss_family == AF_INET) {
-    struct sockaddr_in6 mapped;
-    memset(&mapped, 0, sizeof(mapped));
-    struct sockaddr_in *in = (struct sockaddr_in *)&addr;
-    mapped.sin6_family = AF_INET6;
-    mapped.sin6_port = in->sin_port;
-    uint8_t *bytes = (uint8_t *)&mapped.sin6_addr;
-    bytes[10] = 0xff;
-    bytes[11] = 0xff;
-    memcpy(bytes + 12, &in->sin_addr, 4);
-    memcpy(out, &mapped, sizeof(mapped));
-    *out_len = sizeof(mapped);
+
+  int status = -EAFNOSUPPORT;
+  int have_ipv4 = 0;
+  struct sockaddr_in6 mapped;
+  memset(&mapped, 0, sizeof(mapped));
+  socklen_t mapped_len = 0;
+
+  for (struct addrinfo *entry = result; entry != NULL; entry = entry->ai_next) {
+    if (entry->ai_family == family) {
+      memcpy(out, entry->ai_addr, entry->ai_addrlen);
+      *out_len = entry->ai_addrlen;
+      status = 0;
+      break;
+    }
+    if (entry->ai_family == AF_INET && family == AF_INET6 && !have_ipv4) {
+      struct sockaddr_in *in = (struct sockaddr_in *)entry->ai_addr;
+      mapped.sin6_family = AF_INET6;
+      mapped.sin6_port = in->sin_port;
+      uint8_t *bytes = (uint8_t *)&mapped.sin6_addr;
+      bytes[10] = 0xff;
+      bytes[11] = 0xff;
+      memcpy(bytes + 12, &in->sin_addr, 4);
+      mapped_len = sizeof(mapped);
+      have_ipv4 = 1;
+    }
+  }
+  freeaddrinfo(result);
+
+  if (status == 0) {
     return 0;
   }
-  if (addr.ss_family != family) {
-    return -EAFNOSUPPORT;
+  if (have_ipv4) {
+    memcpy(out, &mapped, mapped_len);
+    *out_len = mapped_len;
+    return 0;
   }
-  memcpy(out, &addr, addr_len);
-  *out_len = addr_len;
-  return 0;
+  return status;
 }
 
-static int feather_udp_set_timeout(int fd, int32_t timeout_ms) {
+static int feather_udp_apply_timeout(int fd, int32_t timeout_ms) {
   struct timeval tv;
   if (timeout_ms <= 0) {
     tv.tv_sec = 0;
@@ -134,6 +142,45 @@ int32_t feather_udp_open(void) {
   return fd;
 }
 
+// Bind the socket to the wildcard address of its family. Port zero asks the
+// operating system for an ephemeral port.
+MOONBIT_FFI_EXPORT
+int32_t feather_udp_bind(int32_t fd, int32_t port) {
+  if (fd < 0) {
+    return -EBADF;
+  }
+  if (port < 0 || port > 65535) {
+    return -EINVAL;
+  }
+  int family = feather_udp_socket_family(fd);
+  if (family < 0) {
+    return -errno;
+  }
+  struct sockaddr_storage addr;
+  socklen_t addr_len = 0;
+  if (family == AF_INET6) {
+    struct sockaddr_in6 *in6 = (struct sockaddr_in6 *)&addr;
+    memset(in6, 0, sizeof(*in6));
+    in6->sin6_family = AF_INET6;
+    in6->sin6_port = htons((uint16_t)port);
+    in6->sin6_addr = in6addr_any;
+    addr_len = sizeof(*in6);
+  } else if (family == AF_INET) {
+    struct sockaddr_in *in = (struct sockaddr_in *)&addr;
+    memset(in, 0, sizeof(*in));
+    in->sin_family = AF_INET;
+    in->sin_port = htons((uint16_t)port);
+    in->sin_addr.s_addr = INADDR_ANY;
+    addr_len = sizeof(*in);
+  } else {
+    return -EAFNOSUPPORT;
+  }
+  if (bind(fd, (struct sockaddr *)&addr, addr_len) < 0) {
+    return -errno;
+  }
+  return 0;
+}
+
 MOONBIT_FFI_EXPORT
 int32_t feather_udp_connect(int32_t fd, moonbit_bytes_t host, int32_t port) {
   if (fd < 0) {
@@ -159,6 +206,25 @@ int32_t feather_udp_connect(int32_t fd, moonbit_bytes_t host, int32_t port) {
   return 0;
 }
 
+// Send one datagram to the peer the socket is connected to.
+MOONBIT_FFI_EXPORT
+int32_t feather_udp_send(int32_t fd, moonbit_bytes_t payload, int32_t length) {
+  if (fd < 0) {
+    return -EBADF;
+  }
+  if (length < 0 || length > Moonbit_array_length(payload)) {
+    return -EINVAL;
+  }
+  ssize_t sent;
+  do {
+    sent = send(fd, payload, (size_t)length, 0);
+  } while (sent < 0 && errno == EINTR);
+  if (sent < 0) {
+    return -errno;
+  }
+  return (int32_t)sent;
+}
+
 MOONBIT_FFI_EXPORT
 int32_t feather_udp_send_to(int32_t fd, moonbit_bytes_t payload, int32_t length, moonbit_bytes_t host, int32_t port) {
   if (fd < 0) {
@@ -181,7 +247,10 @@ int32_t feather_udp_send_to(int32_t fd, moonbit_bytes_t payload, int32_t length,
   if (result != 0) {
     return result;
   }
-  ssize_t sent = sendto(fd, payload, (size_t)length, 0, (struct sockaddr *)&addr, addr_len);
+  ssize_t sent;
+  do {
+    sent = sendto(fd, payload, (size_t)length, 0, (struct sockaddr *)&addr, addr_len);
+  } while (sent < 0 && errno == EINTR);
   if (sent < 0) {
     return -errno;
   }
@@ -203,7 +272,10 @@ int32_t feather_udp_recv_from(int32_t fd, moonbit_bytes_t buffer, int32_t capaci
   }
   struct sockaddr_storage addr;
   socklen_t addr_len = sizeof(addr);
-  ssize_t received = recvfrom(fd, buffer, (size_t)capacity, 0, (struct sockaddr *)&addr, &addr_len);
+  ssize_t received;
+  do {
+    received = recvfrom(fd, buffer, (size_t)capacity, 0, (struct sockaddr *)&addr, &addr_len);
+  } while (received < 0 && errno == EINTR);
   if (received < 0) {
     return -errno;
   }
@@ -212,22 +284,31 @@ int32_t feather_udp_recv_from(int32_t fd, moonbit_bytes_t buffer, int32_t capaci
   int port = 0;
   int ipv6 = 0;
   unsigned int scope_id = 0;
+  int family = AF_INET;
   if (addr.ss_family == AF_INET) {
     struct sockaddr_in *inet = (struct sockaddr_in *)&addr;
     address = &inet->sin_addr;
     port = ntohs(inet->sin_port);
   } else if (addr.ss_family == AF_INET6) {
     struct sockaddr_in6 *inet6 = (struct sockaddr_in6 *)&addr;
-    address = &inet6->sin6_addr;
     port = ntohs(inet6->sin6_port);
-    ipv6 = 1;
     scope_id = inet6->sin6_scope_id;
+    if (IN6_IS_ADDR_V4MAPPED(&inet6->sin6_addr)) {
+      // A dual-stack socket reports IPv4 peers as IPv4-mapped IPv6
+      // addresses. Report the plain IPv4 literal instead, so callers see the
+      // same address they would see on an IPv4-only socket.
+      address = &((const uint8_t *)&inet6->sin6_addr)[12];
+    } else {
+      address = &inet6->sin6_addr;
+      ipv6 = 1;
+      family = AF_INET6;
+    }
   } else {
     return -EAFNOSUPPORT;
   }
 
   char host[INET6_ADDRSTRLEN];
-  if (inet_ntop(addr.ss_family, address, host, sizeof(host)) == NULL) {
+  if (inet_ntop(family, address, host, sizeof(host)) == NULL) {
     return -errno;
   }
   char text[INET6_ADDRSTRLEN + 32];
@@ -254,7 +335,7 @@ int32_t feather_udp_set_timeout(int32_t fd, int32_t timeout_ms) {
   if (fd < 0) {
     return -EBADF;
   }
-  return feather_udp_set_timeout(fd, timeout_ms);
+  return feather_udp_apply_timeout(fd, timeout_ms);
 }
 
 MOONBIT_FFI_EXPORT
