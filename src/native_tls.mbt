@@ -577,7 +577,13 @@ pub impl TlsClientCtx for OpenSslTlsClientCtx with fn connect(
   // timeout as well, so it cannot outlive the caller's connect deadline.
   let handshake_timeout = underlying.get_timeout()
   let handshake_deadline = if handshake_timeout > 0 {
-    @env.now() + handshake_timeout.to_uint64()
+    let now = @env.now()
+    let timeout_ms = handshake_timeout.to_uint64()
+    if now > 0xFFFFFFFFFFFFFFFFUL - timeout_ms {
+      0xFFFFFFFFFFFFFFFFUL
+    } else {
+      now + timeout_ms
+    }
   } else {
     0UL
   }
