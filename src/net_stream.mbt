@@ -1,4 +1,5 @@
 /// Error types for network operations
+#derive(Eq, Debug)
 pub enum NetError {
   ConnectionFailed(String)
   ReadError(String)
@@ -7,7 +8,7 @@ pub enum NetError {
   Closed
   InvalidAddress(String)
   IoError(String)
-} derive(Eq, Debug)
+}
 
 /// Stream interface for reading and writing bytes
 pub trait Stream {
@@ -92,12 +93,13 @@ impl Stream with fn wait_readable(_self, _timeout_ms) {
 /// the target address and tracks open state, but performs no socket I/O at
 /// all: reads report EOF and writes report success without sending bytes.
 /// Real sockets come from `NativeTcpStream` (via `default_dialer()`).
+#derive(Eq, Debug)
 pub struct TcpStream {
   // Target description only; no socket handle is ever opened.
   host : String
   port : Int
   mut is_open : Bool
-} derive(Eq, Debug)
+}
 
 pub fn TcpStream::new(host : String, port : Int) -> TcpStream {
   TcpStream::{ host, port, is_open: false }
