@@ -18,12 +18,14 @@ const WS_DEFAULT_MAX_MESSAGE_BYTES : Int = 67108864
 
 /// Which endpoint this side of the connection is. Client frames are masked on
 /// the wire; server frames must not be.
+#derive(Eq, Debug)
 pub enum WebSocketRole {
   Client
   Server
-} derive(Eq, Debug)
+}
 
 /// One decoded WebSocket message or control frame.
+#derive(Eq, Debug)
 pub enum WebSocketMessage {
   Text(String)
   Binary(Bytes)
@@ -32,14 +34,15 @@ pub enum WebSocketMessage {
   /// Close status and UTF-8 reason. A close frame without a status code is
   /// represented as code 1005 and an empty reason.
   Close(Int, String)
-} derive(Eq, Debug)
+}
 
 /// One WebSocket frame. `opcode` is the wire opcode (0, 1, 2, 8, 9, or 10).
+#derive(Eq, Debug)
 pub struct WebSocketFrame {
   fin : Bool
   opcode : Int
   payload : Bytes
-} derive(Eq, Debug)
+}
 
 pub fn WebSocketFrame::text(payload : String) -> WebSocketFrame {
   WebSocketFrame::{ fin: true, opcode: WS_OPCODE_TEXT, payload: @utf8.encode(payload) }
