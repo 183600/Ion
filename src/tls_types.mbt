@@ -177,6 +177,9 @@ pub fn TlsConfig::validate(self : TlsConfig) -> Result[Unit, TlsError] {
   if !valid_server_name(self.server_name) {
     return Err(InvalidConfig("Invalid TLS server name"))
   }
+  if self.alpn.length() == 0 {
+    return Err(InvalidConfig("ALPN protocol list must not be empty"))
+  }
   let mut alpn_wire_bytes = 0
   for protocol in self.alpn {
     let length = @utf8.encode(protocol).length()

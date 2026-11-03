@@ -699,7 +699,7 @@ fn cookie_parse_max_age(value : String) -> Int64? {
   let seconds = try {
     @string.parse_int64(text[:])
   } catch {
-    _ => if negative { -1L } else { 9223372036854775807L }
+    _ => if negative { -9223372036854775808L } else { 9223372036854775807L }
   }
   Some(seconds)
 }
