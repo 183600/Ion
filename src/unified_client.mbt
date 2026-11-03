@@ -666,12 +666,12 @@ fn drain_response(response : Response) -> Result[Unit, HttpError] {
     match response.body.read(buf) {
       Ok(0) => return Ok(())
       Ok(count) => {
-        if count < 0 {
-          return Err(NetworkError(ReadError("invalid read count")))
-        }
-        if buf.length() == 0 {
-          return Err(NetworkError(ReadError("stream returned no data")))
-        }
+if count < 0 {
+                return Err(http_error_from_net(NetError::ReadError("invalid read count")))
+            }
+if buf.length() == 0 {
+                    return Err(http_error_from_net(NetError::ReadError("stream returned no data")))
+                }
       }
       Err(err) => return Err(http_error_from_net(err))
     }
