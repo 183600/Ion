@@ -668,8 +668,6 @@ pub fn UnifiedClient::close_idle(Self) -> Result[Unit, HttpError]
 pub fn UnifiedClient::connect(Self, String) -> Result[Response, HttpError]
 pub fn UnifiedClient::connection_count(Self) -> Int32
 pub fn UnifiedClient::cookie_jar(Self) -> CookieJar
-pub fn UnifiedClient::custom(&Dialer, &TlsProvider) -> Self
-pub fn UnifiedClient::custom_with_options(&Dialer, &TlsProvider, ClientOptions) -> Self
 pub fn UnifiedClient::delete(Self, String) -> Result[Response, HttpError]
 pub fn UnifiedClient::get(Self, String) -> Result[Response, HttpError]
 pub fn UnifiedClient::head(Self, String) -> Result[Response, HttpError]
