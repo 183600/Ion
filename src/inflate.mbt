@@ -746,16 +746,8 @@ pub fn inflate(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
     if (flg & 0x20) != 0 {
       return Err(inflate_error("preset dictionary is not supported"))
     }
-    match inflate_zlib_body(data, limit) {
-      Ok((inflated, consumed)) => {
-        // Once the DEFLATE body decoded, a bad or missing trailer means the
-        // zlib stream is corrupt. Falling back to raw DEFLATE here would
-        // silently accept the same bytes as a different stream.
-        return match verify_zlib_trailer(data, inflated, consumed) {
-          Ok(_) => Ok(inflated)
-          Err(err) => Err(err)
-        }
-      }
+    match inflate_zlib(data, limit) {
+      Ok(inflated) => return Ok(inflated)
       Err(zlib_error) => {
         // A decoded-output limit failure is not evidence that these bytes are
         // actually raw DEFLATE. Retrying the whole input as raw DEFLATE could
@@ -767,7 +759,9 @@ pub fn inflate(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
         match zlib_error {
           ProtocolError(message) =>
             if message.contains("output too large") ||
-              message.contains("window") {
+              message.contains("window") ||
+              message.contains("zlib checksum mismatch") ||
+              message.contains("missing zlib checksum") {
               return Err(zlib_error)
             }
           _ => ()

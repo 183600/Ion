@@ -6,6 +6,7 @@
 /// paths in the native stubs.
 
 /// Map a native errno to a transport error.
+#cfg(target="native")
 fn native_tcp_error(code : Int, operation : String) -> NetError {
   if code < 0 {
     return NetError::IoError(operation + " failed (code " + code.to_string() + ")")
@@ -25,6 +26,7 @@ fn native_tcp_error(code : Int, operation : String) -> NetError {
 ///
 /// The native stubs report `getaddrinfo` failures with an offset so that they
 /// cannot be confused with a socket errno.
+#cfg(target="native")
 fn native_tcp_address_error(code : Int) -> NetError {
   if code >= 10000 {
     return InvalidAddress("DNS resolution failed (code " + (code - 10000).to_string() + ")")
