@@ -28,6 +28,9 @@ fn charset_parameter(value : String) -> String? {
         Some(ch) =>
           if ch == '=' || ch == ';' {
             break
+          } else if ch < ' ' || ch > '~' {
+            // Skip invalid characters in parameter name.
+            index = index + 1
           } else {
             index = index + 1
           }
@@ -42,7 +45,7 @@ fn charset_parameter(value : String) -> String? {
       // A parameter without a value supplies nothing for `charset`.
       continue
     }
-    // Consume `=` and the optional whitespace after it.
+    // Consume `=` and any whitespace around it (RFC 7231 §3.1.1.3).
     index = index + 1
     while index < length {
       match value.get_char(index) {
