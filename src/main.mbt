@@ -1,16 +1,21 @@
+///|
 #cfg(target="native")
-extern "C" fn os_exit(code : Int) -> Unit = "exit"
+extern "C" fn os_exit(code : Int32) -> Unit = "exit"
 
+///|
 #cfg(target="js")
-extern "js" fn os_exit(code : Int) -> Unit =
+extern "js" fn os_exit(code : Int32) -> Unit =
   #| function(code) { process.exit(code) }
 
+///|
 #cfg(target="wasm")
-fn os_exit(code : Int) -> Unit = "wasi_snapshot_preview1" "proc_exit"
+fn os_exit(code : Int32) -> Unit = "wasi_snapshot_preview1" "proc_exit"
 
+///|
 #cfg(target="wasm-gc")
-fn os_exit(code : Int) -> Unit = "__moonbit_sys_unstable" "exit"
+fn os_exit(code : Int32) -> Unit = "__moonbit_sys_unstable" "exit"
 
+///|
 /// The runtime argument list reduced to one executable prefix entry. Native
 /// and WASI hosts report a single executable entry, while Node reports both
 /// the Node binary and the script path; dropping the Node binary keeps the
@@ -27,55 +32,135 @@ fn cli_command_args() -> Array[String] {
   result
 }
 
+///|
 #cfg(not(target="js"))
 fn cli_command_args() -> Array[String] {
   @env.args()
 }
 
+///|
 /// Command-line entry point for the Feather HTTP/HTTPS client.
 fn print_usage() -> Unit {
   println("Usage: feather <url>                          send a GET request")
-  println("       feather <method> <url> [body]          send a request with the given method")
-  println("       feather [options] <url>                send a request with custom options")
+  println(
+    "       feather <method> <url> [body]          send a request with the given method",
+  )
+  println(
+    "       feather [options] <url>                send a request with custom options",
+  )
   println("Options:")
-  println("       -X, --request <method>                 override the request method")
-  println("       -H, --header <name: value>             add a request header (repeatable)")
-  println("       -d, --data <data>                      send a request body (defaults to POST)")
+  println(
+    "       -X, --request <method>                 override the request method",
+  )
+  println(
+    "       -H, --header <name: value>             add a request header (repeatable)",
+  )
+  println(
+    "       -d, --data <data>                      send a request body (defaults to POST)",
+  )
   println("       -I, --head                             send a HEAD request")
-  println("       -L, --location                         follow redirects (default)")
-  println("       --no-location                          do not follow redirects")
-  println("       --max-redirects <n>                    limit followed redirects (default 10)")
-  println("       --timeout <milliseconds>               bound the whole request")
-  println("       --http1.1                              disable HTTP/2 negotiation")
-  println("       --http2                                enable HTTP/2 negotiation (default)")
-  println("       -k, --insecure                         DISABLE TLS verification (unsafe)")
-  println("       --ca <pem file>                        trust an extra CA certificate bundle")
-  println("       --client-cert <pem file>               client certificate for mTLS")
-  println("       --client-key <pem file>                client private key for mTLS")
-  println("       --keylog                               print TLS key material (debug)")
-  println("       --no-keylog                            disable TLS key logging")
-  println("       -x, --proxy <url>                      route through an HTTP(S) or SOCKS5 proxy")
-  println("       --no-proxy                             connect directly, ignoring proxy settings")
-  println("       --proxy-bypass <list>                  comma-separated hosts to reach directly")
-  println("       --                                     treat remaining arguments as positional")
-  println("       FEATHER_URL=<url> feather              send a GET request to FEATHER_URL")
-  println("       FEATHER_PROXY=<url> feather            route through an HTTP(S) or SOCKS5 proxy")
-  println("       FEATHER_NO_PROXY=<list> feather        comma-separated hosts to reach directly")
-  println("       HTTPS_PROXY/http_proxy/NO_PROXY        standard proxy variables used when FEATHER_PROXY is unset")
-  println("       FEATHER_CA=<pem file> feather          trust an extra CA certificate bundle")
-  println("       FEATHER_CLIENT_CERT=<pem file>         client certificate for mTLS")
-  println("       FEATHER_CLIENT_KEY=<pem file>          client private key for mTLS")
-  println("       FEATHER_INSECURE=1 feather             DISABLE TLS verification (unsafe)")
-  println("       FEATHER_KEYLOG=1 feather               print TLS key material (debug)")
-  println("       FEATHER_H2C=1 feather                  use HTTP/2 prior knowledge for http://")
-  println("Methods: get, post, put, delete, head, options, patch, trace, connect,")
+  println(
+    "       -L, --location                         follow redirects (default)",
+  )
+  println(
+    "       --no-location                          do not follow redirects",
+  )
+  println(
+    "       --max-redirects <n>                    limit followed redirects (default 10)",
+  )
+  println(
+    "       --timeout <milliseconds>               bound the whole request",
+  )
+  println(
+    "       --http1.1                              disable HTTP/2 negotiation",
+  )
+  println(
+    "       --http2                                enable HTTP/2 negotiation (default)",
+  )
+  println(
+    "       -k, --insecure                         DISABLE TLS verification (unsafe)",
+  )
+  println(
+    "       --ca <pem file>                        trust an extra CA certificate bundle",
+  )
+  println(
+    "       --client-cert <pem file>               client certificate for mTLS",
+  )
+  println(
+    "       --client-key <pem file>                client private key for mTLS",
+  )
+  println(
+    "       --keylog                               print TLS key material (debug)",
+  )
+  println(
+    "       --no-keylog                            disable TLS key logging",
+  )
+  println(
+    "       -x, --proxy <url>                      route through an HTTP(S) or SOCKS5 proxy",
+  )
+  println(
+    "       --no-proxy                             connect directly, ignoring proxy settings",
+  )
+  println(
+    "       --proxy-bypass <list>                  comma-separated hosts to reach directly",
+  )
+  println(
+    "       --cache                                enable HTTP response caching (RFC 9111)",
+  )
+  println(
+    "       --cache-max-entries <n>                max cache entries (default 128)",
+  )
+  println(
+    "       --cache-max-body-bytes <n>             max body bytes per entry (default 16MiB)",
+  )
+  println(
+    "       --cache-max-total-bytes <n>            max total cache size (default 64MiB)",
+  )
+  println(
+    "       --                                     treat remaining arguments as positional",
+  )
+  println(
+    "       FEATHER_URL=<url> feather              send a GET request to FEATHER_URL",
+  )
+  println(
+    "       FEATHER_PROXY=<url> feather            route through an HTTP(S) or SOCKS5 proxy",
+  )
+  println(
+    "       FEATHER_NO_PROXY=<list> feather        comma-separated hosts to reach directly",
+  )
+  println(
+    "       HTTPS_PROXY/http_proxy/NO_PROXY        standard proxy variables used when FEATHER_PROXY is unset",
+  )
+  println(
+    "       FEATHER_CA=<pem file> feather          trust an extra CA certificate bundle",
+  )
+  println(
+    "       FEATHER_CLIENT_CERT=<pem file>         client certificate for mTLS",
+  )
+  println(
+    "       FEATHER_CLIENT_KEY=<pem file>          client private key for mTLS",
+  )
+  println(
+    "       FEATHER_INSECURE=1 feather             DISABLE TLS verification (unsafe)",
+  )
+  println(
+    "       FEATHER_KEYLOG=1 feather               print TLS key material (debug)",
+  )
+  println(
+    "       FEATHER_H2C=1 feather                  use HTTP/2 prior knowledge for http://",
+  )
+  println(
+    "Methods: get, post, put, delete, head, options, patch, trace, connect,",
+  )
   println("         or any valid extension token such as PROPFIND")
 }
 
+///|
 /// Prints each TLS key-log line so the captured secrets can be inspected (or
 /// piped into a tool such as Wireshark's SSLKEYLOGFILE).
 struct PrintKeyLogSink {}
 
+///|
 pub impl KeyLogSink for PrintKeyLogSink with fn log(
   self : PrintKeyLogSink,
   environment : String,
@@ -86,6 +171,7 @@ pub impl KeyLogSink for PrintKeyLogSink with fn log(
   println(@utf8.decode_lossy(keylog))
 }
 
+///|
 /// Read a whole file as bytes, returning None when it cannot be read.
 #cfg(target="native")
 fn read_file(path : String) -> Bytes? {
@@ -110,12 +196,14 @@ fn read_file(path : String) -> Bytes? {
   None
 }
 
+///|
 #cfg(not(target="native"))
 fn read_file(path : String) -> Bytes? {
   let _ = path
   None
 }
 
+///|
 /// Read a non-empty path from the environment.
 fn env_path(name : String) -> String? {
   match @env.get_env_var(name) {
@@ -124,6 +212,7 @@ fn env_path(name : String) -> String? {
   }
 }
 
+///|
 /// Build the TLS configuration from command-line overrides and the
 /// FEATHER_CA / FEATHER_INSECURE / FEATHER_KEYLOG / FEATHER_CLIENT_CERT /
 /// FEATHER_CLIENT_KEY environment variables. Command-line values take
@@ -161,13 +250,21 @@ fn env_tls_config(overrides : CliTlsOptions) -> Result[TlsConfig?, HttpError] {
   }
   match (cert_path, key_path) {
     (Some(_), None) =>
-      return Err(TlsError(InvalidConfig(
-        "a client key (FEATHER_CLIENT_KEY or --client-key) is required when a client certificate is set",
-      )))
+      return Err(
+        TlsError(
+          InvalidConfig(
+            "a client key (FEATHER_CLIENT_KEY or --client-key) is required when a client certificate is set",
+          ),
+        ),
+      )
     (None, Some(_)) =>
-      return Err(TlsError(InvalidConfig(
-        "a client certificate (FEATHER_CLIENT_CERT or --client-cert) is required when a client key is set",
-      )))
+      return Err(
+        TlsError(
+          InvalidConfig(
+            "a client certificate (FEATHER_CLIENT_CERT or --client-cert) is required when a client key is set",
+          ),
+        ),
+      )
     (None, None) => ()
     (Some(_), Some(_)) => ()
   }
@@ -177,39 +274,53 @@ fn env_tls_config(overrides : CliTlsOptions) -> Result[TlsConfig?, HttpError] {
   // The CLI client enables HTTP/2 by default. An environment-derived TLS
   // configuration must still advertise it, otherwise FEATHER_CA or
   // FEATHER_INSECURE would silently downgrade every request to HTTP/1.1.
-  let mut config = TlsConfig::new("")
-    .with_alpn(@list.List(["h2", "http/1.1"]))
+  let mut config = TlsConfig::new("").with_alpn(@list.List(["h2", "http/1.1"]))
   if insecure {
     eprintln("WARNING: TLS certificate verification is disabled!")
     config = config.with_verify_mode(SkipVerification)
   }
   match ca_path {
-    Some(path) => match read_file(path) {
-      Some(pem) => config = config.with_root_store(RootStore::new().add_certificate(pem))
-      None => return Err(TlsError(InvalidConfig("could not read CA bundle: " + path)))
-    }
+    Some(path) =>
+      match read_file(path) {
+        Some(pem) =>
+          config = config.with_root_store(RootStore::new().add_certificate(pem))
+        None =>
+          return Err(
+            TlsError(InvalidConfig("could not read CA bundle: " + path)),
+          )
+      }
     None => ()
   }
   if key_log {
-    config = config.with_key_log(PrintKeyLogSink::{})
+    config = config.with_key_log(PrintKeyLogSink::{ })
   }
   match (cert_path, key_path) {
     (Some(cert), Some(key)) =>
       match (read_file(cert), read_file(key)) {
         (Some(cert_pem), Some(key_pem)) =>
           config = config.with_client_auth(ClientCert::new(cert_pem, key_pem))
-        (None, _) => return Err(TlsError(InvalidConfig("could not read client certificate: " + cert)))
-        (_, None) => return Err(TlsError(InvalidConfig("could not read client private key: " + key)))
+        (None, _) =>
+          return Err(
+            TlsError(
+              InvalidConfig("could not read client certificate: " + cert),
+            ),
+          )
+        (_, None) =>
+          return Err(
+            TlsError(InvalidConfig("could not read client private key: " + key)),
+          )
       }
     (_, _) => ()
   }
   Ok(Some(config))
 }
 
+///|
 fn report(err : HttpError) -> Unit {
   eprintln("error: " + @debug.to_string(err))
 }
 
+///|
 fn print_response(response : Response, tunnel? : Bool) -> Bool {
   println(response.version + " " + response.status.to_string())
   for header in response.headers.iter() {
@@ -235,6 +346,7 @@ fn print_response(response : Response, tunnel? : Bool) -> Bool {
   }
 }
 
+///|
 /// Split a `NO_PROXY`-style comma-separated list into individual patterns.
 fn split_proxy_bypass(value : String) -> Array[String] {
   let patterns : Array[String] = []
@@ -247,6 +359,7 @@ fn split_proxy_bypass(value : String) -> Array[String] {
   patterns
 }
 
+///|
 /// The CLI's proxy exclusion list. An explicit FEATHER_NO_PROXY value wins,
 /// but an empty/whitespace-only value means it was not set, so the standard
 /// NO_PROXY variable still applies. This matches how an empty proxy variable
@@ -265,12 +378,21 @@ fn cli_proxy_bypass() -> Array[String] {
   }
 }
 
+///|
 struct CliTlsOptions {
   insecure : Bool?
   ca_path : String?
   client_cert : String?
   client_key : String?
   key_log : Bool?
+}
+
+///|
+struct CliCacheOptions {
+  enabled : Bool
+  max_entries : Int32?
+  max_body_bytes : Int32?
+  max_total_bytes : Int32?
 }
 
 struct CliRequest {
@@ -280,16 +402,18 @@ struct CliRequest {
   has_body : Bool
   headers : Array[(String, String)]
   follow_redirects : Bool
-  max_redirects : Int
-  timeout_ms : Int
+  max_redirects : Int32
+  timeout_ms : Int32
   http2 : Bool
   tls : CliTlsOptions
   proxy : String?
   no_proxy : Bool
   proxy_bypass : Array[String]?
+  cache : CliCacheOptions
   help : Bool
 }
 
+///|
 fn cli_normalize_method(value : String) -> String {
   let text = value.trim().to_owned()
   let lower = text.to_lower()
@@ -299,6 +423,7 @@ fn cli_normalize_method(value : String) -> String {
   }
 }
 
+///|
 fn cli_split_option(arg : String) -> (String, String?) {
   match arg.find("=") {
     Some(index) => (arg[0:index].to_owned(), Some(arg[index + 1:].to_owned()))
@@ -306,12 +431,13 @@ fn cli_split_option(arg : String) -> (String, String?) {
   }
 }
 
+///|
 fn cli_option_value(
   args : Array[String],
-  index : Int,
+  index : Int32,
   name : String,
   inline : String?,
-) -> Result[(String, Int), String] {
+) -> Result[(String, Int32), String] {
   match inline {
     Some(value) => Ok((value, index + 1))
     None =>
@@ -323,6 +449,7 @@ fn cli_option_value(
   }
 }
 
+///|
 fn cli_parse_header(value : String) -> Result[(String, String), String] {
   match value.find(":") {
     Some(index) => {
@@ -338,14 +465,16 @@ fn cli_parse_header(value : String) -> Result[(String, String), String] {
   }
 }
 
-fn cli_parse_nonnegative(value : String, name : String) -> Result[Int, String] {
+///|
+fn cli_parse_nonnegative(
+  value : String,
+  name : String,
+) -> Result[Int32, String] {
   let text = value.trim().to_owned()
   if !is_decimal_digits(text) {
     return Err("option '" + name + "' expects a non-negative integer")
   }
-  let parsed = try {
-    @string.parse_int(text[:])
-  } catch {
+  let parsed = @string.parse_int(text[:]) catch {
     _ => return Err("option '" + name + "' expects a non-negative integer")
   }
   if parsed < 0 {
@@ -355,6 +484,7 @@ fn cli_parse_nonnegative(value : String, name : String) -> Result[Int, String] {
   }
 }
 
+///|
 fn parse_cli_args(args : Array[String]) -> Result[CliRequest, String] {
   // The runtime argument list includes the executable name as its first entry.
   let index = if args.length() > 0 { 1 } else { 0 }
@@ -377,6 +507,12 @@ fn parse_cli_args(args : Array[String]) -> Result[CliRequest, String] {
   let mut proxy : String? = None
   let mut no_proxy = false
   let mut proxy_bypass : Array[String]? = None
+  let mut cache = CliCacheOptions::{
+    enabled: false,
+    max_entries: None,
+    max_body_bytes: None,
+    max_total_bytes: None,
+  }
   let mut help = false
   let mut options_done = false
   let mut position = index
@@ -395,7 +531,8 @@ fn parse_cli_args(args : Array[String]) -> Result[CliRequest, String] {
         position = position + 1
         continue
       } else if name == "-X" || name == "--request" {
-        let (value, next) = match cli_option_value(args, position, name, inline) {
+        let (value, next) = match
+          cli_option_value(args, position, name, inline) {
           Ok(value) => value
           Err(err) => return Err(err)
         }
@@ -407,7 +544,8 @@ fn parse_cli_args(args : Array[String]) -> Result[CliRequest, String] {
         position = next
         continue
       } else if name == "-H" || name == "--header" {
-        let (value, next) = match cli_option_value(args, position, name, inline) {
+        let (value, next) = match
+          cli_option_value(args, position, name, inline) {
           Ok(value) => value
           Err(err) => return Err(err)
         }
@@ -418,7 +556,8 @@ fn parse_cli_args(args : Array[String]) -> Result[CliRequest, String] {
         position = next
         continue
       } else if name == "-d" || name == "--data" || name == "--data-raw" {
-        let (value, next) = match cli_option_value(args, position, name, inline) {
+        let (value, next) = match
+          cli_option_value(args, position, name, inline) {
           Ok(value) => value
           Err(err) => return Err(err)
         }
@@ -442,7 +581,8 @@ fn parse_cli_args(args : Array[String]) -> Result[CliRequest, String] {
         position = position + 1
         continue
       } else if name == "--max-redirects" {
-        let (value, next) = match cli_option_value(args, position, name, inline) {
+        let (value, next) = match
+          cli_option_value(args, position, name, inline) {
           Ok(value) => value
           Err(err) => return Err(err)
         }
@@ -453,7 +593,8 @@ fn parse_cli_args(args : Array[String]) -> Result[CliRequest, String] {
         position = next
         continue
       } else if name == "--timeout" {
-        let (value, next) = match cli_option_value(args, position, name, inline) {
+        let (value, next) = match
+          cli_option_value(args, position, name, inline) {
           Ok(value) => value
           Err(err) => return Err(err)
         }
@@ -464,52 +605,56 @@ fn parse_cli_args(args : Array[String]) -> Result[CliRequest, String] {
         position = next
         continue
       } else if name == "-k" || name == "--insecure" {
-        tls = CliTlsOptions::{ ..tls, insecure: Some(true) }
+        tls = CliTlsOptions::{ ..tls, insecure: Some(true), }
         position = position + 1
         continue
       } else if name == "--ca" {
-        let (value, next) = match cli_option_value(args, position, name, inline) {
+        let (value, next) = match
+          cli_option_value(args, position, name, inline) {
           Ok(value) => value
           Err(err) => return Err(err)
         }
         if value.length() == 0 {
           return Err("option '" + name + "' requires a non-empty path")
         }
-        tls = CliTlsOptions::{ ..tls, ca_path: Some(value) }
+        tls = CliTlsOptions::{ ..tls, ca_path: Some(value), }
         position = next
         continue
       } else if name == "--client-cert" {
-        let (value, next) = match cli_option_value(args, position, name, inline) {
+        let (value, next) = match
+          cli_option_value(args, position, name, inline) {
           Ok(value) => value
           Err(err) => return Err(err)
         }
         if value.length() == 0 {
           return Err("option '" + name + "' requires a non-empty path")
         }
-        tls = CliTlsOptions::{ ..tls, client_cert: Some(value) }
+        tls = CliTlsOptions::{ ..tls, client_cert: Some(value), }
         position = next
         continue
       } else if name == "--client-key" {
-        let (value, next) = match cli_option_value(args, position, name, inline) {
+        let (value, next) = match
+          cli_option_value(args, position, name, inline) {
           Ok(value) => value
           Err(err) => return Err(err)
         }
         if value.length() == 0 {
           return Err("option '" + name + "' requires a non-empty path")
         }
-        tls = CliTlsOptions::{ ..tls, client_key: Some(value) }
+        tls = CliTlsOptions::{ ..tls, client_key: Some(value), }
         position = next
         continue
       } else if name == "--keylog" {
-        tls = CliTlsOptions::{ ..tls, key_log: Some(true) }
+        tls = CliTlsOptions::{ ..tls, key_log: Some(true), }
         position = position + 1
         continue
       } else if name == "--no-keylog" {
-        tls = CliTlsOptions::{ ..tls, key_log: Some(false) }
+        tls = CliTlsOptions::{ ..tls, key_log: Some(false), }
         position = position + 1
         continue
       } else if name == "-x" || name == "--proxy" {
-        let (value, next) = match cli_option_value(args, position, name, inline) {
+        let (value, next) = match
+          cli_option_value(args, position, name, inline) {
           Ok(value) => value
           Err(err) => return Err(err)
         }
@@ -526,7 +671,8 @@ fn parse_cli_args(args : Array[String]) -> Result[CliRequest, String] {
         position = position + 1
         continue
       } else if name == "--proxy-bypass" {
-        let (value, next) = match cli_option_value(args, position, name, inline) {
+        let (value, next) = match
+          cli_option_value(args, position, name, inline) {
           Ok(value) => value
           Err(err) => return Err(err)
         }
@@ -540,6 +686,55 @@ fn parse_cli_args(args : Array[String]) -> Result[CliRequest, String] {
       } else if name == "--http2" {
         http2 = true
         position = position + 1
+        continue
+      } else if name == "--cache" {
+        cache = CliCacheOptions::{ ..cache, enabled: true }
+        position = position + 1
+        continue
+      } else if name == "--cache-max-entries" {
+        let (value, next) = match
+          cli_option_value(args, position, name, inline) {
+          Ok(value) => value
+          Err(err) => return Err(err)
+        }
+        cache = CliCacheOptions::{
+          ..cache,
+          max_entries: Some(match cli_parse_nonnegative(value, name) {
+            Ok(count) => count
+            Err(err) => return Err(err)
+          }),
+        }
+        position = next
+        continue
+      } else if name == "--cache-max-body-bytes" {
+        let (value, next) = match
+          cli_option_value(args, position, name, inline) {
+          Ok(value) => value
+          Err(err) => return Err(err)
+        }
+        cache = CliCacheOptions::{
+          ..cache,
+          max_body_bytes: Some(match cli_parse_nonnegative(value, name) {
+            Ok(count) => count
+            Err(err) => return Err(err)
+          }),
+        }
+        position = next
+        continue
+      } else if name == "--cache-max-total-bytes" {
+        let (value, next) = match
+          cli_option_value(args, position, name, inline) {
+          Ok(value) => value
+          Err(err) => return Err(err)
+        }
+        cache = CliCacheOptions::{
+          ..cache,
+          max_total_bytes: Some(match cli_parse_nonnegative(value, name) {
+            Ok(count) => count
+            Err(err) => return Err(err)
+          }),
+        }
+        position = next
         continue
       } else {
         return Err("unknown option '" + name + "'")
@@ -578,10 +773,12 @@ fn parse_cli_args(args : Array[String]) -> Result[CliRequest, String] {
     proxy,
     no_proxy,
     proxy_bypass,
+    cache,
     help,
   })
 }
 
+///|
 fn run_request(verb : HttpMethod, request : CliRequest) -> Bool {
   let mut client = UnifiedClient::new()
   match env_tls_config(request.tls) {
@@ -614,11 +811,7 @@ fn run_request(verb : HttpMethod, request : CliRequest) -> Bool {
       Some(value) => Some(value)
       None =>
         match @env.get_env_var("FEATHER_PROXY") {
-          Some(value) => if value.length() > 0 {
-            Some(value)
-          } else {
-            None
-          }
+          Some(value) => if value.length() > 0 { Some(value) } else { None }
           None => None
         }
     }
@@ -661,8 +854,19 @@ fn run_request(verb : HttpMethod, request : CliRequest) -> Bool {
         }
     }
   }
-  let succeeded = if verb == GET && !request.has_body && request.headers.length() == 0 {
-    match client.get(request.url) {
+  let mut cached_client = CachedClient::new(client)
+  if request.cache.enabled {
+    let cache = HttpCache::with_limits(
+      request.cache.max_entries.unwrap_or(128),
+      request.cache.max_body_bytes.unwrap_or(16 * 1024 * 1024),
+      request.cache.max_total_bytes.unwrap_or(64 * 1024 * 1024),
+    )
+    cached_client = cached_client.with_cache(cache)
+  }
+  let succeeded = if verb == GET &&
+    !request.has_body &&
+    request.headers.length() == 0 {
+    match cached_client.get(request.url) {
       Ok(response) => print_response(response)
       Err(err) => {
         report(err)
@@ -679,7 +883,7 @@ fn run_request(verb : HttpMethod, request : CliRequest) -> Bool {
         if request.has_body {
           prepared = prepared.with_body(@utf8.encode(request.body))
         }
-        match client.request(prepared) {
+        match cached_client.request(prepared) {
           Ok(response) =>
             print_response(
               response,
@@ -697,10 +901,11 @@ fn run_request(verb : HttpMethod, request : CliRequest) -> Bool {
       }
     }
   }
-  let _ = client.close_all()
+  let _ = cached_client.close_all()
   succeeded
 }
 
+///|
 fn wants_help(args : Array[String]) -> Bool {
   let index = if args.length() > 0 { 1 } else { 0 }
   if index >= args.length() {
@@ -711,6 +916,7 @@ fn wants_help(args : Array[String]) -> Bool {
   first == "-h" || first == "--help" || first.to_lower() == "help"
 }
 
+///|
 fn main {
   let command_args = cli_command_args()
   if wants_help(command_args) {
@@ -731,7 +937,8 @@ fn main {
   }
   if request.url.length() == 0 {
     match @env.get_env_var("FEATHER_URL") {
-      Some(value) => request = CliRequest::{ ..request, url: value.trim().to_owned() }
+      Some(value) =>
+        request = CliRequest::{ ..request, url: value.trim().to_owned(), }
       None => ()
     }
   }
