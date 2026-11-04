@@ -1,15 +1,8 @@
 ///|
 test "CLI options parse method, repeated headers, and body" {
   let request = parse_cli_args([
-    "/usr/bin/feather",
-    "-X",
-    "PATCH",
-    "-H",
-    "X-Test: one",
-    "--header=Accept: application/json",
-    "-d",
-    "payload",
-    "https://example.com/items",
+    "/usr/bin/feather", "-X", "PATCH", "-H", "X-Test: one", "--header=Accept: application/json",
+    "-d", "payload", "https://example.com/items",
   ]).unwrap()
   assert_eq(request.method_text, "patch")
   assert_eq(request.url, "https://example.com/items")
@@ -27,10 +20,7 @@ test "CLI options parse method, repeated headers, and body" {
 ///|
 test "CLI data defaults to POST when no method is given" {
   let request = parse_cli_args([
-    "/usr/bin/feather",
-    "-d",
-    "payload",
-    "https://example.com/submit",
+    "/usr/bin/feather", "-d", "payload", "https://example.com/submit",
   ]).unwrap()
   assert_eq(request.method_text, "post")
   assert_eq(request.body, "payload")
@@ -40,12 +30,7 @@ test "CLI data defaults to POST when no method is given" {
 ///|
 test "CLI explicit method wins over the data default" {
   let request = parse_cli_args([
-    "/usr/bin/feather",
-    "-X",
-    "GET",
-    "-d",
-    "payload",
-    "https://example.com/query",
+    "/usr/bin/feather", "-X", "GET", "-d", "payload", "https://example.com/query",
   ]).unwrap()
   assert_eq(request.method_text, "get")
   assert_eq(request.body, "payload")
@@ -54,13 +39,8 @@ test "CLI explicit method wins over the data default" {
 ///|
 test "CLI flags configure redirects, timeout, and HTTP version" {
   let request = parse_cli_args([
-    "/usr/bin/feather",
-    "--no-location",
-    "--max-redirects",
-    "3",
-    "--timeout=1500",
-    "--http1.1",
-    "https://example.com/",
+    "/usr/bin/feather", "--no-location", "--max-redirects", "3", "--timeout=1500",
+    "--http1.1", "https://example.com/",
   ]).unwrap()
   assert_false(request.follow_redirects)
   assert_eq(request.max_redirects, 3)
@@ -71,9 +51,7 @@ test "CLI flags configure redirects, timeout, and HTTP version" {
 ///|
 test "CLI head option selects HEAD" {
   let request = parse_cli_args([
-    "/usr/bin/feather",
-    "-I",
-    "https://example.com/",
+    "/usr/bin/feather", "-I", "https://example.com/",
   ]).unwrap()
   assert_eq(request.method_text, "head")
 }
@@ -81,11 +59,7 @@ test "CLI head option selects HEAD" {
 ///|
 test "CLI double dash allows a body beginning with a dash" {
   let request = parse_cli_args([
-    "/usr/bin/feather",
-    "post",
-    "https://example.com/",
-    "--",
-    "-d",
+    "/usr/bin/feather", "post", "https://example.com/", "--", "-d",
   ]).unwrap()
   assert_eq(request.method_text, "post")
   assert_eq(request.body, "-d")
@@ -95,69 +69,56 @@ test "CLI double dash allows a body beginning with a dash" {
 ///|
 test "CLI help is recognized after the URL" {
   let request = parse_cli_args([
-    "/usr/bin/feather",
-    "https://example.com/",
-    "--help",
+    "/usr/bin/feather", "https://example.com/", "--help",
   ]).unwrap()
   assert_true(request.help)
 }
 
 ///|
 test "CLI rejects unknown options" {
-  assert_true(parse_cli_args([
-    "/usr/bin/feather",
-    "--bogus",
-    "https://example.com/",
-  ]) is Err(_))
+  assert_true(
+    parse_cli_args(["/usr/bin/feather", "--bogus", "https://example.com/"])
+    is Err(_),
+  )
 }
 
 ///|
 test "CLI rejects malformed headers" {
-  assert_true(parse_cli_args([
-    "/usr/bin/feather",
-    "-H",
-    "MissingColon",
-    "https://example.com/",
-  ]) is Err(_))
+  assert_true(
+    parse_cli_args([
+      "/usr/bin/feather", "-H", "MissingColon", "https://example.com/",
+    ])
+    is Err(_),
+  )
 }
 
 ///|
 test "CLI rejects options without required values" {
   assert_true(parse_cli_args(["/usr/bin/feather", "-X"]) is Err(_))
-  assert_true(parse_cli_args([
-    "/usr/bin/feather",
-    "--max-redirects",
-  ]) is Err(_))
+  assert_true(parse_cli_args(["/usr/bin/feather", "--max-redirects"]) is Err(_))
 }
 
 ///|
 test "CLI rejects negative numeric options" {
-  assert_true(parse_cli_args([
-    "/usr/bin/feather",
-    "--max-redirects",
-    "-1",
-    "https://example.com/",
-  ]) is Err(_))
-  assert_true(parse_cli_args([
-    "/usr/bin/feather",
-    "--timeout",
-    "-5",
-    "https://example.com/",
-  ]) is Err(_))
+  assert_true(
+    parse_cli_args([
+      "/usr/bin/feather", "--max-redirects", "-1", "https://example.com/",
+    ])
+    is Err(_),
+  )
+  assert_true(
+    parse_cli_args([
+      "/usr/bin/feather", "--timeout", "-5", "https://example.com/",
+    ])
+    is Err(_),
+  )
 }
 
 ///|
 test "CLI TLS options override environment-derived settings" {
   let request = parse_cli_args([
-    "/usr/bin/feather",
-    "-k",
-    "--ca",
-    "ca.pem",
-    "--client-cert=cert.pem",
-    "--client-key",
-    "key.pem",
-    "--keylog",
-    "https://example.com/",
+    "/usr/bin/feather", "-k", "--ca", "ca.pem", "--client-cert=cert.pem", "--client-key",
+    "key.pem", "--keylog", "https://example.com/",
   ]).unwrap()
   assert_eq(request.tls.insecure, Some(true))
   assert_eq(request.tls.ca_path, Some("ca.pem"))
@@ -169,9 +130,7 @@ test "CLI TLS options override environment-derived settings" {
 ///|
 test "CLI can explicitly disable key logging" {
   let request = parse_cli_args([
-    "/usr/bin/feather",
-    "--no-keylog",
-    "https://example.com/",
+    "/usr/bin/feather", "--no-keylog", "https://example.com/",
   ]).unwrap()
   assert_eq(request.tls.key_log, Some(false))
   assert_eq(request.tls.insecure, None)
@@ -179,33 +138,19 @@ test "CLI can explicitly disable key logging" {
 
 ///|
 test "CLI rejects TLS options without required values" {
-  assert_true(parse_cli_args([
-    "/usr/bin/feather",
-    "--ca",
-  ]) is Err(_))
-  assert_true(parse_cli_args([
-    "/usr/bin/feather",
-    "--ca=",
-    "https://example.com/",
-  ]) is Err(_))
-  assert_true(parse_cli_args([
-    "/usr/bin/feather",
-    "--client-cert",
-  ]) is Err(_))
-  assert_true(parse_cli_args([
-    "/usr/bin/feather",
-    "--client-key",
-  ]) is Err(_))
+  assert_true(parse_cli_args(["/usr/bin/feather", "--ca"]) is Err(_))
+  assert_true(
+    parse_cli_args(["/usr/bin/feather", "--ca=", "https://example.com/"])
+    is Err(_),
+  )
+  assert_true(parse_cli_args(["/usr/bin/feather", "--client-cert"]) is Err(_))
+  assert_true(parse_cli_args(["/usr/bin/feather", "--client-key"]) is Err(_))
 }
 
 ///|
 test "CLI proxy options override environment routing" {
   let request = parse_cli_args([
-    "/usr/bin/feather",
-    "--proxy",
-    "socks5://127.0.0.1:1080",
-    "--proxy-bypass",
-    "localhost, .internal",
+    "/usr/bin/feather", "--proxy", "socks5://127.0.0.1:1080", "--proxy-bypass", "localhost, .internal",
     "https://example.com/",
   ]).unwrap()
   assert_eq(request.proxy, Some("socks5://127.0.0.1:1080"))
@@ -219,11 +164,7 @@ test "CLI proxy options override environment routing" {
 ///|
 test "CLI no-proxy wins over an earlier proxy option" {
   let request = parse_cli_args([
-    "/usr/bin/feather",
-    "-x",
-    "http://proxy.example:8080",
-    "--no-proxy",
-    "https://example.com/",
+    "/usr/bin/feather", "-x", "http://proxy.example:8080", "--no-proxy", "https://example.com/",
   ]).unwrap()
   assert_true(request.no_proxy)
   assert_eq(request.proxy, None)
@@ -232,10 +173,7 @@ test "CLI no-proxy wins over an earlier proxy option" {
 ///|
 test "CLI proxy wins over an earlier no-proxy option" {
   let request = parse_cli_args([
-    "/usr/bin/feather",
-    "--no-proxy",
-    "--proxy=http://proxy.example:8080",
-    "https://example.com/",
+    "/usr/bin/feather", "--no-proxy", "--proxy=http://proxy.example:8080", "https://example.com/",
   ]).unwrap()
   assert_false(request.no_proxy)
   assert_eq(request.proxy, Some("http://proxy.example:8080"))
@@ -243,9 +181,65 @@ test "CLI proxy wins over an earlier no-proxy option" {
 
 ///|
 test "CLI rejects empty proxy URLs" {
-  assert_true(parse_cli_args([
-    "/usr/bin/feather",
-    "--proxy=",
+  assert_true(
+    parse_cli_args(["/usr/bin/feather", "--proxy=", "https://example.com/"])
+    is Err(_),
+  )
+}
+
+///|
+test "CLI cache options enable caching with custom limits" {
+  let request = parse_cli_args([
+    "/usr/bin/feather", "--cache", "--cache-max-entries", "256",
+    "--cache-max-body-bytes", "1048576", "--cache-max-total-bytes", "10485760",
     "https://example.com/",
-  ]) is Err(_))
+  ]).unwrap()
+  assert_true(request.cache.enabled)
+  assert_eq(request.cache.max_entries, Some(256))
+  assert_eq(request.cache.max_body_bytes, Some(1048576))
+  assert_eq(request.cache.max_total_bytes, Some(10485760))
+}
+
+///|
+test "CLI cache defaults to disabled" {
+  let request = parse_cli_args([
+    "/usr/bin/feather", "https://example.com/",
+  ]).unwrap()
+  assert_false(request.cache.enabled)
+  assert_eq(request.cache.max_entries, None)
+  assert_eq(request.cache.max_body_bytes, None)
+  assert_eq(request.cache.max_total_bytes, None)
+}
+
+///|
+test "CLI rejects negative cache options" {
+  assert_true(
+    parse_cli_args([
+      "/usr/bin/feather", "--cache-max-entries", "-1", "https://example.com/",
+    ])
+    is Err(_),
+  )
+  assert_true(
+    parse_cli_args([
+      "/usr/bin/feather", "--cache-max-body-bytes", "-5", "https://example.com/",
+    ])
+    is Err(_),
+  )
+  assert_true(
+    parse_cli_args([
+      "/usr/bin/feather", "--cache-max-total-bytes", "-10", "https://example.com/",
+    ])
+    is Err(_),
+  )
+}
+
+///|
+test "CLI rejects cache options without values" {
+  assert_true(parse_cli_args(["/usr/bin/feather", "--cache-max-entries"]) is Err(_))
+  assert_true(
+    parse_cli_args(["/usr/bin/feather", "--cache-max-entries=", "https://example.com/"])
+    is Err(_),
+  )
+  assert_true(parse_cli_args(["/usr/bin/feather", "--cache-max-body-bytes"]) is Err(_))
+  assert_true(parse_cli_args(["/usr/bin/feather", "--cache-max-total-bytes"]) is Err(_))
 }
