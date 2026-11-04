@@ -153,12 +153,15 @@ fn deflate_hash(data : Bytes, position : Int32) -> Int32 {
 }
 
 ///|
-/// Compress `data` into a raw DEFLATE stream suitable for WebSocket
-/// `permessage-deflate` (the sync-flush marker has already been stripped).
-fn deflate_compress(data : Bytes) -> Bytes {
+/// Compress `data` into a raw DEFLATE stream. With `sync_flush` the output
+/// ends after the empty stored-block header required by RFC 7692
+/// `permessage-deflate` (the peer appends the matching `00 00 FF FF` marker
+/// bytes); otherwise the block is marked final and byte-aligned, producing a
+/// complete standalone DEFLATE stream.
+fn deflate_compress_with(data : Bytes, sync_flush : Bool) -> Bytes {
   let writer = DeflateBitWriter::new()
-  // BFINAL = 0, BTYPE = 01 (fixed Huffman).
-  writer.write_bits(0, 1)
+  // BFINAL = 0 for sync flush, 1 for a final block; BTYPE = 01 (fixed Huffman).
+  writer.write_bits(if sync_flush { 0 } else { 1 }, 1)
   writer.write_bits(1, 2)
   let length = data.length()
   let head = Array::make(DEFLATE_HASH_SIZE, -1)
@@ -216,5 +219,76 @@ fn deflate_compress(data : Bytes) -> Bytes {
   }
   let (end_code, end_length) = deflate_fixed_code(256)
   writer.write_code(end_code, end_length)
-  writer.finish()
+  if sync_flush {
+    writer.finish()
+  } else {
+    // A final block needs no sync-flush marker; just pad to a byte boundary.
+    writer.flush_byte()
+    writer.output.to_bytes()
+  }
+}
+
+///|
+/// Compress `data` into a complete raw DEFLATE stream (RFC 1951). The output
+/// is standalone and can be embedded in zlib (RFC 1950) or gzip (RFC 1952)
+/// wrappers, or decoded with `inflate_deflate`.
+pub fn deflate_compress_raw(data : Bytes) -> Bytes {
+  deflate_compress_with(data, false)
+}
+
+///|
+/// Compress `data` for WebSocket `permessage-deflate`: a raw DEFLATE stream
+/// whose trailing `00 00 FF FF` sync-flush marker bytes are omitted (they are
+/// implicit for the extension).
+fn deflate_compress(data : Bytes) -> Bytes {
+  deflate_compress_with(data, true)
+}
+
+///|
+/// Compress `data` into a zlib stream (RFC 1950): a zlib header, a raw
+/// DEFLATE body, and an Adler-32 trailer over the uncompressed data. Decode
+/// the result with `inflate` (or any zlib decoder).
+pub fn zlib_compress(data : Bytes) -> Bytes {
+  let output = Buffer(size_hint=data.length() / 2 + 64)
+  output.write_byte(0x78) // CMF: deflate, 32K window
+  output.write_byte(0x9c) // FLG: FLEVEL=2, no dictionary, header check valid
+  output.write_bytes(deflate_compress_raw(data))
+  let checksum = adler32(data)
+  // The zlib Adler-32 trailer is stored big-endian (RFC 1950 §2.2).
+  output.write_byte(((checksum >> 24) & 0xFF).to_byte())
+  output.write_byte(((checksum >> 16) & 0xFF).to_byte())
+  output.write_byte(((checksum >> 8) & 0xFF).to_byte())
+  output.write_byte((checksum & 0xFF).to_byte())
+  output.to_bytes()
+}
+
+///|
+/// Compress `data` into a gzip stream (RFC 1952): a minimal header without
+/// optional fields, a raw DEFLATE body, and a CRC-32 / ISIZE trailer over the
+/// uncompressed data. Decode the result with `gunzip` (or any gzip decoder).
+pub fn gzip_compress(data : Bytes) -> Bytes {
+  let output = Buffer(size_hint=data.length() / 2 + 64)
+  output.write_byte(0x1f)
+  output.write_byte(0x8b)
+  output.write_byte(0x08) // CM = deflate
+  output.write_byte(0x00) // FLG: no FEXTRA/FNAME/FCOMMENT/FHCRC
+  output.write_byte(0x00) // MTIME = 0 (4 bytes, no timestamp)
+  output.write_byte(0x00)
+  output.write_byte(0x00)
+  output.write_byte(0x00)
+  output.write_byte(0x00) // XFL
+  output.write_byte(0xff) // OS = unknown
+  output.write_bytes(deflate_compress_raw(data))
+  let checksum = crc32(data)
+  // The gzip CRC-32 and ISIZE trailer fields are little-endian (RFC 1952 §2.3.1).
+  output.write_byte((checksum & 0xFF).to_byte())
+  output.write_byte(((checksum >> 8) & 0xFF).to_byte())
+  output.write_byte(((checksum >> 16) & 0xFF).to_byte())
+  output.write_byte(((checksum >> 24) & 0xFF).to_byte())
+  let length = data.length() & 0xFFFFFFFF
+  output.write_byte((length & 0xFF).to_byte())
+  output.write_byte(((length >> 8) & 0xFF).to_byte())
+  output.write_byte(((length >> 16) & 0xFF).to_byte())
+  output.write_byte(((length >> 24) & 0xFF).to_byte())
+  output.to_bytes()
 }

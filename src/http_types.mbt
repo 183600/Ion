@@ -1351,6 +1351,28 @@ pub fn Request::with_form(
 }
 
 ///|
+/// Set the request body to `body` compressed with gzip (RFC 1952) and declare
+/// `Content-Encoding: gzip`. The recipient must understand the coding or it
+/// will reply with 415 Unsupported Media Type, so only send compressed bodies
+/// to endpoints known to accept them.
+pub fn Request::with_gzip_body(self : Request, body : Bytes) -> Request {
+  self
+  .set_header("Content-Encoding", "gzip")
+  .with_body(gzip_compress(body))
+}
+
+///|
+/// Set the request body to `body` compressed with zlib (RFC 1950) and declare
+/// `Content-Encoding: deflate` (the coding name that HTTP assigns to the zlib
+/// wrapper). The recipient must understand the coding or it will reply with
+/// 415 Unsupported Media Type.
+pub fn Request::with_deflate_body(self : Request, body : Bytes) -> Request {
+  self
+  .set_header("Content-Encoding", "deflate")
+  .with_body(zlib_compress(body))
+}
+
+///|
 /// A file part in a multipart/form-data request body.
 #derive(Eq, Debug)
 pub struct MultipartFile {

@@ -26,11 +26,15 @@ pub fn default_dialer() -> UnavailableTcpDialer
 
 pub fn default_tls_provider() -> UnavailableTlsProvider
 
+pub fn deflate_compress_raw(Bytes) -> Bytes
+
 pub fn delete(String) -> Result[Response, HttpError]
 
 pub fn get(String) -> Result[Response, HttpError]
 
 pub fn gunzip(Bytes, Int32) -> Result[Bytes, HttpError]
+
+pub fn gzip_compress(Bytes) -> Bytes
 
 pub fn h1_request(&Stream, Request, absolute_form? : Bool) -> Result[Response, HttpError]
 
@@ -79,6 +83,8 @@ pub fn websocket_connect(&HttpClient, String, String, Array[String], permessage_
 pub fn websocket_generate_key() -> String?
 
 pub fn websocket_handshake_request(String, String, Array[String], permessage_deflate? : Bool) -> Result[Request, HttpError]
+
+pub fn zlib_compress(Bytes) -> Bytes
 
 // Errors
 
@@ -568,8 +574,10 @@ pub fn Request::set_header(Self, String, String) -> Self
 pub fn Request::with_basic_auth(Self, String, String) -> Self
 pub fn Request::with_bearer_auth(Self, String) -> Self
 pub fn Request::with_body(Self, Bytes) -> Self
+pub fn Request::with_deflate_body(Self, Bytes) -> Self
 pub fn Request::with_expect_continue(Self) -> Self
 pub fn Request::with_form(Self, Array[(String, String)]) -> Self
+pub fn Request::with_gzip_body(Self, Bytes) -> Self
 pub fn Request::with_header(Self, String, String) -> Self
 pub fn Request::with_json(Self, @json.Json) -> Self
 pub fn Request::with_json_text(Self, String) -> Self
