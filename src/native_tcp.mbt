@@ -129,7 +129,7 @@ pub fn NativeTcpStream::open(
     self.port,
     self.timeout_ms,
   )
-  if fd < 0 {
+  if fd <= 0 {
     return Err(native_tcp_address_error(-fd))
   }
   self.fd = fd
