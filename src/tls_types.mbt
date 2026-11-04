@@ -128,6 +128,11 @@ pub fn TlsConfig::with_verify_mode(
 }
 
 ///|
+pub fn TlsConfig::verify_mode(self : TlsConfig) -> VerifyMode {
+  self.verify
+}
+
+///|
 pub fn TlsConfig::with_min_version(
   self : TlsConfig,
   min_version : TlsVersion,
