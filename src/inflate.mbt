@@ -38,7 +38,7 @@ let inflate_cl_order : Array[Int] = [
 ]
 
 fn inflate_error(message : String) -> HttpError {
-  ProtocolError("deflate: " + message)
+  ProtocolError("deflate error: " + message)
 }
 
 struct BitReader {
@@ -58,6 +58,9 @@ fn BitReader::new(data : BytesView) -> BitReader {
 fn BitReader::bits(self : BitReader, count : Int) -> Result[Int, HttpError] {
   if count == 0 {
     return Ok(0)
+  }
+  if count > 32 {
+    return Err(inflate_error("bit count exceeds 32"))
   }
   while self.bit_count < count {
     if self.pos >= self.data.length() {
@@ -88,12 +91,15 @@ struct Huffman {
 
 /// Build a canonical Huffman decoding table from a list of code lengths.
 fn Huffman::build(lengths : Array[Int], max_symbols : Int) -> Result[Huffman, HttpError] {
+  if max_symbols < 1 || max_symbols > INFLATE_MAX_LIT_CODES + INFLATE_MAX_DIST_CODES {
+    return Err(inflate_error("max_symbols out of range"))
+  }
   let counts = Array::make(INFLATE_MAX_BITS + 1, 0)
   let mut i = 0
   while i < lengths.length() {
     let len = lengths[i]
     if len < 0 || len > INFLATE_MAX_BITS {
-      return Err(inflate_error("invalid code length"))
+      return Err(inflate_error("invalid code length at index " + i.to_string()))
     }
     counts[len] = counts[len] + 1
     i = i + 1
@@ -120,6 +126,12 @@ fn Huffman::build(lengths : Array[Int], max_symbols : Int) -> Result[Huffman, Ht
     }
     len = len + 1
   }
+  // Check that the tree is complete: for a valid Huffman code, after processing
+  // all code lengths, exactly one symbol should remain (left == 1) when the
+  // maximum code length is at least 1.
+  if max_len == 0 {
+    return Err(inflate_error("Huffman code has no symbols"))
+  }
   // Generate offsets into symbol table for each length for sorting.
   let offsets = Array::make(INFLATE_MAX_BITS + 1, 0)
   let mut index = 0
@@ -134,6 +146,9 @@ fn Huffman::build(lengths : Array[Int], max_symbols : Int) -> Result[Huffman, Ht
   while i < lengths.length() {
     let l = lengths[i]
     if l != 0 {
+      if offsets[l] >= index {
+        return Err(inflate_error("symbol offset overflow at index " + i.to_string()))
+      }
       symbols[offsets[l]] = i
       offsets[l] = offsets[l] + 1
     }

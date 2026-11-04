@@ -300,7 +300,22 @@ fn decode_text_body(data : Bytes, charset : String?) -> String {
     "windows-1252" | "cp1252" | "windows1252" =>
       decode_single_byte(data, true)
     "utf-16" | "utf16" | "utf-16le" | "utf-16be" =>
-      decode_utf16(data, charset)
+      // If there's a BOM, use it. Otherwise, for explicit endianness labels
+      // (utf-16le/utf-16be) use the specified endianness; for generic "utf-16"
+      // without BOM, fall through to the default UTF-8 decode below.
+      if utf16le_bom || utf16be_bom {
+        decode_utf16(data, charset)
+      } else if charset == "utf-16le" || charset == "utf-16be" {
+        // Explicit endianness without BOM: try decoding, fall back to UTF-8
+        let result = decode_utf16(data, charset)
+        if result.length() > 0 || data.length() == 0 {
+          result
+        } else {
+          @utf8.decode_lossy(data[:])
+        }
+      } else {
+        decode_utf16(data, charset)
+      }
     _ => @utf8.decode_lossy(data[:])
   }
 }
