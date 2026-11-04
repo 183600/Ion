@@ -357,6 +357,9 @@ fn valid_host_port(value : String) -> Bool {
   if !is_decimal_digits(value) {
     return false
   }
+  if value.length() > 5 {
+    return false
+  }
   let port = @string.parse_int(value[:]) catch { _ => return false }
   port >= 1 && port <= 65535
 }
