@@ -149,6 +149,9 @@ fn h2_read_frame(reader : StreamReader) -> Result[H2Frame, HttpError] {
     (header[6].to_int() << 16) |
     (header[7].to_int() << 8) |
     header[8].to_int()
+  if (header[5].to_int() & 0x80) != 0 {
+    return Err(ProtocolError("HTTP/2 frame has reserved bit set"))
+  }
   let payload_bytes : Array[Byte] = []
   match reader.read_exact(length, payload_bytes) {
     Ok(_) => ()
