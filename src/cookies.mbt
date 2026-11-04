@@ -355,17 +355,18 @@ fn cookie_domain_matches(
 
 ///|
 fn cookie_path_matches(cookie_path : String, request_path : String) -> Bool {
-  if request_path == cookie_path {
+  let effective_path = if cookie_path.length() == 0 { "/" } else { cookie_path }
+  if request_path == effective_path {
     return true
   }
-  if !request_path.has_prefix(cookie_path) {
+  if !request_path.has_prefix(effective_path) {
     return false
   }
-  if cookie_path.has_suffix("/") {
+  if effective_path.has_suffix("/") {
     return true
   }
-  cookie_path.length() < request_path.length() &&
-  request_path.get_char(cookie_path.length()) == Some('/')
+  effective_path.length() < request_path.length() &&
+  request_path.get_char(effective_path.length()) == Some('/')
 }
 
 ///|
