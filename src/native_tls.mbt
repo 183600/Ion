@@ -429,7 +429,7 @@ pub impl Stream for NativeTlsStream with fn wait_readable(
   timeout_ms : Int32,
 ) -> Result[Bool, NetError] {
   if !self.is_open {
-    return Err(NetError::Closed)
+    return Ok(false)
   }
   match self.drain_available() {
     Ok(true) => return Ok(true)

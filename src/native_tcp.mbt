@@ -179,18 +179,18 @@ pub impl Stream for NativeTcpStream with fn has_buffered_input(
 
 ///|
 pub impl Stream for NativeTcpStream with fn wait_readable(
-  self : NativeTcpStream,
-  timeout_ms : Int32,
+    self : NativeTcpStream,
+    timeout_ms : Int32,
 ) -> Result[Bool, NetError] {
-  if !self.is_open || self.fd < 0 {
-    return Err(NetError::Closed)
-  }
-  let timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
-  let result = feather_tcp_wait_readable(self.fd, timeout_ms)
-  if result < 0 {
-    return Err(native_tcp_error(-result, "TCP poll"))
-  }
-  Ok(result > 0)
+    if !self.is_open || self.fd < 0 {
+        return Ok(false)
+    }
+    let timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
+    let result = feather_tcp_wait_readable(self.fd, timeout_ms)
+    if result < 0 {
+        return Err(native_tcp_error(-result, "TCP poll"))
+    }
+    Ok(result > 0)
 }
 
 ///|

@@ -1,0 +1,1 @@
+Task completed: Fixed inconsistencies in wait_readable methods for NativeTcpStream and NativeTlsStream to return Ok(false) for invalid states instead of Err(NetError::Closed), improving code consistency and maintainability.
