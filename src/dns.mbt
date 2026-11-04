@@ -1,12 +1,14 @@
 ///|
 /// DNS resolver using the UDP transport (RFC 1035).
 ///
-/// This module provides a DNS client that can resolve A (IPv4) and AAAA (IPv6)
-/// records using a `Datagram` transport. It is useful when the platform's
-/// `getaddrinfo` is unavailable or when finer control over DNS queries is needed.
+/// This module provides a blocking DNS client that can resolve A (IPv4) and
+/// AAAA (IPv6) records using a `Datagram` transport. It is useful when the
+/// platform's `getaddrinfo` is unavailable or when finer control over DNS
+/// queries is needed.
 ///
-/// The resolver supports both blocking and non-blocking operation, configurable
-/// timeouts, and retry logic with exponential backoff.
+/// Queries use a configurable timeout and retry with exponential backoff.
+/// Raw response messages can be decoded with `dns_parse_response`, for
+/// example to inspect the answer sections of a custom exchange.
 const DNS_PORT : Int32 = 53
 
 ///|
@@ -203,7 +205,11 @@ fn dns_parse_record(
 }
 
 ///|
-fn dns_parse_response(data : Bytes) -> Result[DnsResponse, DnsError] {
+/// Decode a DNS response message (RFC 1035 §4.1): the fixed 12-byte header,
+/// the question section, and the answer, authority, and additional sections.
+/// Replies with a non-zero RCODE map to their `DnsError`; structurally invalid
+/// messages are `MalformedResponse`.
+pub fn dns_parse_response(data : Bytes) -> Result[DnsResponse, DnsError] {
   if data.length() < DNS_HEADER_SIZE {
     return Err(MalformedResponse)
   }

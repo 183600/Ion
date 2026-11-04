@@ -30,6 +30,8 @@ pub fn deflate_compress_raw(Bytes) -> Bytes
 
 pub fn delete(String) -> Result[Response, HttpError]
 
+pub fn dns_parse_response(Bytes) -> Result[DnsResponse, DnsError]
+
 pub fn get(String) -> Result[Response, HttpError]
 
 pub fn gunzip(Bytes, Int32) -> Result[Bytes, HttpError]
