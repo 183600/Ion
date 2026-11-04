@@ -2269,6 +2269,9 @@ pub impl Stream for ResponseStream with fn read(
         }
       }
       BodyUntilEof => {
+        if !self.tunnel && self.total_read >= self.max_body_bytes {
+          return Err(self.fail(NetError::ReadError("response body too large")))
+        }
         let count = match self.reader.val.read_some(buf, limit - produced) {
           Ok(count) => count
           Err(err) => return Err(self.fail(err))
@@ -2277,9 +2280,6 @@ pub impl Stream for ResponseStream with fn read(
           let _ = self.reader.val.stream.close()
           self.complete(false)
           break
-        }
-        if !self.tunnel && self.total_read > self.max_body_bytes - count {
-          return Err(self.fail(NetError::ReadError("response body too large")))
         }
         self.total_read = self.total_read + count
         produced = produced + count
