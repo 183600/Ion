@@ -630,6 +630,8 @@ fn inflate_gzip(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
       if padding == data.length() {
         offset = padding
         break
+      } else {
+        return Err(inflate_error("gzip trailing non-zero data after zero padding"))
       }
     }
     if data.length() - offset < 18 {
