@@ -334,6 +334,7 @@ pub struct DnsRecord {
 pub enum DnsRecordType {
   A
   AAAA
+  Other(Int32)
 }
 pub fn DnsRecordType::code(Self) -> Int32
 

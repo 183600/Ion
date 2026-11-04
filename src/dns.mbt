@@ -40,6 +40,11 @@ pub enum DnsError {
 pub enum DnsRecordType {
   A
   AAAA
+  /// Any other RR type (CNAME, NS, SOA, OPT, ...). RFC 1034 §6.2 requires a
+  /// resolver to tolerate records it does not care about: unknown types are
+  /// parsed so their rdata can be skipped and are filtered out of results by
+  /// the record-type comparison.
+  Other(Int32)
 }
 
 ///|
@@ -47,6 +52,7 @@ pub fn DnsRecordType::code(typ : DnsRecordType) -> Int32 {
   match typ {
     A => 1
     AAAA => 28
+    Other(code) => code
   }
 }
 
@@ -186,7 +192,11 @@ fn dns_parse_record(
   let typ = match typ_code {
     1 => A
     28 => AAAA
-    _ => return Err(NotImplemented)
+    // Answer, authority, and additional sections routinely carry record types
+    // a stub resolver does not need (CNAME chains, NS/SOA delegation data,
+    // EDNS OPT). Skipping them is required; failing the whole response would
+    // break resolution of common names.
+    other => Other(other)
   }
   let record = DnsRecord::{ name, typ, class, ttl, data: rdata, }
   Ok((record, rdata_start + rdlength))
@@ -386,6 +396,7 @@ fn DnsResolver::query_one(
   header.write_byte(0x00)
   header.write_byte(0)
   header.write_byte(1)
+  header.write_byte(0)
   header.write_byte(0)
   header.write_byte(0)
   header.write_byte(0)
