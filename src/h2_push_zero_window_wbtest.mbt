@@ -1,3 +1,4 @@
+///|
 /// A zero WINDOW_UPDATE increment is malformed regardless of its value. When
 /// it targets a server-push stream that can never exist (push is disabled), it
 /// must not be silently ignored just because its increment is zero.
@@ -16,12 +17,7 @@ test "http2 rejects a zero WINDOW_UPDATE on a server-push stream" {
       3,
       hpack_encode([(":status", "200")]),
     ),
-    h2_test_frame(
-      H2_FRAME_WINDOW_UPDATE,
-      0,
-      2,
-      h2_window_update_payload(0),
-    ),
+    h2_test_frame(H2_FRAME_WINDOW_UPDATE, 0, 2, h2_window_update_payload(0)),
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let connection = H2ClientConnection::new(stream).unwrap()

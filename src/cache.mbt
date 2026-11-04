@@ -1,3 +1,4 @@
+///|
 /// RFC 9111 cache directives.
 #derive(Eq, Debug)
 pub struct CacheControl {
@@ -7,13 +8,14 @@ pub struct CacheControl {
   mut public_cache : Bool
   mut private_cache : Bool
   mut immutable : Bool
-  mut max_age : Int?
-  mut s_maxage : Int?
-  mut max_stale : Int?
-  mut min_fresh : Int?
+  mut max_age : Int32?
+  mut s_maxage : Int32?
+  mut max_stale : Int32?
+  mut min_fresh : Int32?
   mut only_if_cached : Bool
 }
 
+///|
 pub fn CacheControl::new() -> CacheControl {
   CacheControl::{
     no_store: false,
@@ -30,15 +32,12 @@ pub fn CacheControl::new() -> CacheControl {
   }
 }
 
-fn cache_index_of_char(value : String, target : Char) -> Int? {
+///|
+fn cache_index_of_char(value : String, target : Char) -> Int32? {
   let mut i = 0
   while i < value.length() {
     match value.get_char(i) {
-      Some(ch) => {
-        if ch == target {
-          return Some(i)
-        }
-      }
+      Some(ch) => if ch == target { return Some(i) }
       None => ()
     }
     i = i + 1
@@ -46,6 +45,7 @@ fn cache_index_of_char(value : String, target : Char) -> Int? {
   None
 }
 
+///|
 fn cache_split_directives(value : String) -> Array[String] {
   let parts : Array[Bytes] = []
   let buffer = @buffer.new(size_hint=value.length())
@@ -78,6 +78,7 @@ fn cache_split_directives(value : String) -> Array[String] {
   parts.map(fn(part) { @utf8.decode_lossy(part[:]) })
 }
 
+///|
 fn cache_unquote(value : String) -> String {
   let text = value.trim().to_owned()
   if text.length() >= 2 && text.has_prefix("\"") && text.has_suffix("\"") {
@@ -87,7 +88,8 @@ fn cache_unquote(value : String) -> String {
   }
 }
 
-fn cache_parse_delta(value : String) -> Int {
+///|
+fn cache_parse_delta(value : String) -> Int32 {
   let text = cache_unquote(value)
   if !is_decimal_digits(text) {
     return 0
@@ -103,16 +105,19 @@ fn cache_parse_delta(value : String) -> Int {
   result
 }
 
+///|
 fn cache_parse_directive(part : String) -> (String, String?) {
   match cache_index_of_char(part, '=') {
-    Some(index) => (
-      part[0:index].trim().to_lower().to_owned(),
-      Some(part[index + 1:].trim().to_owned()),
-    )
+    Some(index) =>
+      (
+        part[0:index].trim().to_lower().to_owned(),
+        Some(part[index + 1:].trim().to_owned()),
+      )
     None => (part.trim().to_lower().to_owned(), None)
   }
 }
 
+///|
 pub fn CacheControl::parse(value : String) -> CacheControl {
   let control = CacheControl::new()
   for part in cache_split_directives(value) {
@@ -125,30 +130,34 @@ pub fn CacheControl::parse(value : String) -> CacheControl {
       "public" => control.public_cache = true
       "private" => control.private_cache = true
       "immutable" => control.immutable = true
-      "max-age" => {
-        control.max_age = Some(match value {
-          Some(value) => cache_parse_delta(value)
-          None => 0
-        })
-      }
-      "s-maxage" => {
-        control.s_maxage = Some(match value {
-          Some(value) => cache_parse_delta(value)
-          None => 0
-        })
-      }
-      "max-stale" => {
-        control.max_stale = Some(match value {
-          Some(value) => cache_parse_delta(value)
-          None => -1
-        })
-      }
-      "min-fresh" => {
-        control.min_fresh = Some(match value {
-          Some(value) => cache_parse_delta(value)
-          None => 0
-        })
-      }
+      "max-age" =>
+        control.max_age = Some(
+          match value {
+            Some(value) => cache_parse_delta(value)
+            None => 0
+          },
+        )
+      "s-maxage" =>
+        control.s_maxage = Some(
+          match value {
+            Some(value) => cache_parse_delta(value)
+            None => 0
+          },
+        )
+      "max-stale" =>
+        control.max_stale = Some(
+          match value {
+            Some(value) => cache_parse_delta(value)
+            None => -1
+          },
+        )
+      "min-fresh" =>
+        control.min_fresh = Some(
+          match value {
+            Some(value) => cache_parse_delta(value)
+            None => 0
+          },
+        )
       "only-if-cached" => control.only_if_cached = true
       _ => ()
     }
@@ -156,6 +165,7 @@ pub fn CacheControl::parse(value : String) -> CacheControl {
   control
 }
 
+///|
 pub fn CacheControl::from_headers(headers : Headers) -> CacheControl {
   let values = headers.get_all("Cache-Control")
   if values.length() == 0 {
@@ -164,10 +174,12 @@ pub fn CacheControl::from_headers(headers : Headers) -> CacheControl {
   CacheControl::parse(values.to_array().join(", "))
 }
 
+///|
 fn cache_header_value(headers : Headers, name : String) -> String? {
   headers.get(name)
 }
 
+///|
 fn cache_join_header_values(headers : Headers, name : String) -> String {
   let values = headers.get_all(name)
   if values.length() == 0 {
@@ -176,6 +188,7 @@ fn cache_join_header_values(headers : Headers, name : String) -> String {
   values.to_array().join(", ")
 }
 
+///|
 fn cache_header_seconds(value : String?) -> UInt64 {
   match value {
     Some(value) => {
@@ -190,6 +203,7 @@ fn cache_header_seconds(value : String?) -> UInt64 {
   }
 }
 
+///|
 fn cache_header_date(value : String?) -> UInt64? {
   match value {
     Some(value) => cookie_parse_date(value)
@@ -197,25 +211,27 @@ fn cache_header_date(value : String?) -> UInt64? {
   }
 }
 
-fn cache_seconds_to_ms(seconds : Int) -> UInt64 {
+///|
+fn cache_seconds_to_ms(seconds : Int32) -> UInt64 {
   seconds.to_uint64() * 1000UL
 }
 
+///|
 fn cache_freshness_lifetime_ms(headers : Headers, date_ms : UInt64) -> UInt64 {
   let control = CacheControl::from_headers(headers)
   match control.max_age {
     Some(seconds) => cache_seconds_to_ms(seconds)
-    None => {
+    None =>
       match cache_header_date(cache_header_value(headers, "Expires")) {
-        Some(expires_ms) => {
+        Some(expires_ms) =>
           if expires_ms > date_ms {
             expires_ms - date_ms
           } else {
             0UL
           }
-        }
-        None => {
-          match cache_header_date(cache_header_value(headers, "Last-Modified")) {
+        None =>
+          match
+            cache_header_date(cache_header_value(headers, "Last-Modified")) {
             Some(modified_ms) => {
               let heuristic = if date_ms > modified_ms {
                 (date_ms - modified_ms) / 10UL
@@ -231,46 +247,51 @@ fn cache_freshness_lifetime_ms(headers : Headers, date_ms : UInt64) -> UInt64 {
             }
             None => 0UL
           }
-        }
       }
-    }
   }
 }
 
+///|
 fn cache_has_explicit_freshness(headers : Headers) -> Bool {
   let control = CacheControl::from_headers(headers)
   control.max_age is Some(_) ||
-    cache_header_date(cache_header_value(headers, "Expires")) is Some(_)
+  cache_header_date(cache_header_value(headers, "Expires")) is Some(_)
 }
 
+///|
 fn cache_has_validator(headers : Headers) -> Bool {
   headers.get("ETag") is Some(_) || headers.get("Last-Modified") is Some(_)
 }
 
+///|
 fn cache_key(url : Url) -> String {
-  Url::{ ..url, fragment: "" }.to_string()
+  Url::{ ..url, fragment: "", }.to_string()
 }
 
+///|
 fn cache_hop_by_hop(name : String) -> Bool {
   match name {
-    "connection" |
-    "keep-alive" |
-    "proxy-authenticate" |
-    "proxy-authorization" |
-    "te" |
-    "trailer" |
-    "transfer-encoding" |
-    "upgrade" => true
+    "connection"
+    | "keep-alive"
+    | "proxy-authenticate"
+    | "proxy-authorization"
+    | "te"
+    | "trailer"
+    | "transfer-encoding"
+    | "upgrade" => true
     _ => false
   }
 }
 
+///|
 fn cache_transfer_coding_supported(headers : Headers) -> Bool {
   let transfer = cache_join_header_values(headers, "Transfer-Encoding")
   if transfer.length() > 0 {
     for encoding in transfer.split(",") {
       let token = encoding.trim().to_lower().to_owned()
-      if token.length() > 0 && token != "chunked" && !content_coding_supported(token) {
+      if token.length() > 0 &&
+        token != "chunked" &&
+        !content_coding_supported(token) {
         return false
       }
     }
@@ -278,7 +299,8 @@ fn cache_transfer_coding_supported(headers : Headers) -> Bool {
   true
 }
 
-fn cache_status_cacheable(status : Int, headers : Headers) -> Bool {
+///|
+fn cache_status_cacheable(status : Int32, headers : Headers) -> Bool {
   match status {
     200 | 203 | 204 | 300 | 301 | 308 | 404 | 405 | 410 | 414 | 501 => true
     302 | 307 => cache_has_explicit_freshness(headers)
@@ -286,6 +308,7 @@ fn cache_status_cacheable(status : Int, headers : Headers) -> Bool {
   }
 }
 
+///|
 fn cache_vary_names(
   request_headers : Headers,
   response_headers : Headers,
@@ -309,6 +332,7 @@ fn cache_vary_names(
   Some(names)
 }
 
+///|
 fn cache_request_header_value(headers : Headers, name : String) -> String {
   let values = headers.get_all(name)
   if values.length() == 0 {
@@ -321,6 +345,7 @@ fn cache_request_header_value(headers : Headers, name : String) -> String {
   }
 }
 
+///|
 fn cache_vary_values(
   names : Array[String],
   request_headers : Headers,
@@ -328,6 +353,7 @@ fn cache_vary_values(
   names.map(fn(name) { cache_request_header_value(request_headers, name) })
 }
 
+///|
 fn cache_current_age_ms(entry : CacheEntry, now_ms : UInt64) -> UInt64 {
   let apparent = if entry.response_time_ms > entry.date_ms {
     entry.response_time_ms - entry.date_ms
@@ -347,6 +373,7 @@ fn cache_current_age_ms(entry : CacheEntry, now_ms : UInt64) -> UInt64 {
   corrected + resident
 }
 
+///|
 fn cache_entry_matches(entry : CacheEntry, request : Request) -> Bool {
   if cache_key(entry.url) != cache_key(request.url) {
     return false
@@ -365,6 +392,7 @@ fn cache_entry_matches(entry : CacheEntry, request : Request) -> Bool {
   true
 }
 
+///|
 fn cache_connection_tokens(headers : Headers) -> Array[String] {
   let tokens : Array[String] = []
   for value in headers.get_all("Connection") {
@@ -378,6 +406,7 @@ fn cache_connection_tokens(headers : Headers) -> Array[String] {
   tokens
 }
 
+///|
 fn cache_stored_headers(headers : Headers) -> Headers {
   let mut stored = Headers::new()
   let connection_tokens = cache_connection_tokens(headers)
@@ -395,19 +424,24 @@ fn cache_stored_headers(headers : Headers) -> Headers {
   stored
 }
 
-fn cache_entry_size(entry : CacheEntry) -> Int {
+///|
+fn cache_entry_size(entry : CacheEntry) -> Int32 {
   let mut size = entry.body.length() + entry.url.to_string().length() + 64
   for header in entry.headers.iter() {
     size = size + header.name.length() + header.value.length() + 4
   }
   let mut i = 0
   while i < entry.vary_names.length() {
-    size = size + entry.vary_names[i].length() + entry.vary_values[i].length() + 4
+    size = size +
+      entry.vary_names[i].length() +
+      entry.vary_values[i].length() +
+      4
     i = i + 1
   }
   size
 }
 
+///|
 fn cache_entry_response(entry : CacheEntry, now_ms : UInt64) -> Response {
   let age_seconds = cache_current_age_ms(entry, now_ms) / 1000UL
   let mut headers = entry.headers.add("Age", age_seconds.to_string())
@@ -417,18 +451,19 @@ fn cache_entry_response(entry : CacheEntry, now_ms : UInt64) -> Response {
   let stream = BufferedStream::new(entry.body)
   let body : &Stream = stream
   Response::new_with_version(entry.version, entry.status, headers, body)
-    .with_max_body_bytes(entry.max_body_bytes)
-    .with_auto_decompress(entry.auto_decompress)
-    .with_request_url(entry.url)
+  .with_max_body_bytes(entry.max_body_bytes)
+  .with_auto_decompress(entry.auto_decompress)
+  .with_request_url(entry.url)
 }
 
+///|
 struct CacheEntry {
   url : Url
   version : String
-  status : Int
+  status : Int32
   headers : Headers
   body : Bytes
-  max_body_bytes : Int
+  max_body_bytes : Int32
   auto_decompress : Bool
   vary_names : Array[String]
   vary_values : Array[String]
@@ -440,13 +475,15 @@ struct CacheEntry {
   mut last_used_ms : UInt64
 }
 
+///|
 struct CacheState {
   entries : Array[CacheEntry]
-  max_entries : Int
-  max_body_bytes : Int
-  max_total_bytes : Int
+  max_entries : Int32
+  max_body_bytes : Int32
+  max_total_bytes : Int32
 }
 
+///|
 pub struct CacheHit {
   response : Response
   fresh : Bool
@@ -454,43 +491,62 @@ pub struct CacheHit {
   last_modified : String?
 }
 
+///|
 pub enum CacheLookup {
   Miss
   Hit(CacheHit)
 }
 
+///|
 pub struct HttpCache {
   state : @ref.Ref[CacheState]
 }
 
+///|
 pub fn HttpCache::new() -> HttpCache {
   HttpCache::with_limits(128, 16 * 1024 * 1024, 64 * 1024 * 1024)
 }
 
+///|
 pub fn HttpCache::with_limits(
-  max_entries : Int,
-  max_body_bytes : Int,
-  max_total_bytes : Int,
+  max_entries : Int32,
+  max_body_bytes : Int32,
+  max_total_bytes : Int32,
 ) -> HttpCache {
   HttpCache::{
     state: @ref.Ref(CacheState::{
       entries: [],
-      max_entries: if max_entries < 0 { 0 } else { max_entries },
-      max_body_bytes: if max_body_bytes < 0 { 0 } else { max_body_bytes },
-      max_total_bytes: if max_total_bytes < 0 { 0 } else { max_total_bytes },
+      max_entries: if max_entries < 0 {
+        0
+      } else {
+        max_entries
+      },
+      max_body_bytes: if max_body_bytes < 0 {
+        0
+      } else {
+        max_body_bytes
+      },
+      max_total_bytes: if max_total_bytes < 0 {
+        0
+      } else {
+        max_total_bytes
+      },
     }),
   }
 }
 
-pub fn HttpCache::length(self : HttpCache) -> Int {
+///|
+pub fn HttpCache::length(self : HttpCache) -> Int32 {
   self.state.val.entries.length()
 }
 
+///|
 pub fn HttpCache::clear(self : HttpCache) -> Unit {
   self.state.val.entries.clear()
 }
 
-fn cache_total_size(state : CacheState) -> Int {
+///|
+fn cache_total_size(state : CacheState) -> Int32 {
   let mut total = 0
   for entry in state.entries {
     total = total + cache_entry_size(entry)
@@ -498,7 +554,8 @@ fn cache_total_size(state : CacheState) -> Int {
   total
 }
 
-fn cache_oldest_index(state : CacheState) -> Int {
+///|
+fn cache_oldest_index(state : CacheState) -> Int32 {
   if state.entries.length() == 0 {
     return -1
   }
@@ -513,6 +570,7 @@ fn cache_oldest_index(state : CacheState) -> Int {
   oldest
 }
 
+///|
 fn cache_evict(state : CacheState) -> Unit {
   while state.entries.length() > state.max_entries {
     let index = cache_oldest_index(state)
@@ -521,7 +579,8 @@ fn cache_evict(state : CacheState) -> Unit {
     }
     let _ = state.entries.remove(index)
   }
-  while cache_total_size(state) > state.max_total_bytes && state.entries.length() > 0 {
+  while cache_total_size(state) > state.max_total_bytes &&
+        state.entries.length() > 0 {
     let index = cache_oldest_index(state)
     if index < 0 {
       return
@@ -530,6 +589,7 @@ fn cache_evict(state : CacheState) -> Unit {
   }
 }
 
+///|
 pub fn HttpCache::invalidate(self : HttpCache, url : Url) -> Unit {
   let key = cache_key(url)
   let entries = self.state.val.entries
@@ -543,7 +603,8 @@ pub fn HttpCache::invalidate(self : HttpCache, url : Url) -> Unit {
   }
 }
 
-fn cache_find_index(state : CacheState, request : Request) -> Int? {
+///|
+fn cache_find_index(state : CacheState, request : Request) -> Int32? {
   let mut i = state.entries.length() - 1
   while i >= 0 {
     if cache_entry_matches(state.entries[i], request) {
@@ -554,6 +615,7 @@ fn cache_find_index(state : CacheState, request : Request) -> Int? {
   None
 }
 
+///|
 pub fn HttpCache::lookup(
   self : HttpCache,
   request : Request,
@@ -587,11 +649,7 @@ pub fn HttpCache::lookup(
     fresh = false
   }
   match request_control.max_age {
-    Some(seconds) => {
-      if age_ms > cache_seconds_to_ms(seconds) {
-        fresh = false
-      }
-    }
+    Some(seconds) => if age_ms > cache_seconds_to_ms(seconds) { fresh = false }
     None => ()
   }
   match request_control.min_fresh {
@@ -630,6 +688,7 @@ pub fn HttpCache::lookup(
   })
 }
 
+///|
 fn cache_response_cacheable(request : Request, response : Response) -> Bool {
   if request.body is Some(_) {
     return false
@@ -657,26 +716,28 @@ fn cache_response_cacheable(request : Request, response : Response) -> Bool {
     return false
   }
   cache_has_explicit_freshness(response.headers) ||
-    cache_has_validator(response.headers)
+  cache_has_validator(response.headers)
 }
 
+///|
 fn cache_response_after_body(
   version : String,
-  status : Int,
+  status : Int32,
   headers : Headers,
   body : Bytes,
-  max_body_bytes : Int,
+  max_body_bytes : Int32,
   auto_decompress : Bool,
   url : Url,
 ) -> Response {
   let stream = BufferedStream::new(body)
   let stream_ref : &Stream = stream
   Response::new_with_version(version, status, headers, stream_ref)
-    .with_max_body_bytes(max_body_bytes)
-    .with_auto_decompress(auto_decompress)
-    .with_request_url(url)
+  .with_max_body_bytes(max_body_bytes)
+  .with_auto_decompress(auto_decompress)
+  .with_request_url(url)
 }
 
+///|
 pub fn HttpCache::store(
   self : HttpCache,
   request : Request,
@@ -694,11 +755,10 @@ pub fn HttpCache::store(
     return Ok(response)
   }
   match response.request_url() {
-    Some(url) => {
+    Some(url) =>
       if cache_key(url) != cache_key(request.url) {
         return Ok(response)
       }
-    }
     None => ()
   }
   if !cache_transfer_coding_supported(response.headers) {
@@ -731,24 +791,28 @@ pub fn HttpCache::store(
     None => request.url
   }
   if body.length() > state.max_body_bytes {
-    return Ok(cache_response_after_body(
-      response.version,
-      response.status,
-      response.headers,
-      body,
-      response.max_body_bytes,
-      response.auto_decompress(),
-      final_url,
-    ))
+    return Ok(
+      cache_response_after_body(
+        response.version,
+        response.status,
+        response.headers,
+        body,
+        response.max_body_bytes,
+        response.auto_decompress(),
+        final_url,
+      ),
+    )
   }
   let headers = cache_stored_headers(response.headers)
-  let date_ms = match cache_header_date(cache_header_value(response.headers, "Date")) {
+  let date_ms = match
+    cache_header_date(cache_header_value(response.headers, "Date")) {
     Some(date) => date
     None => now_ms
   }
   let age_header_ms = cache_header_seconds(
-    cache_header_value(response.headers, "Age"),
-  ) * 1000UL
+      cache_header_value(response.headers, "Age"),
+    ) *
+    1000UL
   let control = CacheControl::from_headers(headers)
   let entry = CacheEntry::{
     url: final_url,
@@ -768,15 +832,17 @@ pub fn HttpCache::store(
     last_used_ms: now_ms,
   }
   if cache_entry_size(entry) > state.max_total_bytes {
-    return Ok(cache_response_after_body(
-      response.version,
-      response.status,
-      response.headers,
-      body,
-      response.max_body_bytes,
-      response.auto_decompress(),
-      final_url,
-    ))
+    return Ok(
+      cache_response_after_body(
+        response.version,
+        response.status,
+        response.headers,
+        body,
+        response.max_body_bytes,
+        response.auto_decompress(),
+        final_url,
+      ),
+    )
   }
   let mut i = 0
   while i < state.entries.length() {
@@ -795,6 +861,7 @@ pub fn HttpCache::store(
   Ok(cache_entry_response(state.entries[index], now_ms))
 }
 
+///|
 fn cache_merge_headers(stored : Headers, update : Headers) -> Headers {
   let mut merged = stored
   let connection_tokens = cache_connection_tokens(update)
@@ -813,12 +880,13 @@ fn cache_merge_headers(stored : Headers, update : Headers) -> Headers {
   merged
 }
 
+///|
 pub fn HttpCache::revalidate(
   self : HttpCache,
   request : Request,
   not_modified : Response,
   now_ms : UInt64,
-) -> Option[Response] {
+) -> Response? {
   let state = self.state.val
   let index = match cache_find_index(state, request) {
     Some(index) => index
@@ -860,7 +928,8 @@ pub fn HttpCache::revalidate(
     response_time_ms: now_ms,
     age_header_ms: cache_header_seconds(
       cache_header_value(not_modified.headers, "Age"),
-    ) * 1000UL,
+    ) *
+    1000UL,
     freshness_lifetime_ms: cache_freshness_lifetime_ms(merged, date_ms),
     must_revalidate: merged_control.must_revalidate,
     last_used_ms: now_ms,
@@ -869,28 +938,40 @@ pub fn HttpCache::revalidate(
   Some(cache_entry_response(entry, now_ms))
 }
 
+///|
 pub struct CachedClient {
   client : UnifiedClient
   cache : HttpCache
 }
 
+///|
 pub fn CachedClient::new(client : UnifiedClient) -> CachedClient {
-  CachedClient::{ client, cache: HttpCache::new() }
+  CachedClient::{ client, cache: HttpCache::new(), }
 }
 
-pub fn CachedClient::with_cache(self : CachedClient, cache : HttpCache) -> CachedClient {
-  CachedClient::{ ..self, cache }
+///|
+pub fn CachedClient::with_cache(
+  self : CachedClient,
+  cache : HttpCache,
+) -> CachedClient {
+  CachedClient::{ ..self, cache, }
 }
 
+///|
 pub fn CachedClient::cache(self : CachedClient) -> HttpCache {
   self.cache
 }
 
+///|
 pub fn CachedClient::inner(self : CachedClient) -> UnifiedClient {
   self.client
 }
 
-pub fn CachedClient::get(self : CachedClient, url : String) -> Result[Response, HttpError] {
+///|
+pub fn CachedClient::get(
+  self : CachedClient,
+  url : String,
+) -> Result[Response, HttpError] {
   let request = match Request::from_url(GET, url) {
     Ok(request) => request
     Err(err) => return Err(err)
@@ -898,6 +979,7 @@ pub fn CachedClient::get(self : CachedClient, url : String) -> Result[Response, 
   self.request(request)
 }
 
+///|
 pub fn CachedClient::post(
   self : CachedClient,
   url : String,
@@ -910,6 +992,7 @@ pub fn CachedClient::post(
   self.request(request)
 }
 
+///|
 pub fn CachedClient::post_form(
   self : CachedClient,
   url : String,
@@ -922,6 +1005,7 @@ pub fn CachedClient::post_form(
   self.request(request)
 }
 
+///|
 pub fn CachedClient::post_multipart(
   self : CachedClient,
   url : String,
@@ -935,6 +1019,7 @@ pub fn CachedClient::post_multipart(
   self.request(request)
 }
 
+///|
 pub fn CachedClient::put(
   self : CachedClient,
   url : String,
@@ -947,6 +1032,7 @@ pub fn CachedClient::put(
   self.request(request)
 }
 
+///|
 pub fn CachedClient::delete(
   self : CachedClient,
   url : String,
@@ -958,6 +1044,7 @@ pub fn CachedClient::delete(
   self.request(request)
 }
 
+///|
 pub fn CachedClient::head(
   self : CachedClient,
   url : String,
@@ -969,6 +1056,7 @@ pub fn CachedClient::head(
   self.request(request)
 }
 
+///|
 pub fn CachedClient::options(
   self : CachedClient,
   url : String,
@@ -980,6 +1068,7 @@ pub fn CachedClient::options(
   self.request(request)
 }
 
+///|
 pub fn CachedClient::patch(
   self : CachedClient,
   url : String,
@@ -992,6 +1081,7 @@ pub fn CachedClient::patch(
   self.request(request)
 }
 
+///|
 pub fn CachedClient::trace(
   self : CachedClient,
   url : String,
@@ -1003,15 +1093,21 @@ pub fn CachedClient::trace(
   self.request(request)
 }
 
+///|
 pub fn CachedClient::close(self : CachedClient) -> Result[Unit, HttpError] {
   self.client.close()
 }
 
+///|
 pub fn CachedClient::close_all(self : CachedClient) -> Result[Unit, HttpError] {
   self.client.close_all()
 }
 
-fn CachedClient::with_cookie_header(self : CachedClient, request : Request) -> Request {
+///|
+fn CachedClient::with_cookie_header(
+  self : CachedClient,
+  request : Request,
+) -> Request {
   if request.get_header("Cookie") is Some(_) {
     return request
   }
@@ -1021,27 +1117,33 @@ fn CachedClient::with_cookie_header(self : CachedClient, request : Request) -> R
   }
 }
 
-fn cache_unsafe_status(status : Int) -> Bool {
+///|
+fn cache_unsafe_status(status : Int32) -> Bool {
   status >= 200 && status < 400 && status != 304
 }
 
-fn CachedClient::invalidate_related(self : CachedClient, request : Request, response : Response) -> Unit {
+///|
+fn CachedClient::invalidate_related(
+  self : CachedClient,
+  request : Request,
+  response : Response,
+) -> Unit {
   self.cache.invalidate(request.url)
   match response.request_url() {
     Some(url) => self.cache.invalidate(url)
     None => ()
   }
   match response.headers.get("Location") {
-    Some(location) => {
+    Some(location) =>
       match request.url.join(location) {
         Ok(url) => self.cache.invalidate(url)
         Err(_) => ()
       }
-    }
     None => ()
   }
 }
 
+///|
 fn CachedClient::request_cached(
   self : CachedClient,
   request : Request,
@@ -1082,19 +1184,17 @@ fn CachedClient::request_cached(
       }
       let mut conditional = cache_request
       match hit.etag {
-        Some(etag) => {
+        Some(etag) =>
           if conditional.get_header("If-None-Match") is None {
             conditional = conditional.with_header("If-None-Match", etag)
           }
-        }
         None => ()
       }
       match hit.last_modified {
-        Some(modified) => {
+        Some(modified) =>
           if conditional.get_header("If-Modified-Since") is None {
             conditional = conditional.with_header("If-Modified-Since", modified)
           }
-        }
         None => ()
       }
       let response = match self.client.request(conditional) {
@@ -1119,6 +1219,7 @@ fn CachedClient::request_cached(
   }
 }
 
+///|
 pub impl HttpClient for CachedClient with fn request(
   self : CachedClient,
   request : Request,
@@ -1126,4 +1227,5 @@ pub impl HttpClient for CachedClient with fn request(
   self.request_cached(request)
 }
 
+///|
 extend CachedClient with HttpClient::{request}

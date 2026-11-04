@@ -1,8 +1,6 @@
+///|
 test "explicit body limits can raise an HTTP/2 Content-Length cap" {
-  let headers = hpack_encode([
-    (":status", "200"),
-    ("content-length", "6"),
-  ])
+  let headers = hpack_encode([(":status", "200"), ("content-length", "6")])
   let input = h2_test_concat([
     h2_test_settings(),
     h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, headers),
@@ -20,11 +18,9 @@ test "explicit body limits can raise an HTTP/2 Content-Length cap" {
   let _ = connection.close()
 }
 
+///|
 test "HTTP/2 Content-Length responses still enforce the configured cap" {
-  let headers = hpack_encode([
-    (":status", "200"),
-    ("content-length", "6"),
-  ])
+  let headers = hpack_encode([(":status", "200"), ("content-length", "6")])
   let input = h2_test_concat([
     h2_test_settings(),
     h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, headers),

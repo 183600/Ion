@@ -1,15 +1,11 @@
+///|
 fn browser_test_result(
   error : String,
   status : String,
   body : Bytes,
   headers : Array[(String, String)],
 ) -> FixedArray[String] {
-  let values : Array[String] = [
-    error,
-    status,
-    "",
-    @base64.encode(body),
-  ]
+  let values : Array[String] = [error, status, "", @base64.encode(body)]
   for header in headers {
     let (name, value) = header
     values.push(name)
@@ -55,15 +51,22 @@ test "browser fetch propagates host failures" {
 
 ///|
 test "browser fetch validates malformed host results" {
-  assert_true(browser_fetch_response(FixedArray::from_array(["ok"]), 1024) is
-    Err(ProtocolError(_)))
+  assert_true(
+    browser_fetch_response(FixedArray::from_array(["ok"]), 1024)
+    is Err(ProtocolError(_)),
+  )
   let invalid_status = FixedArray::from_array(["", "none", "", ""])
-  assert_true(browser_fetch_response(invalid_status, 1024) is
-    Err(ProtocolError(_)))
+  assert_true(
+    browser_fetch_response(invalid_status, 1024) is Err(ProtocolError(_)),
+  )
   let invalid_body = FixedArray::from_array(["", "200", "", "not base64!"])
-  assert_true(browser_fetch_response(invalid_body, 1024) is Err(ProtocolError(_)))
+  assert_true(
+    browser_fetch_response(invalid_body, 1024) is Err(ProtocolError(_)),
+  )
   let out_of_range = FixedArray::from_array(["", "600", "", ""])
-  assert_true(browser_fetch_response(out_of_range, 1024) is Err(ProtocolError(_)))
+  assert_true(
+    browser_fetch_response(out_of_range, 1024) is Err(ProtocolError(_)),
+  )
 }
 
 ///|
@@ -86,7 +89,9 @@ test "browser fetch client reports a missing host implementation" {
   let request = Request::from_url(GET, "http://example.com/").unwrap()
   match client.request(request) {
     Err(NetworkError(ConnectionFailed(message))) =>
-      assert_eq(message, "browser fetch is only available on the JavaScript target")
+      assert_eq(
+        message, "browser fetch is only available on the JavaScript target",
+      )
     _ => fail("browser fetch unexpectedly succeeded off the JavaScript target")
   }
 }
@@ -108,6 +113,7 @@ test "browser fetch client rejects tunnels and upgrades before dispatch" {
   }
 }
 
+///|
 #cfg(target="js")
 extern "js" fn browser_test_install_mock(fail : Bool) -> Unit =
   #| (fail) => {
@@ -163,6 +169,7 @@ extern "js" fn browser_test_install_mock(fail : Bool) -> Unit =
   #|   };
   #| }
 
+///|
 #cfg(target="js")
 extern "js" fn browser_test_last_request() -> FixedArray[String] =
   #| () => {
@@ -180,6 +187,7 @@ extern "js" fn browser_test_last_request() -> FixedArray[String] =
   #|   return result;
   #| }
 
+///|
 #cfg(target="js")
 extern "js" fn browser_test_cleanup() -> Unit =
   #| () => {
@@ -187,6 +195,7 @@ extern "js" fn browser_test_cleanup() -> Unit =
   #|   delete globalThis.__featherBrowserTest;
   #| }
 
+///|
 #cfg(target="js")
 test "browser fetch forwards a request through XMLHttpRequest" {
   browser_test_install_mock(false)
@@ -198,7 +207,10 @@ test "browser fetch forwards a request through XMLHttpRequest" {
   assert_eq(response.status, 201)
   assert_eq(response.get_header("Content-Type"), Some("text/plain"))
   assert_eq(response.get_header("X-Test"), Some("one"))
-  assert_eq(response.request_url(), Some(Url::parse("http://example.com/upload").unwrap()))
+  assert_eq(
+    response.request_url(),
+    Some(Url::parse("http://example.com/upload").unwrap()),
+  )
   assert_eq(response.read_body().unwrap(), b"hello")
   let info = browser_test_last_request()
   assert_eq(info[0], "POST")
@@ -210,6 +222,7 @@ test "browser fetch forwards a request through XMLHttpRequest" {
   browser_test_cleanup()
 }
 
+///|
 #cfg(target="js")
 test "browser fetch reports XMLHttpRequest send failures" {
   browser_test_install_mock(true)
@@ -222,6 +235,7 @@ test "browser fetch reports XMLHttpRequest send failures" {
   browser_test_cleanup()
 }
 
+///|
 #cfg(target="js")
 test "one-shot helpers use the browser transport on JavaScript" {
   browser_test_install_mock(false)
@@ -235,6 +249,7 @@ test "one-shot helpers use the browser transport on JavaScript" {
   browser_test_cleanup()
 }
 
+///|
 #cfg(target="js")
 test "unified client uses the browser transport on JavaScript" {
   browser_test_install_mock(false)
@@ -261,6 +276,7 @@ test "unified client uses the browser transport on JavaScript" {
   browser_test_cleanup()
 }
 
+///|
 #cfg(target="js")
 test "unified client applies the browser response body limit" {
   browser_test_install_mock(false)

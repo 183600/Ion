@@ -1,7 +1,7 @@
+///|
 /// Equivalent textual forms of the same IPv6 address must share cookie
 /// identity, otherwise a server using an expanded/uppercase spelling stores a
 /// cookie that is invisible to requests using the compressed form.
-
 test "equivalent IPv6 spellings share host-only cookie identity" {
   let jar = CookieJar::new()
   let expanded = Url::parse("http://[2001:0db8:0:0:0:0:0:1]/").unwrap()
@@ -17,6 +17,7 @@ test "equivalent IPv6 spellings share host-only cookie identity" {
   assert_eq(jar.cookie_header_at(expanded, 1000), Some("sid=second"))
 }
 
+///|
 /// A Domain attribute describing the same IPv6 address is equivalent to the
 /// host regardless of spelling.
 test "IPv6 Domain attributes are canonicalized with the request host" {
@@ -29,6 +30,7 @@ test "IPv6 Domain attributes are canonicalized with the request host" {
   assert_eq(jar.cookie_header_at(expanded, 1000), Some("sid=one"))
 }
 
+///|
 /// A zone identifier still distinguishes link-local authorities.
 test "IPv6 cookie canonicalization preserves the zone identifier" {
   let jar = CookieJar::new()

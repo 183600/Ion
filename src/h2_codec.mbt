@@ -1,51 +1,100 @@
+///|
 /// HTTP/2 framing (RFC 9113) shared by the client connection implementation.
+const H2_FRAME_DATA : Int32 = 0
 
-const H2_FRAME_DATA : Int = 0
-const H2_FRAME_HEADERS : Int = 1
-const H2_FRAME_PRIORITY : Int = 2
-const H2_FRAME_RST_STREAM : Int = 3
-const H2_FRAME_SETTINGS : Int = 4
-const H2_FRAME_PUSH_PROMISE : Int = 5
-const H2_FRAME_PING : Int = 6
-const H2_FRAME_GOAWAY : Int = 7
-const H2_FRAME_WINDOW_UPDATE : Int = 8
-const H2_FRAME_CONTINUATION : Int = 9
+///|
+const H2_FRAME_HEADERS : Int32 = 1
 
-const H2_FLAG_END_STREAM : Int = 0x1
-const H2_FLAG_ACK : Int = 0x1
-const H2_FLAG_END_HEADERS : Int = 0x4
-const H2_FLAG_PADDED : Int = 0x8
-const H2_FLAG_PRIORITY : Int = 0x20
+///|
+const H2_FRAME_PRIORITY : Int32 = 2
 
-const H2_SETTINGS_ENABLE_PUSH : Int = 0x2
-const H2_SETTINGS_INITIAL_WINDOW_SIZE : Int = 0x4
-const H2_SETTINGS_MAX_FRAME_SIZE : Int = 0x5
-const H2_SETTINGS_MAX_HEADER_LIST_SIZE : Int = 0x6
-const H2_SETTINGS_ENABLE_CONNECT_PROTOCOL : Int = 0x8
+///|
+const H2_FRAME_RST_STREAM : Int32 = 3
 
-const H2_MAX_FRAME_SIZE : Int = 16384
-const H2_MAX_FRAME_SIZE_LIMIT : Int = 16777215
-const H2_DEFAULT_WINDOW_SIZE : Int = 65535
-const H2_MAX_WINDOW_SIZE : Int = 2147483647
+///|
+const H2_FRAME_SETTINGS : Int32 = 4
+
+///|
+const H2_FRAME_PUSH_PROMISE : Int32 = 5
+
+///|
+const H2_FRAME_PING : Int32 = 6
+
+///|
+const H2_FRAME_GOAWAY : Int32 = 7
+
+///|
+const H2_FRAME_WINDOW_UPDATE : Int32 = 8
+
+///|
+const H2_FRAME_CONTINUATION : Int32 = 9
+
+///|
+const H2_FLAG_END_STREAM : Int32 = 0x1
+
+///|
+const H2_FLAG_ACK : Int32 = 0x1
+
+///|
+const H2_FLAG_END_HEADERS : Int32 = 0x4
+
+///|
+const H2_FLAG_PADDED : Int32 = 0x8
+
+///|
+const H2_FLAG_PRIORITY : Int32 = 0x20
+
+///|
+const H2_SETTINGS_ENABLE_PUSH : Int32 = 0x2
+
+///|
+const H2_SETTINGS_INITIAL_WINDOW_SIZE : Int32 = 0x4
+
+///|
+const H2_SETTINGS_MAX_FRAME_SIZE : Int32 = 0x5
+
+///|
+const H2_SETTINGS_MAX_HEADER_LIST_SIZE : Int32 = 0x6
+
+///|
+const H2_SETTINGS_ENABLE_CONNECT_PROTOCOL : Int32 = 0x8
+
+///|
+const H2_MAX_FRAME_SIZE : Int32 = 16384
+
+///|
+const H2_MAX_FRAME_SIZE_LIMIT : Int32 = 16777215
+
+///|
+const H2_DEFAULT_WINDOW_SIZE : Int32 = 65535
+
+///|
+const H2_MAX_WINDOW_SIZE : Int32 = 2147483647
+
+///|
 const H2_PREFACE : String = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 
+///|
 let h2_preface_bytes : Bytes = @utf8.encode(H2_PREFACE)
 
+///|
 struct H2Frame {
-  frame_type : Int
-  flags : Int
-  stream_id : Int
+  frame_type : Int32
+  flags : Int32
+  stream_id : Int32
   payload : Bytes
 }
 
-fn h2_priority_dependency(payload : Bytes, offset : Int) -> Int {
+///|
+fn h2_priority_dependency(payload : Bytes, offset : Int32) -> Int32 {
   ((payload[offset].to_int() & 0x7f) << 24) |
   (payload[offset + 1].to_int() << 16) |
   (payload[offset + 2].to_int() << 8) |
   payload[offset + 3].to_int()
 }
 
-fn h2_parse_window_update(payload : Bytes) -> Result[Int, HttpError] {
+///|
+fn h2_parse_window_update(payload : Bytes) -> Result[Int32, HttpError] {
   if payload.length() != 4 {
     return Err(ProtocolError("Invalid HTTP/2 WINDOW_UPDATE length"))
   }
@@ -59,6 +108,7 @@ fn h2_parse_window_update(payload : Bytes) -> Result[Int, HttpError] {
   Ok(increment)
 }
 
+///|
 /// Whether a whole frame is already buffered by the reader. Draining only
 /// complete frames lets a completed response consume trailing connection
 /// frames without blocking for more network input.
@@ -80,6 +130,7 @@ fn h2_frame_is_buffered(reader : StreamReader) -> Bool {
   available >= 9 + length
 }
 
+///|
 fn h2_read_frame(reader : StreamReader) -> Result[H2Frame, HttpError] {
   let header : Array[Byte] = []
   match reader.read_exact(9, header) {
@@ -107,16 +158,22 @@ fn h2_read_frame(reader : StreamReader) -> Result[H2Frame, HttpError] {
   if frame_type == H2_FRAME_DATA && stream_id == 0 {
     return Err(ProtocolError("HTTP/2 DATA on stream 0"))
   }
-  if (frame_type == H2_FRAME_HEADERS ||
-    frame_type == H2_FRAME_PRIORITY ||
-    frame_type == H2_FRAME_RST_STREAM ||
-    frame_type == H2_FRAME_PUSH_PROMISE ||
-    frame_type == H2_FRAME_CONTINUATION) && stream_id == 0 {
+  if (
+      frame_type == H2_FRAME_HEADERS ||
+      frame_type == H2_FRAME_PRIORITY ||
+      frame_type == H2_FRAME_RST_STREAM ||
+      frame_type == H2_FRAME_PUSH_PROMISE ||
+      frame_type == H2_FRAME_CONTINUATION
+    ) &&
+    stream_id == 0 {
     return Err(ProtocolError("HTTP/2 stream frame on stream 0"))
   }
-  if (frame_type == H2_FRAME_SETTINGS ||
-    frame_type == H2_FRAME_PING ||
-    frame_type == H2_FRAME_GOAWAY) && stream_id != 0 {
+  if (
+      frame_type == H2_FRAME_SETTINGS ||
+      frame_type == H2_FRAME_PING ||
+      frame_type == H2_FRAME_GOAWAY
+    ) &&
+    stream_id != 0 {
     return Err(ProtocolError("HTTP/2 connection frame on a stream"))
   }
   if frame_type == H2_FRAME_SETTINGS {
@@ -148,13 +205,14 @@ fn h2_read_frame(reader : StreamReader) -> Result[H2Frame, HttpError] {
   if frame_type == H2_FRAME_GOAWAY && length < 8 {
     return Err(ProtocolError("Invalid HTTP/2 GOAWAY length"))
   }
-  Ok(H2Frame::{ frame_type, flags, stream_id, payload })
+  Ok(H2Frame::{ frame_type, flags, stream_id, payload, })
 }
 
+///|
 fn h2_frame_bytes(
-  frame_type : Int,
-  flags : Int,
-  stream_id : Int,
+  frame_type : Int32,
+  flags : Int32,
+  stream_id : Int32,
   payload : Bytes,
 ) -> Bytes {
   let output = Buffer(size_hint=9 + payload.length())
@@ -172,23 +230,26 @@ fn h2_frame_bytes(
   output.to_bytes()
 }
 
+///|
 fn h2_write_frame(
   stream : &Stream,
-  frame_type : Int,
-  flags : Int,
-  stream_id : Int,
+  frame_type : Int32,
+  flags : Int32,
+  stream_id : Int32,
   payload : Bytes,
 ) -> Result[Unit, HttpError] {
   if payload.length() > H2_MAX_FRAME_SIZE {
     return Err(ProtocolError("HTTP/2 payload exceeds maximum frame size"))
   }
-  match write_all(stream, h2_frame_bytes(frame_type, flags, stream_id, payload)) {
+  match
+    write_all(stream, h2_frame_bytes(frame_type, flags, stream_id, payload)) {
     Ok(_) => Ok(())
     Err(err) => Err(http_error_from_net(err))
   }
 }
 
-fn h2_settings_payload(entries : Array[(Int, Int)]) -> Bytes {
+///|
+fn h2_settings_payload(entries : Array[(Int32, Int32)]) -> Bytes {
   let payload = Buffer(size_hint=entries.length() * 6)
   for entry in entries {
     let (identifier, value) = entry
@@ -202,6 +263,7 @@ fn h2_settings_payload(entries : Array[(Int, Int)]) -> Bytes {
   payload.to_bytes()
 }
 
+///|
 fn h2_header_block_payload_impl(
   frame : H2Frame,
   reject_self_dependency : Bool,
@@ -229,14 +291,16 @@ fn h2_header_block_payload_impl(
     }
     start = start + 5
   }
-  Ok(frame.payload.exact_view(start=start, end=end).to_owned())
+  Ok(frame.payload.exact_view(start~, end~).to_owned())
 }
 
+///|
 #warnings("-unused_value")
 fn h2_header_block_payload(frame : H2Frame) -> Result[Bytes, HttpError] {
   h2_header_block_payload_impl(frame, true)
 }
 
+///|
 /// Header block reader for the client connection. Priority information is
 /// advisory and never used here, so a self-dependent priority field can be
 /// ignored instead of failing the whole connection.
@@ -246,6 +310,7 @@ fn h2_header_block_payload_for_connection(
   h2_header_block_payload_impl(frame, false)
 }
 
+///|
 fn h2_data_payload(frame : H2Frame) -> Result[Bytes, HttpError] {
   if (frame.flags & H2_FLAG_PADDED) == 0 {
     return Ok(frame.payload)

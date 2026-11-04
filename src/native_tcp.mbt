@@ -1,67 +1,120 @@
+///|
 /// Native TCP transport backed by POSIX sockets.
-
 #borrow(host)
-extern "C" fn feather_tcp_connect(host : Bytes, port : Int, timeout_ms : Int) -> Int = "feather_tcp_connect"
+extern "C" fn feather_tcp_connect(
+  host : Bytes,
+  port : Int32,
+  timeout_ms : Int32,
+) -> Int32 = "feather_tcp_connect"
 
+///|
 #borrow(buffer)
-extern "C" fn feather_tcp_read(fd : Int, buffer : Bytes, capacity : Int) -> Int = "feather_tcp_read"
+extern "C" fn feather_tcp_read(
+  fd : Int32,
+  buffer : Bytes,
+  capacity : Int32,
+) -> Int32 = "feather_tcp_read"
 
+///|
 #borrow(buffer)
-extern "C" fn feather_tcp_write(fd : Int, buffer : Bytes, length : Int) -> Int = "feather_tcp_write"
+extern "C" fn feather_tcp_write(
+  fd : Int32,
+  buffer : Bytes,
+  length : Int32,
+) -> Int32 = "feather_tcp_write"
 
-extern "C" fn feather_tcp_close(fd : Int) -> Int = "feather_tcp_close"
+///|
+extern "C" fn feather_tcp_close(fd : Int32) -> Int32 = "feather_tcp_close"
 
-extern "C" fn feather_tcp_set_timeout(fd : Int, timeout_ms : Int) -> Int = "feather_tcp_set_timeout"
+///|
+extern "C" fn feather_tcp_set_timeout(fd : Int32, timeout_ms : Int32) -> Int32 = "feather_tcp_set_timeout"
 
-extern "C" fn feather_tcp_is_alive(fd : Int) -> Int = "feather_tcp_is_alive"
+///|
+extern "C" fn feather_tcp_is_alive(fd : Int32) -> Int32 = "feather_tcp_is_alive"
 
-extern "C" fn feather_tcp_read_ready(fd : Int) -> Int = "feather_tcp_read_ready"
+///|
+extern "C" fn feather_tcp_read_ready(fd : Int32) -> Int32 = "feather_tcp_read_ready"
 
-extern "C" fn feather_tcp_wait_readable(fd : Int, timeout_ms : Int) -> Int = "feather_tcp_wait_readable"
+///|
+extern "C" fn feather_tcp_wait_readable(
+  fd : Int32,
+  timeout_ms : Int32,
+) -> Int32 = "feather_tcp_wait_readable"
 
+///|
 #borrow(output)
-extern "C" fn feather_tcp_local_addr(fd : Int, output : Bytes, capacity : Int) -> Int = "feather_tcp_local_addr"
+extern "C" fn feather_tcp_local_addr(
+  fd : Int32,
+  output : Bytes,
+  capacity : Int32,
+) -> Int32 = "feather_tcp_local_addr"
 
+///|
 #borrow(output)
-extern "C" fn feather_tcp_peer_addr(fd : Int, output : Bytes, capacity : Int) -> Int = "feather_tcp_peer_addr"
+extern "C" fn feather_tcp_peer_addr(
+  fd : Int32,
+  output : Bytes,
+  capacity : Int32,
+) -> Int32 = "feather_tcp_peer_addr"
 
+///|
 #borrow(host, output)
-extern "C" fn feather_tcp_resolve(host : Bytes, output : Bytes, capacity : Int) -> Int = "feather_tcp_resolve"
+extern "C" fn feather_tcp_resolve(
+  host : Bytes,
+  output : Bytes,
+  capacity : Int32,
+) -> Int32 = "feather_tcp_resolve"
 
+///|
 #borrow(path, output)
-extern "C" fn feather_read_file(path : Bytes, output : Bytes, capacity : Int) -> Int = "feather_read_file"
+extern "C" fn feather_read_file(
+  path : Bytes,
+  output : Bytes,
+  capacity : Int32,
+) -> Int32 = "feather_read_file"
 
-const NATIVE_TCP_READ_CHUNK : Int = 8192
+///|
+const NATIVE_TCP_READ_CHUNK : Int32 = 8192
 
+///|
 /// A TCP stream backed by a native operating-system socket.
 #derive(Eq, Debug)
 pub struct NativeTcpStream {
-  mut fd : Int
+  mut fd : Int32
   host : String
-  port : Int
+  port : Int32
   mut is_open : Bool
-  mut timeout_ms : Int
+  mut timeout_ms : Int32
 }
 
-pub fn NativeTcpStream::new(host : String, port : Int) -> NativeTcpStream {
+///|
+pub fn NativeTcpStream::new(host : String, port : Int32) -> NativeTcpStream {
   NativeTcpStream::with_timeout(host, port, 30000)
 }
 
+///|
 pub fn NativeTcpStream::with_timeout(
   host : String,
-  port : Int,
-  timeout_ms : Int,
+  port : Int32,
+  timeout_ms : Int32,
 ) -> NativeTcpStream {
   NativeTcpStream::{
     fd: -1,
     host,
     port,
     is_open: false,
-    timeout_ms: if timeout_ms < 0 { 0 } else { timeout_ms },
+    timeout_ms: if timeout_ms < 0 {
+      0
+    } else {
+      timeout_ms
+    },
   }
 }
 
-pub fn NativeTcpStream::open(self : NativeTcpStream) -> Result[NativeTcpStream, NetError] {
+///|
+pub fn NativeTcpStream::open(
+  self : NativeTcpStream,
+) -> Result[NativeTcpStream, NetError] {
   if self.is_open {
     return Ok(self)
   }
@@ -84,10 +137,11 @@ pub fn NativeTcpStream::open(self : NativeTcpStream) -> Result[NativeTcpStream, 
   Ok(self)
 }
 
+///|
 pub impl Stream for NativeTcpStream with fn read(
   self : NativeTcpStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   if !self.is_open || self.fd < 0 {
     return Err(NetError::Closed)
   }
@@ -102,15 +156,15 @@ pub impl Stream for NativeTcpStream with fn read(
   Ok(count)
 }
 
-pub impl Stream for NativeTcpStream with fn read_ready(
-  self : NativeTcpStream,
-) -> Bool {
+///|
+pub impl Stream for NativeTcpStream with fn read_ready(self : NativeTcpStream) -> Bool {
   if !self.is_open || self.fd < 0 {
     return false
   }
   feather_tcp_read_ready(self.fd) > 0
 }
 
+///|
 pub impl Stream for NativeTcpStream with fn has_buffered_input(
   self : NativeTcpStream,
 ) -> Bool {
@@ -122,9 +176,10 @@ pub impl Stream for NativeTcpStream with fn has_buffered_input(
   feather_tcp_read_ready(self.fd) > 0
 }
 
+///|
 pub impl Stream for NativeTcpStream with fn wait_readable(
   self : NativeTcpStream,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Bool, NetError] {
   if !self.is_open || self.fd < 0 {
     return Err(NetError::Closed)
@@ -137,10 +192,11 @@ pub impl Stream for NativeTcpStream with fn wait_readable(
   Ok(result > 0)
 }
 
+///|
 pub impl Stream for NativeTcpStream with fn write(
   self : NativeTcpStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   if !self.is_open || self.fd < 0 {
     return Err(NetError::Closed)
   }
@@ -155,18 +211,22 @@ pub impl Stream for NativeTcpStream with fn write(
   Ok(count)
 }
 
-pub impl Stream for NativeTcpStream with fn flush(
-  self : NativeTcpStream,
-) -> Result[Unit, NetError] {
+///|
+pub impl Stream for NativeTcpStream with fn flush(self : NativeTcpStream) -> Result[
+  Unit,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   Ok(())
 }
 
-pub impl Stream for NativeTcpStream with fn close(
-  self : NativeTcpStream,
-) -> Result[Unit, NetError] {
+///|
+pub impl Stream for NativeTcpStream with fn close(self : NativeTcpStream) -> Result[
+  Unit,
+  NetError,
+] {
   if !self.is_open {
     return Ok(())
   }
@@ -180,18 +240,16 @@ pub impl Stream for NativeTcpStream with fn close(
   Ok(())
 }
 
-pub impl Stream for NativeTcpStream with fn is_alive(
-  self : NativeTcpStream,
-) -> Bool {
+///|
+pub impl Stream for NativeTcpStream with fn is_alive(self : NativeTcpStream) -> Bool {
   if !self.is_open || self.fd < 0 {
     return false
   }
   feather_tcp_is_alive(self.fd) > 0
 }
 
-pub impl Stream for NativeTcpStream with fn get_timeout(
-  self : NativeTcpStream,
-) -> Int {
+///|
+pub impl Stream for NativeTcpStream with fn get_timeout(self : NativeTcpStream) -> Int32 {
   if !self.is_open {
     0
   } else {
@@ -199,9 +257,10 @@ pub impl Stream for NativeTcpStream with fn get_timeout(
   }
 }
 
+///|
 pub impl Stream for NativeTcpStream with fn set_timeout(
   self : NativeTcpStream,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Unit, NetError] {
   if !self.is_open || self.fd < 0 {
     return Err(NetError::Closed)
@@ -215,9 +274,11 @@ pub impl Stream for NativeTcpStream with fn set_timeout(
   Ok(())
 }
 
-pub impl Stream for NativeTcpStream with fn peer_addr(
-  self : NativeTcpStream,
-) -> Result[String, NetError] {
+///|
+pub impl Stream for NativeTcpStream with fn peer_addr(self : NativeTcpStream) -> Result[
+  String,
+  NetError,
+] {
   if !self.is_open || self.fd < 0 {
     return Err(NetError::Closed)
   }
@@ -230,9 +291,11 @@ pub impl Stream for NativeTcpStream with fn peer_addr(
   Ok(@utf8.decode_lossy(output.exact_view(start=0, end=length)))
 }
 
-pub impl Stream for NativeTcpStream with fn local_addr(
-  self : NativeTcpStream,
-) -> Result[String, NetError] {
+///|
+pub impl Stream for NativeTcpStream with fn local_addr(self : NativeTcpStream) -> Result[
+  String,
+  NetError,
+] {
   if !self.is_open || self.fd < 0 {
     return Err(NetError::Closed)
   }
@@ -245,31 +308,36 @@ pub impl Stream for NativeTcpStream with fn local_addr(
   Ok(@utf8.decode_lossy(output.exact_view(start=0, end=length)))
 }
 
+///|
 /// TCP dialer that performs real native DNS resolution and socket connections.
 #derive(Eq, Debug)
 pub struct NativeTcpDialer {
-  mut timeout_ms : Int
+  mut timeout_ms : Int32
 }
 
+///|
 pub fn NativeTcpDialer::new() -> NativeTcpDialer {
-  NativeTcpDialer::{ timeout_ms: 30000 }
+  NativeTcpDialer::{ timeout_ms: 30000, }
 }
 
-pub fn NativeTcpDialer::with_timeout(timeout_ms : Int) -> NativeTcpDialer {
-  NativeTcpDialer::{ timeout_ms: if timeout_ms < 0 { 0 } else { timeout_ms } }
+///|
+pub fn NativeTcpDialer::with_timeout(timeout_ms : Int32) -> NativeTcpDialer {
+  NativeTcpDialer::{ timeout_ms: if timeout_ms < 0 { 0 } else { timeout_ms }, }
 }
 
+///|
 pub impl Dialer for NativeTcpDialer with fn set_timeout(
   self : NativeTcpDialer,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) {
   self.timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
 }
 
+///|
 pub impl Dialer for NativeTcpDialer with fn dial_tcp(
   self : NativeTcpDialer,
   host : String,
-  port : Int,
+  port : Int32,
 ) -> Result[&Stream, NetError] {
   let stream = NativeTcpStream::with_timeout(host, port, self.timeout_ms)
   match stream.open() {
@@ -278,6 +346,7 @@ pub impl Dialer for NativeTcpDialer with fn dial_tcp(
   }
 }
 
+///|
 pub impl Dialer for NativeTcpDialer with fn resolve(
   self : NativeTcpDialer,
   host : String,

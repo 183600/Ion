@@ -1,3 +1,4 @@
+///|
 test "CONNECT requests reject Content-Length in both HTTP versions" {
   let url = Url::parse("http://example.com:80/").unwrap()
   let request = Request::new(CONNECT, url).with_header("Content-Length", "0")
@@ -6,20 +7,22 @@ test "CONNECT requests reject Content-Length in both HTTP versions" {
   assert_true(h2_request_headers(request) is Err(InvalidHeader(_)))
 }
 
+///|
 test "HTTP/1 CONNECT tunnel bytes are not capped as a response body" {
   let stream = regression_mock_stream(
-    "HTTP/1.1 200 Connection Established\r\n\r\nhello",
-    0,
-    0,
+    "HTTP/1.1 200 Connection Established\r\n\r\nhello", 0, 0,
   )
   let codec = H1Codec::new_with_limit(stream, 4)
-  codec.encode_request(
+  codec
+  .encode_request(
     Request::new(CONNECT, Url::parse("http://example.com:80/").unwrap()),
-  ).unwrap()
+  )
+  .unwrap()
   let response = codec.decode_response().unwrap()
   assert_eq(response.read_body().unwrap(), b"hello")
 }
 
+///|
 test "HTTP/2 CONNECT tunnel bytes are not capped as a response body" {
   let headers = hpack_encode([(":status", "200")])
   let input = h2_test_concat([
@@ -37,6 +40,7 @@ test "HTTP/2 CONNECT tunnel bytes are not capped as a response body" {
   assert_eq(response.read_body().unwrap(), b"hello")
 }
 
+///|
 test "CONNECT rejects an explicitly empty request body in both versions" {
   let url = Url::parse("http://example.com:80/").unwrap()
   let request = Request::new(CONNECT, url).with_body(b"")
@@ -60,19 +64,22 @@ test "HTTP/1 CONNECT Host must match the authority-form target" {
   assert_true(
     mismatch.encode_request(
       Request::new(CONNECT, url).with_header("Host", "other.example:443"),
-    ) is Err(InvalidHeader(_)),
+    )
+    is Err(InvalidHeader(_)),
   )
   let missing_port = H1Codec::new(regression_mock_stream("", 0, 0))
   assert_true(
     missing_port.encode_request(
       Request::new(CONNECT, url).with_header("Host", "example.com"),
-    ) is Err(InvalidHeader(_)),
+    )
+    is Err(InvalidHeader(_)),
   )
   let matching = regression_mock_stream("", 0, 0)
   assert_true(
     H1Codec::new(matching).encode_request(
       Request::new(CONNECT, url).with_header("Host", "EXAMPLE.com:443"),
-    ) is Ok(_),
+    )
+    is Ok(_),
   )
   let wire = @utf8.decode(matching.output.to_bytes()[:])
   assert_true(wire.has_prefix("CONNECT example.com:443 HTTP/1.1\r\n"))

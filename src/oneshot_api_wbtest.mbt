@@ -1,17 +1,18 @@
 ///|
 test "one-shot helpers validate URLs before dialing" {
-  for result in [
-    get("not a url"),
-    post("not a url", b"body"),
-    put("not a url", b"body"),
-    delete("not a url"),
-    head("not a url"),
-    options("not a url"),
-    patch("not a url", b"body"),
-    trace("not a url"),
-    post_form("not a url", [("a", "b")]),
-    post_multipart("not a url", [("a", "b")], []),
-  ] {
+  for
+    result in [
+      get("not a url"),
+      post("not a url", b"body"),
+      put("not a url", b"body"),
+      delete("not a url"),
+      head("not a url"),
+      options("not a url"),
+      patch("not a url", b"body"),
+      trace("not a url"),
+      post_form("not a url", [("a", "b")]),
+      post_multipart("not a url", [("a", "b")], []),
+    ] {
     assert_true(result is Err(InvalidUrl(_)))
   }
   // `request` takes an already parsed URL; connector validation still rejects

@@ -1,3 +1,4 @@
+///|
 /// DATA on a stream that the client has not opened is a connection error
 /// (RFC 9113 §5.1); the client must not pool such a session for another
 /// request.

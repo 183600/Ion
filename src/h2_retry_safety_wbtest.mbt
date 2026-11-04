@@ -6,14 +6,14 @@ test "HTTP/2 GOAWAY excludes the current stream even with an error code" {
   ])
   // Force the GOAWAY to be read after the request stream is opened.
   let stream = h2_frame_mock_stream(input, 1)
-  let request = Request::new(POST, Url::parse("https://example.com/upload").unwrap())
-    .with_body(b"payload")
+  let request = Request::new(
+    POST,
+    Url::parse("https://example.com/upload").unwrap(),
+  ).with_body(b"payload")
   match h2_request(stream, request) {
     Ok(_) => fail("GOAWAY was ignored")
-    Err(err) => assert_eq(
-      err,
-      ProtocolError("HTTP/2 connection closed by GOAWAY"),
-    )
+    Err(err) =>
+      assert_eq(err, ProtocolError("HTTP/2 connection closed by GOAWAY"))
   }
 }
 
@@ -45,11 +45,12 @@ test "HTTP/2 does not classify GOAWAY after response headers as unprocessed" {
   let request = Request::new(POST, Url::parse("https://example.com/").unwrap())
   match h2_request(stream, request) {
     Ok(_) => fail("contradictory GOAWAY was ignored")
-    Err(err) => assert_eq(
-      err,
-      ProtocolError(
-        "HTTP/2 connection closed by GOAWAY after response headers",
-      ),
-    )
+    Err(err) =>
+      assert_eq(
+        err,
+        ProtocolError(
+          "HTTP/2 connection closed by GOAWAY after response headers",
+        ),
+      )
   }
 }

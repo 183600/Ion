@@ -5,9 +5,7 @@ test "IPv6 zone-preserving folding canonicalizes the address" {
   assert_false(upper.has_suffix("%25eth0"))
   assert_eq(cookie_canonical_host("FE80::1"), "fe80::1")
   assert_eq(cookie_canonical_host("Example.COM."), "example.com")
-  assert_true(
-    cookie_canonical_host("fe80::1%25ETH0.").has_suffix("%25ETH0."),
-  )
+  assert_true(cookie_canonical_host("fe80::1%25ETH0.").has_suffix("%25ETH0."))
 }
 
 ///|
@@ -29,7 +27,9 @@ test "connection keys distinguish IPv6 zone case" {
   let upper = Url::parse("http://[fe80::1%25ETH0]/").unwrap()
   let lower = Url::parse("http://[fe80::1%25eth0]/").unwrap()
   let upper_again = Url::parse("http://[FE80::1%25ETH0]/").unwrap()
-  assert_true(connector.connection_key(upper) != connector.connection_key(lower))
+  assert_true(
+    connector.connection_key(upper) != connector.connection_key(lower),
+  )
   assert_eq(
     connector.connection_key(upper),
     connector.connection_key(upper_again),
@@ -39,10 +39,12 @@ test "connection keys distinguish IPv6 zone case" {
 ///|
 test "proxy connection keys distinguish IPv6 zone case" {
   let url = Url::parse("http://example.com/").unwrap()
-  let upper = Connector::new(TcpDialer::new(), MockTlsProvider::new("test"))
-    .with_proxy(Proxy::parse("http://[fe80::1%25ETH0]:8080").unwrap())
-  let lower = Connector::new(TcpDialer::new(), MockTlsProvider::new("test"))
-    .with_proxy(Proxy::parse("http://[fe80::1%25eth0]:8080").unwrap())
+  let upper = Connector::new(TcpDialer::new(), MockTlsProvider::new("test")).with_proxy(
+    Proxy::parse("http://[fe80::1%25ETH0]:8080").unwrap(),
+  )
+  let lower = Connector::new(TcpDialer::new(), MockTlsProvider::new("test")).with_proxy(
+    Proxy::parse("http://[fe80::1%25eth0]:8080").unwrap(),
+  )
   assert_true(upper.connection_key(url) != lower.connection_key(url))
 }
 
@@ -80,7 +82,7 @@ test "same_request_target distinguishes IPv6 zone case" {
 test "redirects treat IPv6 zone case as cross-origin" {
   let raw = "HTTP/1.1 302 Found\r\nLocation: http://[fe80::1%25eth0]/next\r\nContent-Length: 0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
   let stream = regression_mock_stream(raw, 1, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let client = UnifiedClient::{
     connector,
@@ -89,8 +91,7 @@ test "redirects treat IPv6 zone case as cross-origin" {
   }
   let url = Url::parse("http://[fe80::1%25ETH0]/start").unwrap()
   let request = Request::new(GET, url).with_header(
-    "Authorization",
-    "Bearer token",
+    "Authorization", "Bearer token",
   )
   let response = client.request(request).unwrap()
   assert_eq(response.status, 200)
@@ -109,20 +110,16 @@ test "CONNECT Host comparison preserves IPv6 zone case" {
   let mismatch = H1Codec::new(mismatch_stream)
   assert_true(
     mismatch.encode_request(
-      Request::new(CONNECT, url).with_header(
-        "Host",
-        "[fe80::1%25eth0]:443",
-      ),
-    ) is Err(InvalidHeader(_)),
+      Request::new(CONNECT, url).with_header("Host", "[fe80::1%25eth0]:443"),
+    )
+    is Err(InvalidHeader(_)),
   )
   let matching_stream = regression_mock_stream("", 0, 0)
   let matching = H1Codec::new(matching_stream)
   assert_true(
     matching.encode_request(
-      Request::new(CONNECT, url).with_header(
-        "Host",
-        "[fe80::1%25ETH0]:443",
-      ),
-    ) is Ok(_),
+      Request::new(CONNECT, url).with_header("Host", "[fe80::1%25ETH0]:443"),
+    )
+    is Ok(_),
   )
 }

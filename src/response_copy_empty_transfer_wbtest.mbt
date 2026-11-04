@@ -1,3 +1,4 @@
+///|
 /// An empty encoded payload was already treated as empty by
 /// `read_body_decoded`; `copy_body_to` must make the same decision instead of
 /// trying to decode a zero-byte gzip member.
@@ -11,6 +12,7 @@ test "copy_body_to leaves an empty transfer-coded body empty" {
   assert_eq(response.read_body_decoded().unwrap(), b"")
 }
 
+///|
 test "copy_body_to writes no bytes for an empty transfer-coded body" {
   let source = response_copy_stream(b"")
   let response = Response::new(
@@ -23,6 +25,7 @@ test "copy_body_to writes no bytes for an empty transfer-coded body" {
   assert_eq(sink.output.to_bytes(), b"")
 }
 
+///|
 test "copy_body_to still rejects unsupported codings on an empty body" {
   let source = response_copy_stream(b"")
   let response = Response::new(

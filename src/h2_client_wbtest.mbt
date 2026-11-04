@@ -1,7 +1,9 @@
+///|
 struct H2NegotiatingTlsCtx {
   protocol : String?
 }
 
+///|
 pub impl TlsClientCtx for H2NegotiatingTlsCtx with fn server_name(
   self : H2NegotiatingTlsCtx,
 ) -> String {
@@ -9,12 +11,14 @@ pub impl TlsClientCtx for H2NegotiatingTlsCtx with fn server_name(
   "example.com"
 }
 
+///|
 pub impl TlsClientCtx for H2NegotiatingTlsCtx with fn negotiated_alpn(
   self : H2NegotiatingTlsCtx,
 ) -> String? {
   self.protocol
 }
 
+///|
 pub impl TlsClientCtx for H2NegotiatingTlsCtx with fn connect(
   self : H2NegotiatingTlsCtx,
   underlying : &Stream,
@@ -23,10 +27,12 @@ pub impl TlsClientCtx for H2NegotiatingTlsCtx with fn connect(
   Ok(underlying)
 }
 
+///|
 struct H2NegotiatingTlsProvider {
   protocol : String?
 }
 
+///|
 pub impl TlsProvider for H2NegotiatingTlsProvider with fn new_client(
   self : H2NegotiatingTlsProvider,
   config : TlsConfig,
@@ -36,9 +42,10 @@ pub impl TlsProvider for H2NegotiatingTlsProvider with fn new_client(
     Ok(_) => ()
     Err(err) => return Err(err)
   }
-  Ok(H2NegotiatingTlsCtx::{ protocol: self.protocol })
+  Ok(H2NegotiatingTlsCtx::{ protocol: self.protocol, })
 }
 
+///|
 test "UnifiedClient uses HTTP/2 after ALPN negotiation" {
   let response_headers = hpack_encode([
     (":status", "200"),
@@ -47,11 +54,16 @@ test "UnifiedClient uses HTTP/2 after ALPN negotiation" {
   ])
   let input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2"), }
   let client = UnifiedClient::with_transport(
     dialer,
     provider,
@@ -67,25 +79,33 @@ test "UnifiedClient uses HTTP/2 after ALPN negotiation" {
   assert_true(stream.is_open)
   let wire = stream.output.to_bytes()
   assert_true(wire.length() > h2_preface_bytes.length())
-  assert_eq(
-    @utf8.decode_lossy(wire[: h2_preface_bytes.length()]),
-    H2_PREFACE,
-  )
+  assert_eq(@utf8.decode_lossy(wire[:h2_preface_bytes.length()]), H2_PREFACE)
   let _ = client.close_all()
   assert_true(!stream.is_open)
 }
 
+///|
 test "UnifiedClient reuses one HTTP/2 session for sequential requests" {
   let first = hpack_encode([(":status", "200"), ("x-request", "first")])
   let second = hpack_encode([(":status", "201"), ("x-request", "second")])
   let input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, first),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 3, second),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      first,
+    ),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      3,
+      second,
+    ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2"), }
   let client = UnifiedClient::with_transport(
     dialer,
     provider,
@@ -114,6 +134,7 @@ test "UnifiedClient reuses one HTTP/2 session for sequential requests" {
   assert_true(!stream.is_open)
 }
 
+///|
 test "UnifiedClient applies its response body limit to HTTP/2" {
   let response_headers = hpack_encode([(":status", "200")])
   let input = h2_test_concat([
@@ -122,14 +143,14 @@ test "UnifiedClient applies its response body limit to HTTP/2" {
     h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, @utf8.encode("hello")),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2"), }
   let client = UnifiedClient::with_transport(
     dialer,
     provider,
     ClientOptions::new()
-      .with_follow_redirects(false)
-      .with_max_response_body_bytes(4),
+    .with_follow_redirects(false)
+    .with_max_response_body_bytes(4),
   )
   match client.get("https://example.com/h2") {
     Ok(_) => fail("HTTP/2 response body limit was not applied")
@@ -138,23 +159,24 @@ test "UnifiedClient applies its response body limit to HTTP/2" {
   assert_true(!stream.is_open)
 
   let accepted = h2_frame_mock_stream(input, 0)
-  let accepted_dialer = RegressionMockDialer::{ stream: accepted, count: 0 }
-  let accepted_provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let accepted_dialer = RegressionMockDialer::{ stream: accepted, count: 0, }
+  let accepted_provider = H2NegotiatingTlsProvider::{ protocol: Some("h2"), }
   let accepted_client = UnifiedClient::with_transport(
     accepted_dialer,
     accepted_provider,
     ClientOptions::new()
-      .with_follow_redirects(false)
-      .with_max_response_body_bytes(5),
+    .with_follow_redirects(false)
+    .with_max_response_body_bytes(5),
   )
   let response = accepted_client.get("https://example.com/h2").unwrap()
   assert_eq(response.read_body().unwrap(), @utf8.encode("hello"))
 }
 
+///|
 test "UnifiedClient rejects an unsupported negotiated ALPN protocol" {
   let stream = h2_frame_mock_stream(b"", 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = H2NegotiatingTlsProvider::{ protocol: Some("spdy/3.1") }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("spdy/3.1"), }
   let client = UnifiedClient::with_transport(
     dialer,
     provider,
@@ -164,10 +186,11 @@ test "UnifiedClient rejects an unsupported negotiated ALPN protocol" {
   assert_true(!stream.is_open)
 }
 
+///|
 test "connector advertises HTTP/2 in default TLS ALPN when enabled" {
   let stream = regression_mock_stream("", 0, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = ConfigCapturingTlsProvider::{ last_config: None }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = ConfigCapturingTlsProvider::{ last_config: None, }
   let connector = Connector::new(dialer, provider).with_http2(true)
   let _ = connector.connect(Url::new("https", "example.com", 443)).unwrap()
   match provider.last_config {
@@ -179,16 +202,18 @@ test "connector advertises HTTP/2 in default TLS ALPN when enabled" {
   }
 }
 
+///|
 struct H2SequenceDialer {
   streams : Array[&Stream]
-  mut index : Int
-  mut count : Int
+  mut index : Int32
+  mut count : Int32
 }
 
+///|
 pub impl Dialer for H2SequenceDialer with fn dial_tcp(
   self : H2SequenceDialer,
   host : String,
-  port : Int,
+  port : Int32,
 ) -> Result[&Stream, NetError] {
   let _ = host
   let _ = port
@@ -201,16 +226,26 @@ pub impl Dialer for H2SequenceDialer with fn dial_tcp(
   Ok(stream)
 }
 
-pub impl Dialer for H2SequenceDialer with fn resolve(self : H2SequenceDialer, host : String) -> Result[List[String], NetError] {
+///|
+pub impl Dialer for H2SequenceDialer with fn resolve(
+  self : H2SequenceDialer,
+  host : String,
+) -> Result[List[String], NetError] {
   let _ = self
   Ok(@list.List([host]))
 }
 
+///|
 test "UnifiedClient retries a stale pooled HTTP/2 session once" {
   let response_headers = hpack_encode([(":status", "200"), ("x-retry", "yes")])
   let input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
   ])
   let stale = h2_frame_mock_stream(b"", 0)
   let fresh = h2_frame_mock_stream(input, 0)
@@ -221,7 +256,7 @@ test "UnifiedClient retries a stale pooled HTTP/2 session once" {
     index: 0,
     count: 0,
   }
-  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2"), }
   let connector = Connector::new(dialer, provider).with_http2(true)
   let url = Url::parse("https://example.com/stale").unwrap()
   let stale_connection = H2ClientConnection::new(stale_stream).unwrap()
@@ -244,9 +279,10 @@ test "UnifiedClient retries a stale pooled HTTP/2 session once" {
   let _ = client.close_all()
 }
 
+///|
 test "changing the HTTP/2 policy closes connections negotiated under the old policy" {
   let stream = regression_mock_stream("", 1, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let url = Url::parse("http://example.com/").unwrap()
   let _ = connector.connect(url).unwrap()
@@ -259,24 +295,38 @@ test "changing the HTTP/2 policy closes connections negotiated under the old pol
   assert_true(again.http2_enabled())
 }
 
+///|
 test "connection keys distinguish IPvFuture literals from DNS names" {
   let connector = Connector::new(TcpDialer::new(), MockTlsProvider::new("test"))
   let dns = Url::parse("https://v1.foo/").unwrap()
   let literal = Url::parse("https://[v1.foo]/").unwrap()
-  assert_true(connector.connection_key(dns) != connector.connection_key(literal))
+  assert_true(
+    connector.connection_key(dns) != connector.connection_key(literal),
+  )
 }
 
+///|
 test "local HTTP/2 request errors preserve the pooled session" {
   let first = hpack_encode([(":status", "200"), ("x-request", "first")])
   let second = hpack_encode([(":status", "201"), ("x-request", "second")])
   let input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, first),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 3, second),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      first,
+    ),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      3,
+      second,
+    ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2"), }
   let client = UnifiedClient::with_transport(
     dialer,
     provider,
@@ -286,8 +336,9 @@ test "local HTTP/2 request errors preserve the pooled session" {
   let first_response = client.get(url).unwrap()
   assert_eq(first_response.status, 200)
 
-  let invalid = Request::new(POST, Url::parse(url).unwrap())
-    .with_header("Content-Length", "1")
+  let invalid = Request::new(POST, Url::parse(url).unwrap()).with_header(
+    "Content-Length", "1",
+  )
   match client.request(invalid) {
     Ok(_) => fail("invalid HTTP/2 request was accepted")
     Err(err) => assert_eq(err, InvalidHeader("Content-Length"))
@@ -302,15 +353,24 @@ test "local HTTP/2 request errors preserve the pooled session" {
   let _ = client.close_all()
 }
 
+///|
 test "UnifiedClient retries a request refused on a fresh HTTP/2 connection" {
   let refused_input = h2_test_concat([
     h2_test_settings(),
     h2_test_frame(H2_FRAME_RST_STREAM, 0, 1, b"\x00\x00\x00\x07"),
   ])
-  let response_headers = hpack_encode([(":status", "200"), ("x-retry", "refused")])
+  let response_headers = hpack_encode([
+    (":status", "200"),
+    ("x-retry", "refused"),
+  ])
   let fresh_input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
   ])
   let refused = h2_frame_mock_stream(refused_input, 0)
   let fresh = h2_frame_mock_stream(fresh_input, 0)
@@ -321,7 +381,7 @@ test "UnifiedClient retries a request refused on a fresh HTTP/2 connection" {
     index: 0,
     count: 0,
   }
-  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2"), }
   let connector = Connector::new(dialer, provider).with_http2(true)
   let client = UnifiedClient::{
     connector,
@@ -336,6 +396,7 @@ test "UnifiedClient retries a request refused on a fresh HTTP/2 connection" {
   let _ = client.close_all()
 }
 
+///|
 test "UnifiedClient retries a refused POST because no bytes were processed" {
   let refused_input = h2_test_concat([
     h2_test_settings(),
@@ -344,7 +405,12 @@ test "UnifiedClient retries a refused POST because no bytes were processed" {
   let response_headers = hpack_encode([(":status", "200"), ("x-retry", "post")])
   let fresh_input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
   ])
   let refused = h2_frame_mock_stream(refused_input, 0)
   let fresh = h2_frame_mock_stream(fresh_input, 0)
@@ -355,7 +421,7 @@ test "UnifiedClient retries a refused POST because no bytes were processed" {
     index: 0,
     count: 0,
   }
-  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2"), }
   let connector = Connector::new(dialer, provider).with_http2(true)
   let client = UnifiedClient::{
     connector,
@@ -370,15 +436,24 @@ test "UnifiedClient retries a refused POST because no bytes were processed" {
   let _ = client.close_all()
 }
 
+///|
 test "UnifiedClient retries a POST the server excluded with GOAWAY" {
   let goaway_input = h2_test_concat([
     h2_test_settings(),
     h2_test_frame(H2_FRAME_GOAWAY, 0, 0, b"\x00\x00\x00\x00\x00\x00\x00\x00"),
   ])
-  let response_headers = hpack_encode([(":status", "200"), ("x-retry", "goaway")])
+  let response_headers = hpack_encode([
+    (":status", "200"),
+    ("x-retry", "goaway"),
+  ])
   let fresh_input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
   ])
   let first = h2_frame_mock_stream(goaway_input, 0)
   let fresh = h2_frame_mock_stream(fresh_input, 0)
@@ -389,7 +464,7 @@ test "UnifiedClient retries a POST the server excluded with GOAWAY" {
     index: 0,
     count: 0,
   }
-  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2"), }
   let connector = Connector::new(dialer, provider).with_http2(true)
   let client = UnifiedClient::{
     connector,
@@ -413,7 +488,12 @@ test "UnifiedClient retries a POST after a pre-stream GOAWAY error" {
   let response_headers = hpack_encode([(":status", "200"), ("x-retry", "error")])
   let fresh_input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
   ])
   let first = h2_frame_mock_stream(goaway_input, 0)
   let fresh = h2_frame_mock_stream(fresh_input, 0)
@@ -424,7 +504,7 @@ test "UnifiedClient retries a POST after a pre-stream GOAWAY error" {
     index: 0,
     count: 0,
   }
-  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2"), }
   let connector = Connector::new(dialer, provider).with_http2(true)
   let client = UnifiedClient::{
     connector,
@@ -448,8 +528,8 @@ test "HTTP/2 response bodies become closed streams after close" {
     h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, @utf8.encode("hello")),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2"), }
   let client = UnifiedClient::with_transport(
     dialer,
     provider,
@@ -471,17 +551,22 @@ test "cleartext HTTP/2 prior knowledge sends the client preface" {
   let response_headers = hpack_encode([(":status", "200"), ("x-h2c", "yes")])
   let input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = H2NegotiatingTlsProvider::{ protocol: None }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = H2NegotiatingTlsProvider::{ protocol: None, }
   let client = UnifiedClient::with_transport(
     dialer,
     provider,
     ClientOptions::new()
-      .with_follow_redirects(false)
-      .with_http2_prior_knowledge(true),
+    .with_follow_redirects(false)
+    .with_http2_prior_knowledge(true),
   )
   let response = client.get("http://example.com/h2c").unwrap()
   assert_eq(dialer.count, 1)
@@ -491,10 +576,7 @@ test "cleartext HTTP/2 prior knowledge sends the client preface" {
   assert_eq(response.read_body().unwrap(), b"")
   let wire = stream.output.to_bytes()
   assert_true(wire.length() > h2_preface_bytes.length())
-  assert_eq(
-    @utf8.decode_lossy(wire[: h2_preface_bytes.length()]),
-    H2_PREFACE,
-  )
+  assert_eq(@utf8.decode_lossy(wire[:h2_preface_bytes.length()]), H2_PREFACE)
   let _ = client.close_all()
   assert_true(!stream.is_open)
 }
@@ -505,12 +587,22 @@ test "cleartext HTTP/2 prior knowledge reuses one session" {
   let second = hpack_encode([(":status", "201"), ("x-request", "second")])
   let input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, first),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 3, second),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      first,
+    ),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      3,
+      second,
+    ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = H2NegotiatingTlsProvider::{ protocol: None }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = H2NegotiatingTlsProvider::{ protocol: None, }
   let client = UnifiedClient::with_transport(
     dialer,
     provider,
@@ -541,7 +633,7 @@ test "cleartext HTTP/2 prior knowledge reuses one session" {
 ///|
 test "disabling HTTP/2 also disables cleartext prior knowledge" {
   let stream = regression_mock_stream("", 0, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   assert_false(connector.http2_prior_knowledge())
   let enabled = connector.with_http2_prior_knowledge(true)
@@ -555,7 +647,10 @@ test "disabling HTTP/2 also disables cleartext prior knowledge" {
 ///|
 test "UnifiedClient keeps an HTTP/2 session after a stream WINDOW_UPDATE error" {
   let first_headers = hpack_encode([(":status", "204")])
-  let second_headers = hpack_encode([(":status", "200"), ("x-request", "second")])
+  let second_headers = hpack_encode([
+    (":status", "200"),
+    ("x-request", "second"),
+  ])
   let input = h2_test_concat([
     h2_test_settings(),
     h2_test_frame(H2_FRAME_WINDOW_UPDATE, 0, 1, b"\x00\x00\x00\x00"),
@@ -573,8 +668,8 @@ test "UnifiedClient keeps an HTTP/2 session after a stream WINDOW_UPDATE error" 
     ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2"), }
   let client = UnifiedClient::with_transport(
     dialer,
     provider,

@@ -156,6 +156,8 @@ pub impl HttpClient for CachedClient
 
 type ChunkReadState
 
+type CliCacheOptions
+
 type CliRequest
 
 type CliTlsOptions
@@ -738,6 +740,8 @@ pub fn UnifiedClient::post_multipart(Self, String, Array[(String, String)], Arra
 pub fn UnifiedClient::put(Self, String, Bytes) -> Result[Response, HttpError]
 pub fn UnifiedClient::trace(Self, String) -> Result[Response, HttpError]
 pub fn UnifiedClient::with_auto_decompress(Self, Bool) -> Self
+pub fn UnifiedClient::with_cache(Self) -> CachedClient
+pub fn UnifiedClient::with_cache_instance(Self, HttpCache) -> CachedClient
 pub fn UnifiedClient::with_connect_timeout(Self, Int32) -> Self
 pub fn UnifiedClient::with_cookie_jar(Self, CookieJar) -> Self
 pub fn UnifiedClient::with_cookies(Self) -> Self

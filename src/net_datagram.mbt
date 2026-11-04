@@ -10,21 +10,23 @@
 /// targets can supply their own transport (for example a tunnel over a
 /// stream-based protocol).
 
+///|
 /// A datagram received from the network.
 #derive(Eq, Debug)
 pub struct DatagramPacket {
   /// Number of bytes copied into the caller's buffer.
-  length : Int
+  length : Int32
   /// IP address of the sender, without a port suffix.
   address : String
   /// Port of the sender.
-  port : Int
+  port : Int32
 }
 
+///|
 /// Datagram transport used by resolvers and other request/response protocols.
 pub trait Datagram {
   /// Send `payload` to `address:port`.
-  fn send_to(Self, Bytes, String, Int) -> Result[Unit, NetError]
+  fn send_to(Self, Bytes, String, Int32) -> Result[Unit, NetError]
 
   /// Receive a single datagram into `buffer`.
   ///
@@ -41,23 +43,26 @@ pub trait Datagram {
   /// strongest defense against spoofed answers. Transports that cannot
   /// connect keep the default implementation, and the caller verifies the
   /// reported sender instead.
-  fn connect(Self, String, Int) -> Result[Unit, NetError] = _
+  fn connect(Self, String, Int32) -> Result[Unit, NetError] = _
 
   /// Bound blocking sends and receives. Zero clears the deadline.
-  fn set_timeout(Self, Int) -> Result[Unit, NetError] = _
+  fn set_timeout(Self, Int32) -> Result[Unit, NetError] = _
 
   /// The local port the socket is bound to, or zero when it is not bound.
-  fn local_port(Self) -> Int = _
+  fn local_port(Self) -> Int32 = _
 }
 
+///|
 impl Datagram with fn connect(_self, _address, _port) {
   Err(NetError::IoError("Datagram transport cannot restrict its peer"))
 }
 
+///|
 impl Datagram with fn set_timeout(_self, _timeout_ms) {
   Ok(())
 }
 
+///|
 impl Datagram with fn local_port(_self) {
   0
 }

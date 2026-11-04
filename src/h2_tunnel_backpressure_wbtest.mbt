@@ -1,3 +1,4 @@
+///|
 /// A CONNECT tunnel has no response-body cap, so its stream receive window is
 /// the memory bound for data the peer sends while the application is not
 /// reading. Verify the advertised window is bounded and that tunnel DATA is
@@ -6,7 +7,7 @@ test "http2 advertises a bounded stream receive window" {
   let stream = h2_frame_mock_stream(b"", 0)
   let connection = H2ClientConnection::new(stream).unwrap()
   assert_true(connection.is_open())
-  let mut advertised : Int? = None
+  let mut advertised : Int32? = None
   for frame in h2_test_client_frames(stream) {
     if frame.frame_type == H2_FRAME_SETTINGS && (frame.flags & H2_FLAG_ACK) == 0 {
       let mut offset = 0
@@ -28,6 +29,7 @@ test "http2 advertises a bounded stream receive window" {
   connection.close()
 }
 
+///|
 /// The peer starts with a zero send window so the write path must read tunnel
 /// DATA while waiting for a WINDOW_UPDATE. That buffered DATA must not have its
 /// stream credit returned until the response body is actually read.

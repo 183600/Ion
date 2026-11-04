@@ -1,9 +1,11 @@
+///|
 /// TLS Provider interface
 pub trait TlsProvider {
   // Create a new TLS client context
   fn new_client(Self, TlsConfig) -> Result[&TlsClientCtx, TlsError]
 }
 
+///|
 /// TLS Client Context
 pub trait TlsClientCtx {
   // Perform TLS handshake on the underlying stream
@@ -16,21 +18,28 @@ pub trait TlsClientCtx {
   fn negotiated_alpn(Self) -> String? = _
 }
 
+///|
 impl TlsClientCtx with fn negotiated_alpn(_self) {
   None
 }
 
+///|
 /// Mock TLS Provider (placeholder for actual implementation)
 #derive(Eq, Debug)
 pub struct MockTlsProvider {
   name : String
 }
 
+///|
 pub fn MockTlsProvider::new(name : String) -> MockTlsProvider {
-  MockTlsProvider::{ name }
+  MockTlsProvider::{ name, }
 }
 
-pub impl TlsProvider for MockTlsProvider with fn new_client(self : MockTlsProvider, config : TlsConfig) -> Result[&TlsClientCtx, TlsError] {
+///|
+pub impl TlsProvider for MockTlsProvider with fn new_client(
+  self : MockTlsProvider,
+  config : TlsConfig,
+) -> Result[&TlsClientCtx, TlsError] {
   // Mock provider: validate the configuration and return a passthrough
   // context. Real handshakes come from OpenSslTlsProvider on native targets.
   let _ = self
@@ -38,30 +47,43 @@ pub impl TlsProvider for MockTlsProvider with fn new_client(self : MockTlsProvid
     Ok(_) => ()
     Err(err) => return Err(err)
   }
-  let ctx = MockTlsClientCtx::{ config, is_connected: false }
+  let ctx = MockTlsClientCtx::{ config, is_connected: false, }
   Ok(ctx)
 }
 
+///|
 /// Mock TLS Client Context
 pub struct MockTlsClientCtx {
   config : TlsConfig
   mut is_connected : Bool
 }
 
-pub impl TlsClientCtx for MockTlsClientCtx with fn server_name(self : MockTlsClientCtx) -> String {
+///|
+pub impl TlsClientCtx for MockTlsClientCtx with fn server_name(
+  self : MockTlsClientCtx,
+) -> String {
   self.config.server_name
 }
 
-pub impl TlsClientCtx for MockTlsClientCtx with fn connect(self : MockTlsClientCtx, underlying : &Stream) -> Result[&Stream, TlsError] {
+///|
+pub impl TlsClientCtx for MockTlsClientCtx with fn connect(
+  self : MockTlsClientCtx,
+  underlying : &Stream,
+) -> Result[&Stream, TlsError] {
   // Mock provider: no handshake, the stream is wrapped untouched.
   if self.is_connected {
     return Err(ProtocolError("TLS context is already connected"))
   }
   self.is_connected = true
-  let tls_stream = TlsStream::{ underlying, config: self.config, is_open: true }
+  let tls_stream = TlsStream::{
+    underlying,
+    config: self.config,
+    is_open: true,
+  }
   Ok(tls_stream)
 }
 
+///|
 /// TLS Stream wrapper
 pub struct TlsStream {
   underlying : &Stream
@@ -69,7 +91,11 @@ pub struct TlsStream {
   mut is_open : Bool
 }
 
-pub impl Stream for TlsStream with fn read(self : TlsStream, buf : Buffer) -> Result[Int, NetError] {
+///|
+pub impl Stream for TlsStream with fn read(self : TlsStream, buf : Buffer) -> Result[
+  Int32,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -77,15 +103,17 @@ pub impl Stream for TlsStream with fn read(self : TlsStream, buf : Buffer) -> Re
   self.underlying.read(buf)
 }
 
+///|
 pub impl Stream for TlsStream with fn set_body_limit(
   self : TlsStream,
-  limit : Int,
+  limit : Int32,
 ) -> Unit {
   if self.is_open {
     self.underlying.set_body_limit(limit)
   }
 }
 
+///|
 pub impl Stream for TlsStream with fn read_ready(self : TlsStream) -> Bool {
   if !self.is_open {
     return false
@@ -93,18 +121,18 @@ pub impl Stream for TlsStream with fn read_ready(self : TlsStream) -> Bool {
   self.underlying.read_ready()
 }
 
-pub impl Stream for TlsStream with fn has_buffered_input(
-  self : TlsStream,
-) -> Bool {
+///|
+pub impl Stream for TlsStream with fn has_buffered_input(self : TlsStream) -> Bool {
   if !self.is_open {
     return false
   }
   self.underlying.has_buffered_input()
 }
 
+///|
 pub impl Stream for TlsStream with fn wait_readable(
   self : TlsStream,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Bool, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
@@ -112,7 +140,11 @@ pub impl Stream for TlsStream with fn wait_readable(
   self.underlying.wait_readable(timeout_ms)
 }
 
-pub impl Stream for TlsStream with fn write(self : TlsStream, buf : Buffer) -> Result[Int, NetError] {
+///|
+pub impl Stream for TlsStream with fn write(self : TlsStream, buf : Buffer) -> Result[
+  Int32,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -120,14 +152,22 @@ pub impl Stream for TlsStream with fn write(self : TlsStream, buf : Buffer) -> R
   self.underlying.write(buf)
 }
 
-pub impl Stream for TlsStream with fn flush(self : TlsStream) -> Result[Unit, NetError] {
+///|
+pub impl Stream for TlsStream with fn flush(self : TlsStream) -> Result[
+  Unit,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   self.underlying.flush()
 }
 
-pub impl Stream for TlsStream with fn close(self : TlsStream) -> Result[Unit, NetError] {
+///|
+pub impl Stream for TlsStream with fn close(self : TlsStream) -> Result[
+  Unit,
+  NetError,
+] {
   if !self.is_open {
     return Ok(())
   }
@@ -135,6 +175,7 @@ pub impl Stream for TlsStream with fn close(self : TlsStream) -> Result[Unit, Ne
   self.underlying.close()
 }
 
+///|
 pub impl Stream for TlsStream with fn is_alive(self : TlsStream) -> Bool {
   if !self.is_open {
     return false
@@ -142,7 +183,8 @@ pub impl Stream for TlsStream with fn is_alive(self : TlsStream) -> Bool {
   self.underlying.is_alive()
 }
 
-pub impl Stream for TlsStream with fn get_timeout(self : TlsStream) -> Int {
+///|
+pub impl Stream for TlsStream with fn get_timeout(self : TlsStream) -> Int32 {
   if !self.is_open {
     0
   } else {
@@ -150,37 +192,51 @@ pub impl Stream for TlsStream with fn get_timeout(self : TlsStream) -> Int {
   }
 }
 
-pub impl Stream for TlsStream with fn set_timeout(self : TlsStream, timeout_ms : Int) -> Result[Unit, NetError] {
+///|
+pub impl Stream for TlsStream with fn set_timeout(
+  self : TlsStream,
+  timeout_ms : Int32,
+) -> Result[Unit, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   self.underlying.set_timeout(timeout_ms)
 }
 
-pub impl Stream for TlsStream with fn peer_addr(self : TlsStream) -> Result[String, NetError] {
+///|
+pub impl Stream for TlsStream with fn peer_addr(self : TlsStream) -> Result[
+  String,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   self.underlying.peer_addr()
 }
 
-pub impl Stream for TlsStream with fn local_addr(self : TlsStream) -> Result[String, NetError] {
+///|
+pub impl Stream for TlsStream with fn local_addr(self : TlsStream) -> Result[
+  String,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   self.underlying.local_addr()
 }
 
+///|
 /// Global TLS provider instance.
 #cfg(target="native")
 pub fn default_tls_provider() -> OpenSslTlsProvider {
   OpenSslTlsProvider::new()
 }
 
+///|
 #cfg(not(target="native"))
-const TLS_TRANSPORT_UNAVAILABLE : String =
-  "TLS transport unavailable on this target; build with --target native"
+const TLS_TRANSPORT_UNAVAILABLE : String = "TLS transport unavailable on this target; build with --target native"
 
+///|
 /// TLS provider for targets without a native TLS implementation. It refuses to
 /// create a client context instead of silently passing plaintext through the
 /// mock provider, which would make "https" connections unencrypted.
@@ -188,11 +244,13 @@ const TLS_TRANSPORT_UNAVAILABLE : String =
 #derive(Eq, Debug)
 pub struct UnavailableTlsProvider {}
 
+///|
 #cfg(not(target="native"))
 pub fn UnavailableTlsProvider::new() -> UnavailableTlsProvider {
-  UnavailableTlsProvider::{}
+  UnavailableTlsProvider::{ }
 }
 
+///|
 #cfg(not(target="native"))
 pub impl TlsProvider for UnavailableTlsProvider with fn new_client(
   self : UnavailableTlsProvider,
@@ -203,6 +261,7 @@ pub impl TlsProvider for UnavailableTlsProvider with fn new_client(
   Err(InvalidConfig(TLS_TRANSPORT_UNAVAILABLE))
 }
 
+///|
 /// Global TLS provider instance.
 #cfg(not(target="native"))
 pub fn default_tls_provider() -> UnavailableTlsProvider {

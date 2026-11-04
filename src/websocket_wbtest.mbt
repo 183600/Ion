@@ -1,3 +1,4 @@
+///|
 fn ws_test_stream(input : Bytes) -> RegressionMockStream {
   RegressionMockStream::{
     input,
@@ -10,6 +11,7 @@ fn ws_test_stream(input : Bytes) -> RegressionMockStream {
   }
 }
 
+///|
 fn ws_test_concat(parts : Array[Bytes]) -> Bytes {
   let output = Buffer(size_hint=64)
   for part in parts {
@@ -18,11 +20,10 @@ fn ws_test_concat(parts : Array[Bytes]) -> Bytes {
   output.to_bytes()
 }
 
-fn ws_test_frame(opcode : Int, fin : Bool, payload : Bytes) -> Bytes {
+///|
+fn ws_test_frame(opcode : Int32, fin : Bool, payload : Bytes) -> Bytes {
   let output = Buffer(size_hint=payload.length() + 4)
-  output.write_byte(
-    ((if fin { 0x80 } else { 0x00 }) | opcode).to_byte(),
-  )
+  output.write_byte(((if fin { 0x80 } else { 0x00 }) | opcode).to_byte())
   if payload.length() <= 125 {
     output.write_byte(payload.length().to_byte())
   } else {
@@ -58,11 +59,7 @@ test "websocket reads a masked client frame as a server" {
       (payload[index].to_int() ^ mask[index % 4].to_int()).to_byte(),
     )
   }
-  let raw = ws_test_concat([
-    b"\x81\x82",
-    mask,
-    masked.to_bytes(),
-  ])
+  let raw = ws_test_concat([b"\x81\x82", mask, masked.to_bytes()])
   let stream = ws_test_stream(raw)
   let socket = WebSocket::new(stream, Server)
   assert_eq(socket.read_message().unwrap(), Text("hi"))
@@ -92,7 +89,9 @@ test "websocket parses close status and reason" {
 ///|
 test "websocket rejects malformed control and masking" {
   // Fragmented control frame.
-  let fragmented_ping = ws_test_stream(ws_test_frame(WS_OPCODE_PING, false, b""))
+  let fragmented_ping = ws_test_stream(
+    ws_test_frame(WS_OPCODE_PING, false, b""),
+  )
   match WebSocket::new(fragmented_ping, Client).read_message() {
     Err(ProtocolError(_)) => ()
     _ => fail("fragmented ping was accepted")
@@ -124,7 +123,8 @@ test "websocket enforces frame and message limits" {
   let oversized = ws_test_stream(ws_test_frame(WS_OPCODE_TEXT, true, b"hello"))
   let socket = WebSocket::new(oversized, Client).with_max_frame_bytes(4)
   match socket.read_message() {
-    Err(ProtocolError(message)) => assert_eq(message, "WebSocket frame too large")
+    Err(ProtocolError(message)) =>
+      assert_eq(message, "WebSocket frame too large")
     _ => fail("oversized frame was accepted")
   }
   let raw = ws_test_concat([
@@ -134,7 +134,8 @@ test "websocket enforces frame and message limits" {
   let stream = ws_test_stream(raw)
   let socket = WebSocket::new(stream, Client).with_max_message_bytes(5)
   match socket.read_message() {
-    Err(ProtocolError(message)) => assert_eq(message, "WebSocket message too large")
+    Err(ProtocolError(message)) =>
+      assert_eq(message, "WebSocket message too large")
     _ => fail("oversized message was accepted")
   }
 }
@@ -161,11 +162,9 @@ test "websocket client masks outgoing frames" {
 ///|
 test "websocket handshake request and response are validated" {
   let key = "dGhlIHNhbXBsZSBub25jZQ=="
-  let request = websocket_handshake_request(
-    "wss://example.com/chat",
-    key,
-    ["chat"],
-  ).unwrap()
+  let request = websocket_handshake_request("wss://example.com/chat", key, [
+    "chat",
+  ]).unwrap()
   assert_eq(request.url.scheme, "https")
   assert_eq(request.get_header("Upgrade"), Some("websocket"))
   assert_eq(request.get_header("Sec-WebSocket-Version"), Some("13"))
@@ -176,7 +175,7 @@ test "websocket handshake request and response are validated" {
     "Connection: Upgrade\r\nUpgrade: websocket\r\n" +
     "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n"
   let stream = regression_mock_stream(raw, 0, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let client = UnifiedClient::{
     connector: Connector::new(dialer, MockTlsProvider::new("test")),
     options: ClientOptions::new().with_follow_redirects(false),
@@ -192,13 +191,8 @@ test "websocket handshake request and response are validated" {
 
 ///|
 test "websocket handshake rejects malformed keys" {
-  for key in [
-    "",
-    "not base64!",
-    "AAAA",
-    "c2hvcnQ=",
-    "dGhlIHNhbXBsZSBub25jZQ===",
-  ] {
+  for
+    key in ["", "not base64!", "AAAA", "c2hvcnQ=", "dGhlIHNhbXBsZSBub25jZQ==="] {
     match websocket_handshake_request("ws://example.com/chat", key, []) {
       Err(InvalidHeader(name)) => assert_eq(name, "Sec-WebSocket-Key")
       _ => fail("a malformed WebSocket key was accepted")
@@ -214,7 +208,7 @@ test "websocket rejects an unoffered subprotocol" {
     "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n" +
     "Sec-WebSocket-Protocol: other\r\n\r\n"
   let stream = regression_mock_stream(raw, 0, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let client = UnifiedClient::{
     connector: Connector::new(dialer, MockTlsProvider::new("test")),
     options: ClientOptions::new().with_follow_redirects(false),

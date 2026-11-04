@@ -1,3 +1,4 @@
+///|
 /// Deterministic byte-level fuzzing for the HTTP/2/Huffman/cookie parsers. The
 /// hand-written suites cover protocol cases; these checks make sure arbitrary
 /// peer-controlled bytes cannot panic or make a parser loop.
@@ -6,7 +7,7 @@ fn audit_fuzz_next(seed : UInt64) -> UInt64 {
 }
 
 ///|
-fn audit_fuzz_bytes(seed : UInt64, max_length : Int) -> (UInt64, Bytes) {
+fn audit_fuzz_bytes(seed : UInt64, max_length : Int32) -> (UInt64, Bytes) {
   let mut seed = seed
   seed = audit_fuzz_next(seed)
   let length = (seed % (max_length + 1).to_uint64()).to_int()
@@ -29,12 +30,11 @@ test "fuzz: arbitrary HPACK blocks never panic" {
     seed = next_seed
     let decoder = HpackDecoder::new()
     match decoder.decode(block) {
-      Ok(fields) => {
+      Ok(fields) =>
         for field in fields {
           let (name, _value) = field
           assert_true(name.length() > 0)
         }
-      }
       Err(_) => ()
     }
     index = index + 1

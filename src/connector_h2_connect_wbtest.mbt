@@ -1,12 +1,12 @@
+///|
 /// `Connector::connect` promises that the returned stream is also reachable
 /// through the pool. An ALPN-negotiated h2 stream needs the same treatment even
 /// though its client preface is only sent when the session is checked out.
 test "connector connect keeps a negotiated HTTP/2 stream closeable" {
   let stream = h2_frame_mock_stream(b"", 0)
-  let connector = Connector::new(
-    RegressionMockDialer::{ stream, count: 0 },
-    H2NegotiatingTlsProvider::{ protocol: Some("h2") },
-  ).with_http2(true)
+  let connector = Connector::new(RegressionMockDialer::{ stream, count: 0, }, H2NegotiatingTlsProvider::{
+    protocol: Some("h2"),
+  }).with_http2(true)
   let url = Url::parse("https://example.com/").unwrap()
   let _ = connector.connect(url).unwrap()
   assert_true(stream.is_open)
@@ -16,6 +16,7 @@ test "connector connect keeps a negotiated HTTP/2 stream closeable" {
   assert_false(stream.is_open)
 }
 
+///|
 test "connector connect dials fresh instead of reusing a negotiated HTTP/2 session" {
   let first = h2_frame_mock_stream(b"", 0)
   let second = h2_frame_mock_stream(b"", 0)
@@ -26,10 +27,9 @@ test "connector connect dials fresh instead of reusing a negotiated HTTP/2 sessi
     index: 0,
     count: 0,
   }
-  let connector = Connector::new(
-    dialer,
-    H2NegotiatingTlsProvider::{ protocol: Some("h2") },
-  ).with_http2(true)
+  let connector = Connector::new(dialer, H2NegotiatingTlsProvider::{
+    protocol: Some("h2"),
+  }).with_http2(true)
   let url = Url::parse("https://example.com/").unwrap()
   let _ = connector.connect(url).unwrap()
   let _ = connector.connect(url).unwrap()
@@ -40,13 +40,13 @@ test "connector connect dials fresh instead of reusing a negotiated HTTP/2 sessi
   assert_false(second.is_open)
 }
 
+///|
 test "connector checkout initializes a negotiated HTTP/2 stream cached by connect" {
   let stream = h2_frame_mock_stream(b"", 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let connector = Connector::new(
-    dialer,
-    H2NegotiatingTlsProvider::{ protocol: Some("h2") },
-  ).with_http2(true)
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let connector = Connector::new(dialer, H2NegotiatingTlsProvider::{
+    protocol: Some("h2"),
+  }).with_http2(true)
   let url = Url::parse("https://example.com/").unwrap()
   let _ = connector.connect(url).unwrap()
   let (_, lease) = connector.checkout(url).unwrap()
@@ -56,17 +56,20 @@ test "connector checkout initializes a negotiated HTTP/2 stream cached by connec
   assert_false(stream.is_open)
 }
 
+///|
 test "connector connect rejects an unsupported negotiated protocol" {
   let stream = h2_frame_mock_stream(b"", 0)
-  let connector = Connector::new(
-    RegressionMockDialer::{ stream, count: 0 },
-    H2NegotiatingTlsProvider::{ protocol: Some("spdy/3.1") },
-  ).with_http2(true)
+  let connector = Connector::new(RegressionMockDialer::{ stream, count: 0, }, H2NegotiatingTlsProvider::{
+    protocol: Some("spdy/3.1"),
+  }).with_http2(true)
   let url = Url::parse("https://example.com/").unwrap()
   match connector.connect(url) {
     Ok(_) => fail("unsupported ALPN protocol was accepted")
     Err(err) =>
-      assert_eq(err, ProtocolError("Unsupported negotiated ALPN protocol: spdy/3.1"))
+      assert_eq(
+        err,
+        ProtocolError("Unsupported negotiated ALPN protocol: spdy/3.1"),
+      )
   }
   assert_false(stream.is_open)
   assert_eq(connector.idle_connection_count(), 0)

@@ -1,3 +1,4 @@
+///|
 test "http2 keeps the session after a reset of an answered stream" {
   let first_headers = hpack_encode([(":status", "200")])
   let second_headers = hpack_encode([
@@ -6,12 +7,7 @@ test "http2 keeps the session after a reset of an answered stream" {
   ])
   let input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(
-      H2_FRAME_HEADERS,
-      H2_FLAG_END_HEADERS,
-      1,
-      first_headers,
-    ),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, first_headers),
     h2_test_frame(H2_FRAME_RST_STREAM, 0, 1, b"\x00\x00\x00\x08"),
     h2_test_frame(
       H2_FRAME_HEADERS,
@@ -38,12 +34,7 @@ test "http2 closes when an oversized future-stream frame follows a reset" {
   let first_headers = hpack_encode([(":status", "200")])
   let input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(
-      H2_FRAME_HEADERS,
-      H2_FLAG_END_HEADERS,
-      1,
-      first_headers,
-    ),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, first_headers),
     h2_test_frame(H2_FRAME_RST_STREAM, 0, 1, b"\x00\x00\x00\x08"),
     // A frame header claiming 16385 bytes on a future stream. No payload is
     // needed: the length alone is already a protocol violation.
@@ -61,10 +52,7 @@ test "http2 closes when an oversized future-stream frame follows a reset" {
 
 ///|
 test "http2 settings do not adjust a closed stream's stale window" {
-  let first_headers = hpack_encode([
-    (":status", "200"),
-    ("content-length", "2"),
-  ])
+  let first_headers = hpack_encode([(":status", "200"), ("content-length", "2")])
   let second_headers = hpack_encode([(":status", "204")])
   let input = h2_test_concat([
     h2_test_settings(),
@@ -75,7 +63,9 @@ test "http2 settings do not adjust a closed stream's stale window" {
       H2_FRAME_SETTINGS,
       0,
       0,
-      h2_settings_payload([(H2_SETTINGS_INITIAL_WINDOW_SIZE, H2_MAX_WINDOW_SIZE)]),
+      h2_settings_payload([
+        (H2_SETTINGS_INITIAL_WINDOW_SIZE, H2_MAX_WINDOW_SIZE),
+      ]),
     ),
     h2_test_frame(
       H2_FRAME_HEADERS,

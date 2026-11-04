@@ -4,7 +4,9 @@ test "H2ClientConnection implements HttpClient on a persistent session" {
     H2_FRAME_SETTINGS,
     0,
     0,
-    h2_settings_payload([(H2_SETTINGS_INITIAL_WINDOW_SIZE, H2_DEFAULT_WINDOW_SIZE)]),
+    h2_settings_payload([
+      (H2_SETTINGS_INITIAL_WINDOW_SIZE, H2_DEFAULT_WINDOW_SIZE),
+    ]),
   )
   let headers = hpack_encode([(":status", "200")])
   let input = h2_test_concat([
@@ -34,18 +36,25 @@ test "invalid extended CONNECT leaves the HTTP/2 session reusable" {
   let headers = hpack_encode([(":status", "200"), ("x-next", "ok")])
   let input = h2_test_concat([
     settings,
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      headers,
+    ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2"), }
   let client = UnifiedClient::with_transport(
     dialer,
     provider,
     ClientOptions::new().with_follow_redirects(false),
   )
-  let invalid = Request::new(POST, Url::parse("https://example.com/socket").unwrap())
-    .with_upgrade("websocket")
+  let invalid = Request::new(
+    POST,
+    Url::parse("https://example.com/socket").unwrap(),
+  ).with_upgrade("websocket")
   match client.request(invalid) {
     Ok(_) => fail("extended CONNECT with POST was accepted")
     Err(err) =>

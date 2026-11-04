@@ -1,3 +1,4 @@
+///|
 #cfg(target="native")
 fn pending_tls_handle() -> NativeTlsHandle {
   feather_tls_new(
@@ -15,6 +16,7 @@ fn pending_tls_handle() -> NativeTlsHandle {
   )
 }
 
+///|
 /// A record dequeued from OpenSSL's write BIO must survive until the transport
 /// confirms it was written. Otherwise a write timeout silently drops the tail
 /// of a TLS record and a retry emits a corrupt stream.
@@ -32,7 +34,10 @@ test "native TLS retains dequeued record bytes until they are consumed" {
   // failed transport write cannot lose it.
   let repeated = Bytes::new(capacity)
   assert_eq(feather_tls_receive_pending(tls, repeated, capacity), length)
-  assert_eq(repeated.exact_view(start=0, end=length), first.exact_view(start=0, end=length))
+  assert_eq(
+    repeated.exact_view(start=0, end=length),
+    first.exact_view(start=0, end=length),
+  )
 
   assert_eq(feather_tls_consume_pending(tls, 2), 2)
   let tail = Bytes::new(capacity)

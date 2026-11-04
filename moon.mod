@@ -8,10 +8,21 @@ repository = "https://github.com/183600/Ion"
 
 license = "MIT"
 
-keywords = ["moonbit", "networking", "http", "http2", "tls", "websocket", "socks5", "proxy", "cookies"]
+keywords = [
+  "moonbit",
+  "networking",
+  "http",
+  "http2",
+  "tls",
+  "websocket",
+  "socks5",
+  "proxy",
+  "cookies",
+]
 
 source = "src"
+
 warnings = "-20"
 
 import {
-  }
+}

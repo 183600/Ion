@@ -4,7 +4,11 @@ fn cache_test_request(url : String) -> Request {
 }
 
 ///|
-fn cache_test_response(status : Int, headers : Headers, body : String) -> Response {
+fn cache_test_response(
+  status : Int32,
+  headers : Headers,
+  body : String,
+) -> Response {
   let stream = regression_mock_stream(body, 0, 0)
   Response::new(status, headers, stream)
 }
@@ -54,8 +58,7 @@ test "fresh cache entries are served with an updated age" {
 test "cache entries honor vary headers" {
   let cache = HttpCache::new()
   let request = cache_test_request("http://example.com/vary").with_header(
-    "Accept-Language",
-    "en",
+    "Accept-Language", "en",
   )
   let headers = Headers::new()
     .add("Cache-Control", "max-age=60")
@@ -97,9 +100,9 @@ test "304 responses refresh stored entries" {
   let initial = cache_test_response(
     200,
     Headers::new()
-      .add("Cache-Control", "max-age=0")
-      .add("ETag", "\"v1\"")
-      .add("Date", "Sun, 01 Nov 2026 00:00:00 GMT"),
+    .add("Cache-Control", "max-age=0")
+    .add("ETag", "\"v1\"")
+    .add("Date", "Sun, 01 Nov 2026 00:00:00 GMT"),
     "cached",
   )
   let _ = cache.store(request, initial, now).unwrap()
@@ -112,14 +115,12 @@ test "304 responses refresh stored entries" {
   let not_modified = cache_test_response(
     304,
     Headers::new()
-      .add("Cache-Control", "max-age=60")
-      .add("ETag", "\"v1\"")
-      .add("Date", "Sun, 01 Nov 2026 00:00:01 GMT"),
+    .add("Cache-Control", "max-age=60")
+    .add("ETag", "\"v1\"")
+    .add("Date", "Sun, 01 Nov 2026 00:00:01 GMT"),
     "",
   )
-  let refreshed = cache
-    .revalidate(request, not_modified, now + 2000UL)
-    .unwrap()
+  let refreshed = cache.revalidate(request, not_modified, now + 2000UL).unwrap()
   assert_eq(refreshed.status, 200)
   assert_eq(@utf8.decode_lossy(refreshed.read_body().unwrap()[:]), "cached")
   let fresh = match cache.lookup(request, now + 3000UL) {
@@ -133,18 +134,24 @@ test "304 responses refresh stored entries" {
 test "cached clients avoid repeat requests and revalidate stale entries" {
   let first = regression_mock_stream(
     "HTTP/1.1 200 OK\r\nCache-Control: max-age=60\r\nContent-Length: 5\r\n\r\nhello",
-    0,
-    0,
+    0, 0,
   )
-  let dialer = RegressionMockDialer::{ stream: first, count: 0 }
+  let dialer = RegressionMockDialer::{ stream: first, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new(),
+    redirect_count: 0,
+  }
   let cached = CachedClient::new(client)
   let first_response = cached.get("http://example.com/cached").unwrap()
   assert_eq(@utf8.decode_lossy(first_response.read_body().unwrap()[:]), "hello")
   assert_eq(dialer.count, 1)
   let second_response = cached.get("http://example.com/cached").unwrap()
-  assert_eq(@utf8.decode_lossy(second_response.read_body().unwrap()[:]), "hello")
+  assert_eq(
+    @utf8.decode_lossy(second_response.read_body().unwrap()[:]),
+    "hello",
+  )
   assert_eq(dialer.count, 1)
 }
 
@@ -152,28 +159,37 @@ test "cached clients avoid repeat requests and revalidate stale entries" {
 test "cached clients send validators for stale entries" {
   let first = regression_mock_stream(
     "HTTP/1.1 200 OK\r\nCache-Control: max-age=0\r\nETag: \"v1\"\r\nConnection: close\r\nContent-Length: 5\r\n\r\nhello",
-    0,
-    0,
+    0, 0,
   )
   let second = regression_mock_stream(
     "HTTP/1.1 304 Not Modified\r\nCache-Control: max-age=60\r\nETag: \"v1\"\r\n\r\n",
-    0,
-    0,
+    0, 0,
   )
-  let dialer = RegressionQueueDialer::{ streams: [first, second], index: 0 }
+  let dialer = RegressionQueueDialer::{ streams: [first, second], index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new(),
+    redirect_count: 0,
+  }
   let cached = CachedClient::new(client)
   let first_response = cached.get("http://example.com/revalidate").unwrap()
   assert_eq(@utf8.decode_lossy(first_response.read_body().unwrap()[:]), "hello")
   let second_response = cached.get("http://example.com/revalidate").unwrap()
   assert_eq(second_response.status, 200)
-  assert_eq(@utf8.decode_lossy(second_response.read_body().unwrap()[:]), "hello")
+  assert_eq(
+    @utf8.decode_lossy(second_response.read_body().unwrap()[:]),
+    "hello",
+  )
   assert_eq(dialer.index, 2)
 }
 
 ///|
-fn cache_test_response_bytes(status : Int, headers : Headers, body : Bytes) -> Response {
+fn cache_test_response_bytes(
+  status : Int32,
+  headers : Headers,
+  body : Bytes,
+) -> Response {
   let stream = RegressionMockStream::{
     input: body,
     offset: 0,
@@ -211,8 +227,11 @@ test "cached decoding mode still decodes buffered bodies" {
   let headers = Headers::new()
     .add("Cache-Control", "max-age=60")
     .add("Content-Encoding", "gzip")
-  let raw = cache_test_response_bytes(200, headers, auto_decompress_gzip_hello())
-    .with_auto_decompress(true)
+  let raw = cache_test_response_bytes(
+    200,
+    headers,
+    auto_decompress_gzip_hello(),
+  ).with_auto_decompress(true)
   let returned = cache.store(request, raw, @env.now()).unwrap()
   assert_eq(@utf8.decode_lossy(returned.read_body().unwrap()[:]), "hello")
   let hit = match cache.lookup(request, @env.now()) {
@@ -226,22 +245,25 @@ test "cached decoding mode still decodes buffered bodies" {
 test "unsafe methods invalidate cached entries" {
   let first = regression_mock_stream(
     "HTTP/1.1 200 OK\r\nCache-Control: max-age=60\r\nConnection: close\r\nContent-Length: 3\r\n\r\nold",
-    0,
-    0,
+    0, 0,
   )
   let post = regression_mock_stream(
-    "HTTP/1.1 201 Created\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
-    0,
+    "HTTP/1.1 201 Created\r\nConnection: close\r\nContent-Length: 0\r\n\r\n", 0,
     0,
   )
   let third = regression_mock_stream(
-    "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 3\r\n\r\nnew",
-    0,
-    0,
+    "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 3\r\n\r\nnew", 0, 0,
   )
-  let dialer = RegressionQueueDialer::{ streams: [first, post, third], index: 0 }
+  let dialer = RegressionQueueDialer::{
+    streams: [first, post, third],
+    index: 0,
+  }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new(),
+    redirect_count: 0,
+  }
   let cached = CachedClient::new(client)
   let seeded = cached.get("http://example.com/resource").unwrap()
   assert_eq(@utf8.decode_lossy(seeded.read_body().unwrap()[:]), "old")
@@ -279,7 +301,9 @@ test "stored cache entries drop hop-by-hop headers" {
 ///|
 test "requests with bodies are never served from cache" {
   let cache = HttpCache::new()
-  let request = cache_test_request("http://example.com/get-body").with_body(b"payload")
+  let request = cache_test_request("http://example.com/get-body").with_body(
+    b"payload",
+  )
   let headers = Headers::new().add("Cache-Control", "max-age=60")
   let response = cache_test_response(200, headers, "body")
   let _ = cache.store(request, response, @env.now()).unwrap()

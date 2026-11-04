@@ -1,3 +1,4 @@
+///|
 test "Url::join resolves RFC 3986 relative references" {
   let base = Url::parse("http://a/b/c/d;p?q").unwrap()
   let cases : Array[(String, String)] = [
@@ -42,11 +43,13 @@ test "Url::join resolves RFC 3986 relative references" {
   }
 }
 
+///|
 test "Url::join with an empty reference does not inherit the base fragment" {
   let base = Url::parse("http://a/b/c/d;p?q#frag").unwrap()
   assert_eq(base.join("").unwrap().to_string(), "http://a/b/c/d;p?q")
 }
 
+///|
 test "Url::join keeps absolute and scheme-relative references" {
   let base = Url::parse("https://example.com/dir/page?q=1").unwrap()
   assert_eq(
@@ -63,19 +66,19 @@ test "Url::join keeps absolute and scheme-relative references" {
   )
 }
 
+///|
 test "Url::join rejects unsupported schemes and malformed references" {
   let base = Url::parse("http://example.com/a").unwrap()
-  for reference in [
-    "ftp://example.com/x",
-    "mailto:user@example.com",
-    "http://exa mple.com/",
-    "//exa mple.com/",
-    "/a\\b",
-  ] {
+  for
+    reference in [
+      "ftp://example.com/x", "mailto:user@example.com", "http://exa mple.com/", "//exa mple.com/",
+      "/a\\b",
+    ] {
     assert_true(base.join(reference) is Err(_))
   }
 }
 
+///|
 test "Url::join keeps an asterisk-form base intact for fragment-only references" {
   let base = Url::parse("http://example.com").unwrap().with_path("*")
   let joined = base.join("#s").unwrap()
@@ -85,6 +88,7 @@ test "Url::join keeps an asterisk-form base intact for fragment-only references"
   assert_eq(joined.to_string(), "http://example.com/*#s")
 }
 
+///|
 test "Url::join keeps an asterisk-form base intact for empty and query-only references" {
   let base = Url::parse("http://example.com").unwrap().with_path("*")
   let empty = base.join("").unwrap()
@@ -99,6 +103,7 @@ test "Url::join keeps an asterisk-form base intact for empty and query-only refe
   assert_eq(path.path, "/next")
 }
 
+///|
 test "redirect resolution keeps an asterisk-form base for fragment and query targets" {
   let base = Url::parse("http://example.com").unwrap().with_path("*")
   let fragment = resolve_redirect_url(base, "#s").unwrap()
@@ -111,14 +116,16 @@ test "redirect resolution keeps an asterisk-form base for fragment and query tar
   assert_eq(next.path, "/next")
 }
 
+///|
 test "Url::join keeps dot segments in the base path for empty-path references" {
   let base = Url::parse("http://example.com/a/../b").unwrap()
   assert_eq(base.to_string(), "http://example.com/a/../b")
-  for entry in [
-    ("", "http://example.com/a/../b"),
-    ("#s", "http://example.com/a/../b#s"),
-    ("?y=2", "http://example.com/a/../b?y=2"),
-  ] {
+  for
+    entry in [
+      ("", "http://example.com/a/../b"),
+      ("#s", "http://example.com/a/../b#s"),
+      ("?y=2", "http://example.com/a/../b?y=2"),
+    ] {
     let (reference, expected) = entry
     assert_eq(base.join(reference).unwrap().to_string(), expected)
   }
@@ -126,15 +133,20 @@ test "Url::join keeps dot segments in the base path for empty-path references" {
   assert_eq(base.join("next").unwrap().to_string(), "http://example.com/next")
 }
 
+///|
 test "redirect resolution keeps dot segments for empty-path references" {
   let base = Url::parse("http://example.com/a/../b").unwrap()
-  for entry in [
-    ("", "http://example.com/a/../b"),
-    ("#s", "http://example.com/a/../b#s"),
-    ("?y=2", "http://example.com/a/../b?y=2"),
-  ] {
+  for
+    entry in [
+      ("", "http://example.com/a/../b"),
+      ("#s", "http://example.com/a/../b#s"),
+      ("?y=2", "http://example.com/a/../b?y=2"),
+    ] {
     let (location, expected) = entry
-    assert_eq(resolve_redirect_url(base, location).unwrap().to_string(), expected)
+    assert_eq(
+      resolve_redirect_url(base, location).unwrap().to_string(),
+      expected,
+    )
   }
   assert_eq(
     resolve_redirect_url(base, "next").unwrap().to_string(),

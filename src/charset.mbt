@@ -1,7 +1,7 @@
+///|
 /// Decode a response body as text using the `charset` parameter from its
 /// `Content-Type` header. Unknown charsets fall back to UTF-8, matching the
 /// permissive behaviour clients need when talking to misconfigured servers.
-
 fn charset_parameter(value : String) -> String? {
   let length = value.length()
   let mut index = 0
@@ -9,11 +9,12 @@ fn charset_parameter(value : String) -> String? {
     // Skip separators and optional whitespace before the next parameter.
     while index < length {
       match value.get_char(index) {
-        Some(ch) => if ch == ';' || ch == ' ' || ch == '\t' {
-          index = index + 1
-        } else {
-          break
-        }
+        Some(ch) =>
+          if ch == ';' || ch == ' ' || ch == '\t' {
+            index = index + 1
+          } else {
+            break
+          }
         // Low surrogate of an astral scalar; it is not a delimiter.
         None => index = index + 1
       }
@@ -24,11 +25,12 @@ fn charset_parameter(value : String) -> String? {
     let name_start = index
     while index < length {
       match value.get_char(index) {
-        Some(ch) => if ch == '=' || ch == ';' {
-          break
-        } else {
-          index = index + 1
-        }
+        Some(ch) =>
+          if ch == '=' || ch == ';' {
+            break
+          } else {
+            index = index + 1
+          }
         None => index = index + 1
       }
     }
@@ -44,11 +46,12 @@ fn charset_parameter(value : String) -> String? {
     index = index + 1
     while index < length {
       match value.get_char(index) {
-        Some(ch) => if ch == ' ' || ch == '\t' {
-          index = index + 1
-        } else {
-          break
-        }
+        Some(ch) =>
+          if ch == ' ' || ch == '\t' {
+            index = index + 1
+          } else {
+            break
+          }
         None => index = index + 1
       }
     }
@@ -103,11 +106,7 @@ fn charset_parameter(value : String) -> String? {
       let value_start = index
       while index < length {
         match value.get_char(index) {
-          Some(ch) => if ch == ';' {
-            break
-          } else {
-            index = index + 1
-          }
+          Some(ch) => if ch == ';' { break } else { index = index + 1 }
           None => index = index + 1
         }
       }
@@ -131,6 +130,7 @@ fn charset_parameter(value : String) -> String? {
   None
 }
 
+///|
 fn response_charset(headers : Headers) -> String? {
   match headers.get("Content-Type") {
     Some(value) => charset_parameter(value)
@@ -138,7 +138,8 @@ fn response_charset(headers : Headers) -> String? {
   }
 }
 
-fn windows_1252_codepoint(byte : Int) -> Int {
+///|
+fn windows_1252_codepoint(byte : Int32) -> Int32 {
   match byte {
     0x80 => 0x20AC
     0x82 => 0x201A
@@ -174,6 +175,7 @@ fn windows_1252_codepoint(byte : Int) -> Int {
   }
 }
 
+///|
 fn decode_single_byte(data : Bytes, windows_1252 : Bool) -> String {
   let output = Buffer(size_hint=data.length())
   for byte in data {
@@ -188,15 +190,19 @@ fn decode_single_byte(data : Bytes, windows_1252 : Bool) -> String {
   @utf8.decode_lossy(output.to_bytes()[:])
 }
 
+///|
 fn decode_ascii(data : Bytes) -> String {
   let output = Buffer(size_hint=data.length())
   for byte in data {
     let value = byte.to_int()
-    output.write_char_utf8(Char::from_int(if value < 0x80 { value } else { 0xFFFD }))
+    output.write_char_utf8(
+      Char::from_int(if value < 0x80 { value } else { 0xFFFD }),
+    )
   }
   @utf8.decode_lossy(output.to_bytes()[:])
 }
 
+///|
 fn decode_utf16(data : Bytes, requested : String) -> String {
   let explicit_little = requested == "utf-16le"
   let explicit_big = requested == "utf-16be"
@@ -261,6 +267,7 @@ fn decode_utf16(data : Bytes, requested : String) -> String {
   @utf8.decode_lossy(output.to_bytes()[:])
 }
 
+///|
 fn decode_text_body(data : Bytes, charset : String?) -> String {
   let charset = match charset {
     Some(value) => value.trim().to_lower().to_owned()
@@ -297,8 +304,7 @@ fn decode_text_body(data : Bytes, charset : String?) -> String {
     "us-ascii" | "ascii" => decode_ascii(data)
     "iso-8859-1" | "iso8859-1" | "latin1" | "latin-1" =>
       decode_single_byte(data, false)
-    "windows-1252" | "cp1252" | "windows1252" =>
-      decode_single_byte(data, true)
+    "windows-1252" | "cp1252" | "windows1252" => decode_single_byte(data, true)
     "utf-16" | "utf16" | "utf-16le" | "utf-16be" =>
       // If there's a BOM, use it. Otherwise, for explicit endianness labels
       // (utf-16le/utf-16be) use the specified endianness; for generic "utf-16"

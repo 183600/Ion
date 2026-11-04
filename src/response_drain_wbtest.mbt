@@ -1,3 +1,4 @@
+///|
 test "Response::drain_body consumes chunked bodies and trailers" {
   let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" +
     "5\r\nhello\r\n0\r\nX-Done: yes\r\n\r\n"
@@ -9,6 +10,7 @@ test "Response::drain_body consumes chunked bodies and trailers" {
   assert_eq(response.body.read(rest).unwrap(), 0)
 }
 
+///|
 test "Response::drain_body enforces the body limit and closes the stream" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"
   let stream = regression_mock_stream(raw, 0, 0)
@@ -18,6 +20,7 @@ test "Response::drain_body enforces the body limit and closes the stream" {
   assert_false(stream.is_open)
 }
 
+///|
 test "Response::close discards unread body bytes" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"
   let stream = regression_mock_stream(raw, 0, 0)

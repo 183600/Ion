@@ -9,7 +9,10 @@ test "http2 streaming body returns DATA as it arrives" {
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let connection = H2ClientConnection::new(stream).unwrap()
-  let request = Request::new(GET, Url::parse("https://example.com/file").unwrap())
+  let request = Request::new(
+    GET,
+    Url::parse("https://example.com/file").unwrap(),
+  )
   let response = connection.request_streaming(request).unwrap()
   assert_eq(response.version, "HTTP/2")
   assert_eq(response.status, 200)
@@ -34,11 +37,19 @@ test "http2 streaming body exposes trailers after END_STREAM" {
     h2_test_settings(),
     h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, headers),
     h2_test_frame(H2_FRAME_DATA, 0, 1, b"body"),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, trailers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      trailers,
+    ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let connection = H2ClientConnection::new(stream).unwrap()
-  let request = Request::new(GET, Url::parse("https://example.com/trailers").unwrap())
+  let request = Request::new(
+    GET,
+    Url::parse("https://example.com/trailers").unwrap(),
+  )
   let response = connection.request_streaming(request).unwrap()
   assert_eq(response.text().unwrap(), "body")
   assert_eq(response.trailers().get("x-trailer"), Some("done"))
@@ -54,7 +65,10 @@ test "http2 streaming body rejects a Content-Length mismatch" {
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let connection = H2ClientConnection::new(stream).unwrap()
-  let request = Request::new(GET, Url::parse("https://example.com/truncated").unwrap())
+  let request = Request::new(
+    GET,
+    Url::parse("https://example.com/truncated").unwrap(),
+  )
   let response = connection.request_streaming(request).unwrap()
   let body = Buffer(size_hint=8)
   match response.body_stream().read(body) {
@@ -74,7 +88,10 @@ test "closing a streaming HTTP/2 body resets an unfinished exchange" {
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let connection = H2ClientConnection::new(stream).unwrap()
-  let request = Request::new(GET, Url::parse("https://example.com/stream").unwrap())
+  let request = Request::new(
+    GET,
+    Url::parse("https://example.com/stream").unwrap(),
+  )
   let response = connection.request_streaming(request).unwrap()
   let first = Buffer(size_hint=16)
   assert_eq(response.body_stream().read(first).unwrap(), 7)
@@ -94,8 +111,10 @@ test "http2 streaming falls back to buffered bodies for uploads" {
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let connection = H2ClientConnection::new(stream).unwrap()
-  let request = Request::new(POST, Url::parse("https://example.com/upload").unwrap())
-    .with_body(b"payload")
+  let request = Request::new(
+    POST,
+    Url::parse("https://example.com/upload").unwrap(),
+  ).with_body(b"payload")
   let response = connection.request_streaming(request).unwrap()
   assert_eq(response.status, 201)
   assert_eq(response.text().unwrap(), "ok")
@@ -110,14 +129,12 @@ test "UnifiedClient can opt into lazy HTTP/2 response bodies" {
     h2_test_frame(H2_FRAME_DATA, 0, 1, b"partial"),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2"), }
   let client = UnifiedClient::with_transport(
     dialer,
     provider,
-    ClientOptions::new()
-      .with_http2_streaming(true)
-      .with_follow_redirects(false),
+    ClientOptions::new().with_http2_streaming(true).with_follow_redirects(false),
   )
   let response = client.get("https://example.com/stream").unwrap()
   assert_eq(response.status, 200)
@@ -140,14 +157,12 @@ test "lazy HTTP/2 bodies return the session to the pool after END_STREAM" {
     h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, b"ok"),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2"), }
   let client = UnifiedClient::with_transport(
     dialer,
     provider,
-    ClientOptions::new()
-      .with_http2_streaming(true)
-      .with_follow_redirects(false),
+    ClientOptions::new().with_http2_streaming(true).with_follow_redirects(false),
   )
   let response = client.get("https://example.com/done").unwrap()
   assert_eq(response.text().unwrap(), "ok")
@@ -165,11 +180,19 @@ test "a streaming HTTP/2 body prevents overlapping exchanges" {
     h2_test_settings(),
     h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, first),
     h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, b"ok"),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 3, second),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      3,
+      second,
+    ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let connection = H2ClientConnection::new(stream).unwrap()
-  let request = Request::new(GET, Url::parse("https://example.com/one").unwrap())
+  let request = Request::new(
+    GET,
+    Url::parse("https://example.com/one").unwrap(),
+  )
   let response = connection.request_streaming(request).unwrap()
   assert_false(connection.is_open())
   match connection.request_streaming(request) {
@@ -204,7 +227,10 @@ test "streaming HTTP/2 body does not reuse a session after GOAWAY" {
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let connection = H2ClientConnection::new(stream).unwrap()
-  let request = Request::new(GET, Url::parse("https://example.com/goaway").unwrap())
+  let request = Request::new(
+    GET,
+    Url::parse("https://example.com/goaway").unwrap(),
+  )
   let response = connection.request_streaming(request).unwrap()
   assert_eq(response.text().unwrap(), "ok")
   assert_false(connection.is_open())
@@ -221,7 +247,10 @@ test "h2_request_streaming provides a one-shot lazy exchange" {
     h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, b"ok"),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let request = Request::new(GET, Url::parse("https://example.com/one-shot").unwrap())
+  let request = Request::new(
+    GET,
+    Url::parse("https://example.com/one-shot").unwrap(),
+  )
   let response = h2_request_streaming(stream, request).unwrap()
   assert_eq(response.status, 200)
   assert_eq(response.text().unwrap(), "ok")
@@ -230,10 +259,7 @@ test "h2_request_streaming provides a one-shot lazy exchange" {
 
 ///|
 test "bodyless streaming responses release the session without being read" {
-  let head_headers = hpack_encode([
-    (":status", "200"),
-    ("content-length", "9"),
-  ])
+  let head_headers = hpack_encode([(":status", "200"), ("content-length", "9")])
   let next_headers = hpack_encode([(":status", "204")])
   let input = h2_test_concat([
     h2_test_settings(),
@@ -282,11 +308,17 @@ test "explicit body limits can raise the cap for a streaming response" {
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let connection = H2ClientConnection::new(stream).unwrap()
-  let request = Request::new(GET, Url::parse("https://example.com/limited").unwrap())
+  let request = Request::new(
+    GET,
+    Url::parse("https://example.com/limited").unwrap(),
+  )
   let response = connection.request_streaming_with_limit(request, 4).unwrap()
   // The caller raises the limit before the DATA frame is consumed, matching
   // H1's explicit `read_body_with_limit` behavior.
-  assert_eq(@utf8.decode_lossy(response.read_body_with_limit(8).unwrap()[:]), "abcdef")
+  assert_eq(
+    @utf8.decode_lossy(response.read_body_with_limit(8).unwrap()[:]),
+    "abcdef",
+  )
   assert_true(connection.is_open())
   let _ = connection.close()
 }
@@ -304,14 +336,12 @@ test "UnifiedClient returns a streaming HEAD session to the pool unread" {
     ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2"), }
   let client = UnifiedClient::with_transport(
     dialer,
     provider,
-    ClientOptions::new()
-      .with_http2_streaming(true)
-      .with_follow_redirects(false),
+    ClientOptions::new().with_http2_streaming(true).with_follow_redirects(false),
   )
   let response = client.head("https://example.com/head").unwrap()
   assert_eq(response.status, 200)
@@ -331,9 +361,15 @@ test "h2_request_streaming_with_limit bounds and releases a one-shot exchange" {
     h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, b"abcdef"),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let request = Request::new(GET, Url::parse("https://example.com/one-shot-limit").unwrap())
+  let request = Request::new(
+    GET,
+    Url::parse("https://example.com/one-shot-limit").unwrap(),
+  )
   let response = h2_request_streaming_with_limit(stream, request, 8).unwrap()
-  assert_eq(@utf8.decode_lossy(response.read_body_with_limit(8).unwrap()[:]), "abcdef")
+  assert_eq(
+    @utf8.decode_lossy(response.read_body_with_limit(8).unwrap()[:]),
+    "abcdef",
+  )
   assert_false(stream.is_open)
 }
 
@@ -354,7 +390,10 @@ test "streaming body keeps the session after a stream-scoped window reset" {
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let connection = H2ClientConnection::new(stream).unwrap()
-  let request = Request::new(GET, Url::parse("https://example.com/first").unwrap())
+  let request = Request::new(
+    GET,
+    Url::parse("https://example.com/first").unwrap(),
+  )
   let response = connection.request_streaming(request).unwrap()
   let body = Buffer(size_hint=8)
   assert_true(response.body_stream().read(body) is Err(_))
@@ -386,12 +425,16 @@ test "streaming body drains buffered connection frames after END_STREAM" {
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let connection = H2ClientConnection::new(stream).unwrap()
-  let request = Request::new(GET, Url::parse("https://example.com/drain").unwrap())
+  let request = Request::new(
+    GET,
+    Url::parse("https://example.com/drain").unwrap(),
+  )
   let response = connection.request_streaming(request).unwrap()
   assert_eq(response.text().unwrap(), "ok")
   let mut saw_ping_ack = false
   for frame in h2_test_client_frames(stream) {
-    if frame.frame_type == H2_FRAME_PING && (frame.flags & H2_FLAG_ACK) != 0 &&
+    if frame.frame_type == H2_FRAME_PING &&
+      (frame.flags & H2_FLAG_ACK) != 0 &&
       frame.payload == ping {
       saw_ping_ack = true
     }
@@ -412,13 +455,16 @@ test "live CONNECT tunnel rejects overlapping exchanges" {
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let connection = H2ClientConnection::new(stream).unwrap()
-  let tunnel = connection.request(
-    Request::new(CONNECT, Url::parse("https://example.com:443/").unwrap()),
-  ).unwrap()
+  let tunnel = connection
+    .request(
+      Request::new(CONNECT, Url::parse("https://example.com:443/").unwrap()),
+    )
+    .unwrap()
   assert_eq(tunnel.status, 200)
-  match connection.request(
-    Request::new(GET, Url::parse("https://example.com/other").unwrap()),
-  ) {
+  match
+    connection.request(
+      Request::new(GET, Url::parse("https://example.com/other").unwrap()),
+    ) {
     Ok(_) => fail("overlapping request on a live HTTP/2 tunnel was accepted")
     Err(err) =>
       assert_eq(
@@ -439,14 +485,12 @@ test "released HTTP/2 streaming bodies do not retimeout the pooled session" {
     h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, b"ok"),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2"), }
   let client = UnifiedClient::with_transport(
     dialer,
     provider,
-    ClientOptions::new()
-      .with_http2_streaming(true)
-      .with_follow_redirects(false),
+    ClientOptions::new().with_http2_streaming(true).with_follow_redirects(false),
   )
   let response = client.get("https://example.com/stream").unwrap()
   assert_eq(response.text().unwrap(), "ok")

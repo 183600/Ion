@@ -1,3 +1,4 @@
+///|
 /// TLS error types
 #derive(Eq, Debug)
 pub enum TlsError {
@@ -10,6 +11,7 @@ pub enum TlsError {
   Timeout
 }
 
+///|
 /// TLS version
 #derive(Eq, Debug)
 pub enum TlsVersion {
@@ -17,6 +19,7 @@ pub enum TlsVersion {
   Tls1_3
 }
 
+///|
 /// Certificate verification mode
 #derive(Eq, Debug)
 pub enum VerifyMode {
@@ -24,20 +27,24 @@ pub enum VerifyMode {
   SkipVerification // Only for testing, should have scary name
 }
 
+///|
 /// Root certificate store
 #derive(Eq, Debug)
 pub struct RootStore {
   certificates : List[Bytes]
 }
 
+///|
 pub fn RootStore::new() -> RootStore {
-  RootStore::{ certificates: @list.List([]) }
+  RootStore::{ certificates: @list.List([]), }
 }
 
+///|
 pub fn RootStore::add_certificate(self : RootStore, cert : Bytes) -> RootStore {
-  RootStore::{ certificates: self.certificates.prepend(cert) }
+  RootStore::{ certificates: self.certificates.prepend(cert), }
 }
 
+///|
 /// Client certificate for mTLS
 #derive(Eq, Debug)
 pub struct ClientCert {
@@ -45,27 +52,31 @@ pub struct ClientCert {
   private_key : Bytes
 }
 
+///|
 pub fn ClientCert::new(certificate : Bytes, private_key : Bytes) -> ClientCert {
-  ClientCert::{ certificate, private_key }
+  ClientCert::{ certificate, private_key, }
 }
 
+///|
 /// Key log sink for debugging
 pub trait KeyLogSink {
   fn log(Self, String, Bytes) -> Unit
 }
 
+///|
 /// TLS configuration
 pub struct TlsConfig {
   server_name : String
   alpn : List[String]
   alpn_custom : Bool
   root_store : RootStore
-  client_auth : Option[ClientCert]
+  client_auth : ClientCert?
   verify : VerifyMode
   min_version : TlsVersion
-  key_log : Option[&KeyLogSink]
+  key_log : &KeyLogSink?
 }
 
+///|
 pub fn TlsConfig::new(server_name : String) -> TlsConfig {
   TlsConfig::{
     server_name,
@@ -79,34 +90,60 @@ pub fn TlsConfig::new(server_name : String) -> TlsConfig {
   }
 }
 
-pub fn TlsConfig::with_server_name(self : TlsConfig, server_name : String) -> TlsConfig {
-  TlsConfig::{ ..self, server_name }
+///|
+pub fn TlsConfig::with_server_name(
+  self : TlsConfig,
+  server_name : String,
+) -> TlsConfig {
+  TlsConfig::{ ..self, server_name, }
 }
 
+///|
 pub fn TlsConfig::with_alpn(self : TlsConfig, alpn : List[String]) -> TlsConfig {
-  TlsConfig::{ ..self, alpn, alpn_custom: true }
+  TlsConfig::{ ..self, alpn, alpn_custom: true, }
 }
 
-pub fn TlsConfig::with_root_store(self : TlsConfig, root_store : RootStore) -> TlsConfig {
-  TlsConfig::{ ..self, root_store }
+///|
+pub fn TlsConfig::with_root_store(
+  self : TlsConfig,
+  root_store : RootStore,
+) -> TlsConfig {
+  TlsConfig::{ ..self, root_store, }
 }
 
-pub fn TlsConfig::with_client_auth(self : TlsConfig, client_auth : ClientCert) -> TlsConfig {
-  TlsConfig::{ ..self, client_auth: Some(client_auth) }
+///|
+pub fn TlsConfig::with_client_auth(
+  self : TlsConfig,
+  client_auth : ClientCert,
+) -> TlsConfig {
+  TlsConfig::{ ..self, client_auth: Some(client_auth), }
 }
 
-pub fn TlsConfig::with_verify_mode(self : TlsConfig, verify : VerifyMode) -> TlsConfig {
-  TlsConfig::{ ..self, verify }
+///|
+pub fn TlsConfig::with_verify_mode(
+  self : TlsConfig,
+  verify : VerifyMode,
+) -> TlsConfig {
+  TlsConfig::{ ..self, verify, }
 }
 
-pub fn TlsConfig::with_min_version(self : TlsConfig, min_version : TlsVersion) -> TlsConfig {
-  TlsConfig::{ ..self, min_version }
+///|
+pub fn TlsConfig::with_min_version(
+  self : TlsConfig,
+  min_version : TlsVersion,
+) -> TlsConfig {
+  TlsConfig::{ ..self, min_version, }
 }
 
-pub fn TlsConfig::with_key_log(self : TlsConfig, key_log : &KeyLogSink) -> TlsConfig {
-  TlsConfig::{ ..self, key_log: Some(key_log) }
+///|
+pub fn TlsConfig::with_key_log(
+  self : TlsConfig,
+  key_log : &KeyLogSink,
+) -> TlsConfig {
+  TlsConfig::{ ..self, key_log: Some(key_log), }
 }
 
+///|
 /// Validate one DNS label used as a TLS server name. Host names in
 /// certificates and SNI use the LDH form; underscores are tolerated because
 /// they are common in private deployments, but wildcards, percent escapes,
@@ -131,6 +168,7 @@ fn valid_dns_label(value : String) -> Bool {
   true
 }
 
+///|
 fn valid_dns_server_name(value : String) -> Bool {
   // A single trailing dot denotes the DNS root and is allowed.
   let name = if value.length() > 1 && value.has_suffix(".") {
@@ -149,6 +187,7 @@ fn valid_dns_server_name(value : String) -> Bool {
   true
 }
 
+///|
 fn valid_server_name(value : String) -> Bool {
   if value.length() == 0 || @utf8.encode(value).length() > 255 {
     return false
@@ -165,6 +204,7 @@ fn valid_server_name(value : String) -> Bool {
   valid_dns_server_name(value)
 }
 
+///|
 fn valid_alpn_protocol(value : String) -> Bool {
   if value.length() == 0 {
     return false
@@ -177,6 +217,7 @@ fn valid_alpn_protocol(value : String) -> Bool {
   true
 }
 
+///|
 /// Check configuration before a provider starts a handshake.
 pub fn TlsConfig::validate(self : TlsConfig) -> Result[Unit, TlsError] {
   if !valid_server_name(self.server_name) {

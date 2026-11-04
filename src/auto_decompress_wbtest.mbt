@@ -1,16 +1,18 @@
+///|
 /// A minimal in-memory stream used to exercise response body decoding without
 /// opening a socket. Reads return one byte at a time so buffered and streaming
 /// paths both see partial payloads.
 struct AutoDecompressMockStream {
   input : Bytes
-  mut offset : Int
+  mut offset : Int32
   output : Buffer
 }
 
+///|
 pub impl Stream for AutoDecompressMockStream with fn read(
   self : AutoDecompressMockStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   if self.offset >= self.input.length() {
     return Ok(0)
   }
@@ -19,15 +21,17 @@ pub impl Stream for AutoDecompressMockStream with fn read(
   Ok(1)
 }
 
+///|
 pub impl Stream for AutoDecompressMockStream with fn write(
   self : AutoDecompressMockStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   let bytes = buf.to_bytes()
   self.output.write_bytes(bytes)
   Ok(bytes.length())
 }
 
+///|
 pub impl Stream for AutoDecompressMockStream with fn flush(
   self : AutoDecompressMockStream,
 ) -> Result[Unit, NetError] {
@@ -35,6 +39,7 @@ pub impl Stream for AutoDecompressMockStream with fn flush(
   Ok(())
 }
 
+///|
 pub impl Stream for AutoDecompressMockStream with fn close(
   self : AutoDecompressMockStream,
 ) -> Result[Unit, NetError] {
@@ -42,15 +47,17 @@ pub impl Stream for AutoDecompressMockStream with fn close(
   Ok(())
 }
 
+///|
 pub impl Stream for AutoDecompressMockStream with fn set_timeout(
   self : AutoDecompressMockStream,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Unit, NetError] {
   let _ = self
   let _ = timeout_ms
   Ok(())
 }
 
+///|
 pub impl Stream for AutoDecompressMockStream with fn peer_addr(
   self : AutoDecompressMockStream,
 ) -> Result[String, NetError] {
@@ -58,6 +65,7 @@ pub impl Stream for AutoDecompressMockStream with fn peer_addr(
   Ok("mock:0")
 }
 
+///|
 pub impl Stream for AutoDecompressMockStream with fn local_addr(
   self : AutoDecompressMockStream,
 ) -> Result[String, NetError] {
@@ -65,7 +73,8 @@ pub impl Stream for AutoDecompressMockStream with fn local_addr(
   Ok("mock:0")
 }
 
-fn auto_decompress_bytes(ints : Array[Int]) -> Bytes {
+///|
+fn auto_decompress_bytes(ints : Array[Int32]) -> Bytes {
   let buf = @buffer.new(size_hint=ints.length())
   for i in ints {
     buf.write_byte(i.to_byte())
@@ -73,14 +82,16 @@ fn auto_decompress_bytes(ints : Array[Int]) -> Bytes {
   buf.to_bytes()
 }
 
+///|
 /// Standard gzip member containing "hello".
 fn auto_decompress_gzip_hello() -> Bytes {
   auto_decompress_bytes([
-    31, 139, 8, 0, 57, 223, 215, 106, 2, 255, 203, 72, 205, 201, 201, 7, 0,
-    134, 166, 16, 54, 5, 0, 0, 0,
+    31, 139, 8, 0, 57, 223, 215, 106, 2, 255, 203, 72, 205, 201, 201, 7, 0, 134,
+    166, 16, 54, 5, 0, 0, 0,
   ])
 }
 
+///|
 fn auto_decompress_response(input : Bytes) -> Response {
   let stream : &Stream = AutoDecompressMockStream::{
     input,
@@ -90,17 +101,26 @@ fn auto_decompress_response(input : Bytes) -> Response {
   Response::new(200, Headers::new().set("Content-Encoding", "gzip"), stream)
 }
 
+///|
 test "automatic body decoding is opt-in" {
   let options = ClientOptions::new()
   assert_false(options.auto_decompress())
   assert_true(options.with_auto_decompress(true).auto_decompress())
-  assert_false(options.with_auto_decompress(true).with_auto_decompress(false).auto_decompress())
+  assert_false(
+    options
+    .with_auto_decompress(true)
+    .with_auto_decompress(false)
+    .auto_decompress(),
+  )
 
   let client = UnifiedClient::new()
   assert_false(client.client_options().auto_decompress())
-  assert_true(client.with_auto_decompress(true).client_options().auto_decompress())
+  assert_true(
+    client.with_auto_decompress(true).client_options().auto_decompress(),
+  )
 }
 
+///|
 test "read_body returns encoded bytes unless automatic decoding is enabled" {
   let encoded = auto_decompress_gzip_hello()
 
@@ -112,12 +132,14 @@ test "read_body returns encoded bytes unless automatic decoding is enabled" {
   assert_eq(decoded.read_body().unwrap(), b"hello")
 }
 
+///|
 test "read_body_with_limit stays raw when automatic decoding is enabled" {
   let encoded = auto_decompress_gzip_hello()
   let response = auto_decompress_response(encoded).with_auto_decompress(true)
   assert_eq(response.read_body_with_limit(1024).unwrap(), encoded)
 }
 
+///|
 test "automatic decoding enforces the decoded body limit" {
   let encoded = auto_decompress_gzip_hello()
   let response = auto_decompress_response(encoded)
@@ -126,6 +148,7 @@ test "automatic decoding enforces the decoded body limit" {
   assert_true(response.read_body() is Err(_))
 }
 
+///|
 test "copy_body_to writes decoded bytes when automatic decoding is enabled" {
   let encoded = auto_decompress_gzip_hello()
   let response = auto_decompress_response(encoded).with_auto_decompress(true)
@@ -138,6 +161,7 @@ test "copy_body_to writes decoded bytes when automatic decoding is enabled" {
   assert_eq(sink.output.to_bytes(), b"hello")
 }
 
+///|
 test "unsupported content codings still fail with automatic decoding" {
   let stream : &Stream = AutoDecompressMockStream::{
     input: b"payload",

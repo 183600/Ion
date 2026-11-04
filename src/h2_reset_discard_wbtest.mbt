@@ -1,3 +1,4 @@
+///|
 test "http2 discards reset-stream frames across a connection frame" {
   let first_headers = hpack_encode([(":status", "200")])
   let first_trailers = hpack_encode([("x-trailer", "done")])
@@ -7,12 +8,7 @@ test "http2 discards reset-stream frames across a connection frame" {
   ])
   let input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(
-      H2_FRAME_HEADERS,
-      H2_FLAG_END_HEADERS,
-      1,
-      first_headers,
-    ),
+    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, first_headers),
     // A zero increment resets only stream 1.
     h2_test_frame(H2_FRAME_WINDOW_UPDATE, 0, 1, b"\x00\x00\x00\x00"),
     h2_test_frame(H2_FRAME_PING, 0, 0, b"12345678"),
@@ -46,10 +42,7 @@ test "http2 discards reset-stream frames across a connection frame" {
 
 ///|
 test "http2 ignores late DATA after resetting an answered stream" {
-  let first_headers = hpack_encode([
-    (":status", "200"),
-    ("content-length", "0"),
-  ])
+  let first_headers = hpack_encode([(":status", "200"), ("content-length", "0")])
   let second_headers = hpack_encode([(":status", "204")])
   let input = h2_test_concat([
     h2_test_settings(),

@@ -1,15 +1,19 @@
+///|
 /// A transport that serves a prepared HTTP/2 response but rejects the write
 /// that carries tunnel DATA.
 struct H2TunnelWriteFailStream {
   input : Bytes
-  mut offset : Int
-  mut writes : Int
-  fail_on_write : Int
+  mut offset : Int32
+  mut writes : Int32
+  fail_on_write : Int32
   mut is_open : Bool
 }
 
 ///|
-fn H2TunnelWriteFailStream::new(input : Bytes, fail_on_write : Int) -> H2TunnelWriteFailStream {
+fn H2TunnelWriteFailStream::new(
+  input : Bytes,
+  fail_on_write : Int32,
+) -> H2TunnelWriteFailStream {
   H2TunnelWriteFailStream::{
     input,
     offset: 0,
@@ -23,7 +27,7 @@ fn H2TunnelWriteFailStream::new(input : Bytes, fail_on_write : Int) -> H2TunnelW
 pub impl Stream for H2TunnelWriteFailStream with fn read(
   self : H2TunnelWriteFailStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -40,7 +44,7 @@ pub impl Stream for H2TunnelWriteFailStream with fn read(
 pub impl Stream for H2TunnelWriteFailStream with fn write(
   self : H2TunnelWriteFailStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -72,7 +76,7 @@ pub impl Stream for H2TunnelWriteFailStream with fn close(
 ///|
 pub impl Stream for H2TunnelWriteFailStream with fn set_timeout(
   self : H2TunnelWriteFailStream,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Unit, NetError] {
   let _ = timeout_ms
   if !self.is_open {

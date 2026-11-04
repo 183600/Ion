@@ -2,7 +2,7 @@
 test "timeout builder derives an independent connection pool" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
   let stream = regression_mock_stream(raw, 4096, 4096)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let client = UnifiedClient::{
     connector,
@@ -24,7 +24,7 @@ test "timeout builder derives an independent connection pool" {
 test "http2 policy builder derives an independent connection pool" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
   let stream = regression_mock_stream(raw, 4096, 4096)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let client = UnifiedClient::{
     connector,
@@ -43,4 +43,3 @@ test "http2 policy builder derives an independent connection pool" {
   let _ = client.close_all()
   assert_false(stream.is_open)
 }
-

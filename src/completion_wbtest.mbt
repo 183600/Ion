@@ -2,19 +2,17 @@
 test "pool keeps every idle connection for the same origin" {
   let first_stream = regression_mock_stream(
     "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nA1HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nA2",
-    1,
-    0,
+    1, 0,
   )
   let second_stream = regression_mock_stream(
     "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nB1HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nB2",
-    1,
-    0,
+    1, 0,
   )
   let streams : Array[&Stream] = [first_stream, second_stream]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let options = ClientOptions::new().with_follow_redirects(false)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let url = Url::parse("http://example.com/").unwrap()
 
   let first = client.request(Request::new(GET, url)).unwrap()
@@ -55,7 +53,7 @@ test "request connection close prevents connection reuse" {
 test "client does not pool a connection requested to close" {
   let raw = "HTTP/1.1 204 No Content\r\n\r\n"
   let stream = regression_mock_stream(raw, 0, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let client = UnifiedClient::{
     connector,
@@ -72,17 +70,13 @@ test "client does not pool a connection requested to close" {
 ///|
 test "idempotent requests retry once on a stale pooled connection" {
   let stale = regression_mock_stream(
-    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
-    0,
-    0,
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok", 0, 0,
   )
   let fresh = regression_mock_stream(
-    "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nfresh",
-    0,
-    0,
+    "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nfresh", 0, 0,
   )
   let streams : Array[&Stream] = [stale, fresh]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let client = UnifiedClient::{
     connector,
@@ -100,17 +94,13 @@ test "idempotent requests retry once on a stale pooled connection" {
 ///|
 test "non-idempotent requests are not retried on a stale pooled connection" {
   let stale = regression_mock_stream(
-    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
-    0,
-    0,
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok", 0, 0,
   )
   let fresh = regression_mock_stream(
-    "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nfresh",
-    0,
-    0,
+    "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nfresh", 0, 0,
   )
   let streams : Array[&Stream] = [stale, fresh]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let client = UnifiedClient::{
     connector,
@@ -129,10 +119,9 @@ test "closing an incomplete response closes the stream with a completion callbac
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"
   let stream = regression_mock_stream(raw, 0, 0)
   let completions : Array[Bool] = []
-  let codec = H1Codec::new_with_completion(
-    stream,
-    fn(reusable) { completions.push(reusable) },
-  )
+  let codec = H1Codec::new_with_completion(stream, fn(reusable) {
+    completions.push(reusable)
+  })
   let response = codec.decode_response().unwrap()
   let _ = response.body.close()
   assert_eq(completions, [false])
@@ -144,10 +133,9 @@ test "released response streams do not retimeout the pooled connection" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
   let stream = regression_mock_stream(raw, 1, 0)
   let completions : Array[Bool] = []
-  let codec = H1Codec::new_with_completion(
-    stream,
-    fn(reusable) { completions.push(reusable) },
-  )
+  let codec = H1Codec::new_with_completion(stream, fn(reusable) {
+    completions.push(reusable)
+  })
   let response = codec.decode_response().unwrap()
   assert_eq(response.read_body().unwrap(), b"ok")
   assert_eq(completions, [true])
@@ -163,10 +151,9 @@ test "released response streams do not query pooled connection addresses" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
   let stream = regression_mock_stream(raw, 1, 0)
   let completions : Array[Bool] = []
-  let codec = H1Codec::new_with_completion(
-    stream,
-    fn(reusable) { completions.push(reusable) },
-  )
+  let codec = H1Codec::new_with_completion(stream, fn(reusable) {
+    completions.push(reusable)
+  })
   let response = codec.decode_response().unwrap()
   assert_eq(response.read_body().unwrap(), b"ok")
   assert_eq(completions, [true])

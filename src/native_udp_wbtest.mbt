@@ -98,14 +98,14 @@ test "native UDP datagram accepts a connected peer" {
 test "native UDP datagram rejects invalid ports and closed sockets" {
   let datagram = NativeUdpDatagram::open().unwrap()
   assert_true(
-    datagram.send_to(@utf8.encode("x"), "127.0.0.1", 0) is
-    Err(InvalidAddress(_)),
+    datagram.send_to(@utf8.encode("x"), "127.0.0.1", 0)
+    is Err(InvalidAddress(_)),
   )
-  assert_true(
-    datagram.connect("127.0.0.1", 70000) is Err(InvalidAddress(_)),
-  )
+  assert_true(datagram.connect("127.0.0.1", 70000) is Err(InvalidAddress(_)))
   let _ = datagram.close()
-  assert_true(datagram.send_to(@utf8.encode("x"), "127.0.0.1", 53) is Err(Closed))
+  assert_true(
+    datagram.send_to(@utf8.encode("x"), "127.0.0.1", 53) is Err(Closed),
+  )
   assert_true(datagram.receive_from(@buffer.new(size_hint=16)) is Err(Closed))
   assert_true(datagram.connect("127.0.0.1", 53) is Err(Closed))
   assert_true(datagram.set_timeout(10) is Err(Closed))

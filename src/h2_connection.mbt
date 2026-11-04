@@ -1,33 +1,39 @@
+///|
 /// A single HTTP/2 client exchange. HTTP/2 is negotiated by ALPN; the
 /// connection handles one request stream and returns a buffered response.
+const H2_MAX_HEADER_BLOCK_BYTES : Int32 = 1048576
 
-const H2_MAX_HEADER_BLOCK_BYTES : Int = 1048576
-const H2_SETTINGS_MAX_CONCURRENT_STREAMS : Int = 0x3
+///|
+const H2_SETTINGS_MAX_CONCURRENT_STREAMS : Int32 = 0x3
+
+///|
 /// Stream-level receive window advertised to the peer. A CONNECT tunnel has
 /// no response-body cap (its data is an opaque byte stream), so this bounds
 /// how much tunnelled data a peer can buffer while the application is not
 /// reading. Non-tunnel bodies replenish the window as frames arrive and are
 /// still bounded by their response body limit.
-const H2_STREAM_RECEIVE_WINDOW : Int = 1048576
+const H2_STREAM_RECEIVE_WINDOW : Int32 = 1048576
 
+///|
 struct H2FlowState {
-  mut connection_send_window : Int
-  mut stream_send_window : Int
+  mut connection_send_window : Int32
+  mut stream_send_window : Int32
   // Whether `stream_send_window` belongs to a stream that is still open. Once
   // the stream ends or is reset, the field is stale: a later SETTINGS delta
   // must not be applied to it (the next request initializes the window from
   // `peer_initial_window`).
   mut stream_send_window_active : Bool
-  mut peer_initial_window : Int
-  mut peer_max_frame_size : Int
-  mut peer_max_header_list_size : Int
-  mut peer_max_concurrent_streams : Int
+  mut peer_initial_window : Int32
+  mut peer_max_frame_size : Int32
+  mut peer_max_header_list_size : Int32
+  mut peer_max_concurrent_streams : Int32
   // WINDOW_UPDATE received for the next stream before its HEADERS were sent.
-  mut pending_stream_window : Int
+  mut pending_stream_window : Int32
   // RFC 8441 extended CONNECT (used for WebSocket over HTTP/2).
   mut peer_enable_connect_protocol : Bool
 }
 
+///|
 fn H2FlowState::new() -> H2FlowState {
   H2FlowState::{
     connection_send_window: H2_DEFAULT_WINDOW_SIZE,
@@ -42,15 +48,17 @@ fn H2FlowState::new() -> H2FlowState {
   }
 }
 
+///|
 /// Streams opened by the client use odd identifiers. Even identifiers belong
 /// to server-initiated streams, which are invalid because push is disabled.
-fn h2_is_client_stream(stream_id : Int) -> Bool {
+fn h2_is_client_stream(stream_id : Int32) -> Bool {
   stream_id > 0 && (stream_id & 1) == 1
 }
 
+///|
 /// Largest DATA payload we may send. The peer's setting can only increase the
 /// protocol default, and our frame writer also caps at the default.
-fn h2_outbound_frame_limit(peer_max_frame_size : Int) -> Int {
+fn h2_outbound_frame_limit(peer_max_frame_size : Int32) -> Int32 {
   if peer_max_frame_size < H2_MAX_FRAME_SIZE {
     peer_max_frame_size
   } else {
@@ -58,7 +66,8 @@ fn h2_outbound_frame_limit(peer_max_frame_size : Int) -> Int {
   }
 }
 
-fn h2_window_update_payload(increment : Int) -> Bytes {
+///|
+fn h2_window_update_payload(increment : Int32) -> Bytes {
   let payload = Buffer(size_hint=4)
   payload.write_byte(((increment >> 24) & 0x7f).to_byte())
   payload.write_byte(((increment >> 16) & 0xff).to_byte())
@@ -67,19 +76,21 @@ fn h2_window_update_payload(increment : Int) -> Bytes {
   payload.to_bytes()
 }
 
+///|
 fn h2_send_window_update(
   stream : &Stream,
-  stream_id : Int,
-  increment : Int,
+  stream_id : Int32,
+  increment : Int32,
   flush? : Bool,
 ) -> Result[Unit, HttpError] {
-  match h2_write_frame(
-    stream,
-    H2_FRAME_WINDOW_UPDATE,
-    0,
-    stream_id,
-    h2_window_update_payload(increment),
-  ) {
+  match
+    h2_write_frame(
+      stream,
+      H2_FRAME_WINDOW_UPDATE,
+      0,
+      stream_id,
+      h2_window_update_payload(increment),
+    ) {
     Ok(_) =>
       if flush.unwrap_or(false) {
         match stream.flush() {
@@ -93,47 +104,53 @@ fn h2_send_window_update(
   }
 }
 
+///|
 struct H2ResponseState {
-  stream_id : Int
+  stream_id : Int32
   decoder : HpackDecoder
-  mut max_body_bytes : Int
+  mut max_body_bytes : Int32
   head : Bool
   connect : Bool
-  mut status : Int
+  mut status : Int32
   mut status_seen : Bool
   mut headers : Headers
-  mut content_length : Int?
+  mut content_length : Int32?
   mut body_forbidden : Bool
   mut body : Buffer
   // Total payload bytes accepted for this stream. `body` is only the bytes
   // that have not been handed to the caller yet, so this separate counter is
   // what Content-Length validation must use.
-  mut body_received : Int
+  mut body_received : Int32
   mut trailers : Headers
   mut ended : Bool
   mut header_block : Buffer
   mut in_header_block : Bool
   mut header_block_end_stream : Bool
-  mut goaway_last_stream_id : Int?
-  mut informational_count : Int
-  early_hints : Array[(Int, Headers)]
+  mut goaway_last_stream_id : Int32?
+  mut informational_count : Int32
+  early_hints : Array[(Int32, Headers)]
   // Tunnel data accepted from the peer whose stream-level flow-control credit
   // has not been returned yet. A tunnel is not body-capped, so its window is
   // replenished only when the application consumes the buffered bytes.
-  mut tunnel_unacked_bytes : Int
+  mut tunnel_unacked_bytes : Int32
 }
 
+///|
 fn H2ResponseState::new(
-  stream_id : Int,
+  stream_id : Int32,
   decoder : HpackDecoder,
-  max_body_bytes : Int,
+  max_body_bytes : Int32,
   head : Bool,
   connect : Bool,
 ) -> H2ResponseState {
   H2ResponseState::{
     stream_id,
     decoder,
-    max_body_bytes: if max_body_bytes < 0 { 0 } else { max_body_bytes },
+    max_body_bytes: if max_body_bytes < 0 {
+      0
+    } else {
+      max_body_bytes
+    },
     head,
     connect,
     status: 0,
@@ -155,9 +172,10 @@ fn H2ResponseState::new(
   }
 }
 
+///|
 /// Extract the last processed stream id and error code from a GOAWAY payload.
 /// The high bit of the first four octets is reserved and must be ignored.
-fn h2_parse_goaway(payload : Bytes) -> Result[(Int, Int), HttpError] {
+fn h2_parse_goaway(payload : Bytes) -> Result[(Int32, Int32), HttpError] {
   if payload.length() < 8 {
     return Err(ProtocolError("Invalid HTTP/2 GOAWAY length"))
   }
@@ -172,17 +190,21 @@ fn h2_parse_goaway(payload : Bytes) -> Result[(Int, Int), HttpError] {
   Ok((stream_id, error_code))
 }
 
-fn h2_parse_rst_stream_error(payload : Bytes) -> Result[Int, HttpError] {
+///|
+fn h2_parse_rst_stream_error(payload : Bytes) -> Result[Int32, HttpError] {
   if payload.length() != 4 {
     return Err(ProtocolError("Invalid HTTP/2 RST_STREAM length"))
   }
-  Ok((payload[0].to_int() << 24) |
+  Ok(
+    (payload[0].to_int() << 24) |
     (payload[1].to_int() << 16) |
     (payload[2].to_int() << 8) |
-    payload[3].to_int())
+    payload[3].to_int(),
+  )
 }
 
-fn h2_parse_status(value : String) -> Result[Int, HttpError] {
+///|
+fn h2_parse_status(value : String) -> Result[Int32, HttpError] {
   if value.length() != 3 {
     return Err(ProtocolError("Invalid HTTP/2 :status"))
   }
@@ -199,11 +221,14 @@ fn h2_parse_status(value : String) -> Result[Int, HttpError] {
   Ok(status)
 }
 
+///|
 /// Read a frame for a client connection. `h2_read_frame` reports a
 /// self-dependent PRIORITY frame as a protocol error; that is a stream-scoped
 /// priority violation, so a client that does not use priority can discard the
 /// frame and keep the connection usable.
-fn h2_read_connection_frame(reader : StreamReader) -> Result[H2Frame, HttpError] {
+fn h2_read_connection_frame(
+  reader : StreamReader,
+) -> Result[H2Frame, HttpError] {
   match h2_read_frame(reader) {
     Err(ProtocolError(message)) =>
       if message == "HTTP/2 stream cannot depend on itself" {
@@ -223,12 +248,10 @@ fn h2_read_connection_frame(reader : StreamReader) -> Result[H2Frame, HttpError]
   }
 }
 
+///|
 /// A stream-scoped fatal error that leaves the connection usable after a
 /// RST_STREAM has been sent for the affected stream.
-fn h2_error_is_stream_reset(
-  err : HttpError,
-  state : H2ResponseState,
-) -> Bool {
+fn h2_error_is_stream_reset(err : HttpError, state : H2ResponseState) -> Bool {
   match err {
     ProtocolError(message) =>
       message.contains("HTTP/2 stream WINDOW_UPDATE increment is zero") ||
@@ -239,6 +262,7 @@ fn h2_error_is_stream_reset(
   }
 }
 
+///|
 fn h2_valid_field_name(name : String) -> Bool {
   if name.length() == 0 {
     return false
@@ -254,6 +278,7 @@ fn h2_valid_field_name(name : String) -> Bool {
   true
 }
 
+///|
 fn h2_valid_field_value(value : String) -> Bool {
   if !valid_header_value(value) {
     return false
@@ -263,18 +288,25 @@ fn h2_valid_field_value(value : String) -> Bool {
   }
   let first = value.get_char(0)
   let last = value.get_char(value.length() - 1)
-  !(first == Some(' ') || first == Some('\t') ||
-    last == Some(' ') || last == Some('\t'))
+  !(first == Some(' ') ||
+  first == Some('\t') ||
+  last == Some(' ') ||
+  last == Some('\t'))
 }
 
+///|
 fn h2_forbidden_header(name : String) -> Bool {
   match name.to_lower() {
-    "connection" | "proxy-connection" | "keep-alive" | "transfer-encoding" |
-    "upgrade" => true
+    "connection"
+    | "proxy-connection"
+    | "keep-alive"
+    | "transfer-encoding"
+    | "upgrade" => true
     _ => false
   }
 }
 
+///|
 /// HTTP/2 permits the TE field only to advertise support for trailers
 /// (RFC 9113 §8.2.2). Empty list elements are ignored, but every supplied
 /// transfer coding must be exactly `trailers`.
@@ -293,6 +325,7 @@ fn h2_te_allows_only_trailers(value : String) -> Bool {
   saw_trailers
 }
 
+///|
 fn h2_forbidden_trailer_field(name : String) -> Bool {
   let name = name.to_lower()
   // Existing HTTP/2 callers treat these response metadata fields as ordinary
@@ -306,6 +339,7 @@ fn h2_forbidden_trailer_field(name : String) -> Bool {
   is_forbidden_trailer_field(name)
 }
 
+///|
 /// Validate request trailer fields before they are written. Request trailers
 /// must never carry framing, routing, authentication, or payload metadata.
 fn h2_request_trailer_fields(
@@ -314,7 +348,8 @@ fn h2_request_trailer_fields(
   let fields : Array[(String, String)] = []
   for trailer in trailers.iter() {
     let name = trailer.name.to_lower()
-    if !h2_valid_field_name(name) || !h2_valid_field_value(trailer.value) ||
+    if !h2_valid_field_name(name) ||
+      !h2_valid_field_value(trailer.value) ||
       is_forbidden_trailer_field(name) {
       return Err(InvalidHeader(trailer.name))
     }
@@ -323,6 +358,7 @@ fn h2_request_trailer_fields(
   Ok(fields)
 }
 
+///|
 fn h2_trailer_names(trailers : Headers) -> String {
   let names = Buffer(size_hint=64)
   for trailer in trailers.iter() {
@@ -334,6 +370,7 @@ fn h2_trailer_names(trailers : Headers) -> String {
   @utf8.decode_lossy(names.to_bytes()[:])
 }
 
+///|
 /// Remove the currently buffered body bytes and reset the staging buffer.
 /// `body_received` keeps the lifetime total for Content-Length validation.
 fn H2ResponseState::take_body(self : H2ResponseState) -> Bytes {
@@ -342,10 +379,12 @@ fn H2ResponseState::take_body(self : H2ResponseState) -> Bytes {
   data
 }
 
+///|
 fn H2ResponseState::is_tunnel(self : H2ResponseState) -> Bool {
   self.connect && self.status_seen && self.status >= 200 && self.status < 300
 }
 
+///|
 fn H2ResponseState::apply_header_block(
   self : H2ResponseState,
   block : Bytes,
@@ -369,9 +408,12 @@ fn H2ResponseState::apply_header_block(
     if !end_stream {
       return Err(ProtocolError("HTTP/2 trailers did not end the stream"))
     }
-    if !self.body_forbidden && self.content_length is Some(length) &&
+    if !self.body_forbidden &&
+      self.content_length is Some(length) &&
       self.body_received != length {
-      return Err(ProtocolError("HTTP/2 response body does not match Content-Length"))
+      return Err(
+        ProtocolError("HTTP/2 response body does not match Content-Length"),
+      )
     }
     self.trailers = Headers::new()
     self.ended = true
@@ -416,9 +458,12 @@ fn H2ResponseState::apply_header_block(
     if !end_stream {
       return Err(ProtocolError("HTTP/2 trailers did not end the stream"))
     }
-    if !self.body_forbidden && self.content_length is Some(length) &&
+    if !self.body_forbidden &&
+      self.content_length is Some(length) &&
       self.body_received != length {
-      return Err(ProtocolError("HTTP/2 response body does not match Content-Length"))
+      return Err(
+        ProtocolError("HTTP/2 response body does not match Content-Length"),
+      )
     }
     self.trailers = regular
     self.ended = true
@@ -437,12 +482,16 @@ fn H2ResponseState::apply_header_block(
   }
   if status < 200 {
     if regular.contains("content-length") {
-      return Err(ProtocolError(
-        "HTTP/2 informational response must not include Content-Length",
-      ))
+      return Err(
+        ProtocolError(
+          "HTTP/2 informational response must not include Content-Length",
+        ),
+      )
     }
     if end_stream {
-      return Err(ProtocolError("Informational HTTP/2 response ended the stream"))
+      return Err(
+        ProtocolError("Informational HTTP/2 response ended the stream"),
+      )
     }
     self.informational_count = self.informational_count + 1
     if self.informational_count > 8 {
@@ -459,9 +508,11 @@ fn H2ResponseState::apply_header_block(
   // HTTP message body framing. Responses to HEAD, 204, 205 and 304 otherwise
   // carry no payload body.
   if connect_tunnel && regular.contains("content-length") {
-    return Err(ProtocolError(
-      "Successful CONNECT response must not include Content-Length",
-    ))
+    return Err(
+      ProtocolError(
+        "Successful CONNECT response must not include Content-Length",
+      ),
+    )
   }
   self.body_forbidden = if connect_tunnel {
     false
@@ -477,25 +528,28 @@ fn H2ResponseState::apply_header_block(
   // HTTP semantics forbid Content-Length on 204 responses entirely; a 205
   // response may only advertise a zero-length body (RFC 9110 §8.6/§15.3.6).
   if status == 204 && regular.contains("content-length") {
-    return Err(ProtocolError("HTTP/2 204 response must not include Content-Length"))
+    return Err(
+      ProtocolError("HTTP/2 204 response must not include Content-Length"),
+    )
   }
   if status == 205 && declared is Some(length) && length != 0 {
-    return Err(ProtocolError(
-      "HTTP/2 205 response must not have a non-zero Content-Length",
-    ))
+    return Err(
+      ProtocolError(
+        "HTTP/2 205 response must not have a non-zero Content-Length",
+      ),
+    )
   }
   if connect_tunnel {
     self.content_length = None
   } else if !self.body_forbidden {
     match declared {
-      Some(length) => {
+      Some(length) =>
         // The declared length is checked against the configured cap while
         // DATA is consumed. A streaming caller may raise that cap through
         // `Response::read_body_with_limit` after the response head arrives, so
         // rejecting solely from the head would make the explicit limit
         // override unusable for Content-Length responses.
         self.content_length = Some(length)
-      }
       None => self.content_length = None
     }
   } else {
@@ -503,13 +557,16 @@ fn H2ResponseState::apply_header_block(
   }
   if end_stream {
     if self.content_length is Some(length) && length != 0 {
-      return Err(ProtocolError("HTTP/2 response body does not match Content-Length"))
+      return Err(
+        ProtocolError("HTTP/2 response body does not match Content-Length"),
+      )
     }
     self.ended = true
   }
   Ok(())
 }
 
+///|
 fn h2_apply_settings(
   payload : Bytes,
   flow : H2FlowState,
@@ -519,7 +576,8 @@ fn h2_apply_settings(
     if offset + 6 > payload.length() {
       return Err(ProtocolError("Invalid HTTP/2 SETTINGS length"))
     }
-    let identifier = (payload[offset].to_int() << 8) | payload[offset + 1].to_int()
+    let identifier = (payload[offset].to_int() << 8) |
+      payload[offset + 1].to_int()
     // RFC 9113 §6.5: settings are processed in order and each parameter
     // replaces any previous value, so a repeated identifier is legal and the
     // last value wins. Unknown identifiers are ignored.
@@ -592,6 +650,7 @@ fn h2_apply_settings(
   Ok(())
 }
 
+///|
 fn H2ResponseState::handle_frame(
   self : H2ResponseState,
   frame : H2Frame,
@@ -626,7 +685,11 @@ fn H2ResponseState::handle_frame(
           }
           if self.content_length is Some(length) &&
             payload.length() > length - self.body_received {
-            return Err(ProtocolError("HTTP/2 response body does not match Content-Length"))
+            return Err(
+              ProtocolError(
+                "HTTP/2 response body does not match Content-Length",
+              ),
+            )
           }
           self.body.write_bytes(payload)
           self.body_received = self.body_received + payload.length()
@@ -634,14 +697,19 @@ fn H2ResponseState::handle_frame(
             // Do not return this credit until the tunnel body is read. The
             // advertised receive window then bounds how far a peer can run
             // ahead while the application is busy writing or idle.
-            self.tunnel_unacked_bytes =
-              self.tunnel_unacked_bytes + payload.length()
+            self.tunnel_unacked_bytes = self.tunnel_unacked_bytes +
+              payload.length()
           }
         }
         if (frame.flags & H2_FLAG_END_STREAM) != 0 {
-          if !self.body_forbidden && self.content_length is Some(length) &&
+          if !self.body_forbidden &&
+            self.content_length is Some(length) &&
             self.body_received != length {
-            return Err(ProtocolError("HTTP/2 response body does not match Content-Length"))
+            return Err(
+              ProtocolError(
+                "HTTP/2 response body does not match Content-Length",
+              ),
+            )
           }
           self.ended = true
         }
@@ -659,7 +727,8 @@ fn H2ResponseState::handle_frame(
       // The connection-level receive window is replenished as bytes arrive,
       // including DATA for an already closed stream.
       if frame.stream_id <= self.stream_id && frame.payload.length() > 0 {
-        match h2_send_window_update(stream, 0, frame.payload.length(), flush=true) {
+        match
+          h2_send_window_update(stream, 0, frame.payload.length(), flush=true) {
           Ok(_) => ()
           Err(err) => return Err(err)
         }
@@ -668,7 +737,8 @@ fn H2ResponseState::handle_frame(
       // buffered (the body cap bounds memory), so the full stream credit can be
       // returned. A tunnel is not body-capped: only its padding is safe to
       // acknowledge here; `H2TunnelBody` returns the data credit as it reads.
-      if frame.stream_id == self.stream_id && !self.ended &&
+      if frame.stream_id == self.stream_id &&
+        !self.ended &&
         frame.payload.length() > 0 {
         let acknowledge = if self.is_tunnel() {
           padding_bytes
@@ -676,7 +746,13 @@ fn H2ResponseState::handle_frame(
           frame.payload.length()
         }
         if acknowledge > 0 {
-          match h2_send_window_update(stream, self.stream_id, acknowledge, flush=true) {
+          match
+            h2_send_window_update(
+              stream,
+              self.stream_id,
+              acknowledge,
+              flush=true,
+            ) {
             Ok(_) => ()
             Err(err) => return Err(err)
           }
@@ -709,7 +785,8 @@ fn H2ResponseState::handle_frame(
       if !self.in_header_block || frame.stream_id != self.stream_id {
         return Err(ProtocolError("Unexpected HTTP/2 CONTINUATION"))
       }
-      if frame.payload.length() > H2_MAX_HEADER_BLOCK_BYTES - self.header_block.length() {
+      if frame.payload.length() >
+        H2_MAX_HEADER_BLOCK_BYTES - self.header_block.length() {
         return Err(ProtocolError("HTTP/2 header block too large"))
       }
       self.header_block.write_bytes(frame.payload)
@@ -722,7 +799,7 @@ fn H2ResponseState::handle_frame(
         Ok(())
       }
     }
-    H2_FRAME_SETTINGS => {
+    H2_FRAME_SETTINGS =>
       if (frame.flags & H2_FLAG_ACK) == 0 {
         match h2_apply_settings(frame.payload, flow) {
           Ok(_) => ()
@@ -739,7 +816,6 @@ fn H2ResponseState::handle_frame(
       } else {
         Ok(())
       }
-    }
     H2_FRAME_WINDOW_UPDATE => {
       let increment = match h2_parse_window_update(frame.payload) {
         Ok(value) => value
@@ -763,15 +839,17 @@ fn H2ResponseState::handle_frame(
                 b"\x00\x00\x00\x01",
               )
               let _ = stream.flush()
-              return Err(ProtocolError("HTTP/2 stream WINDOW_UPDATE increment is zero"))
+              return Err(
+                ProtocolError("HTTP/2 stream WINDOW_UPDATE increment is zero"),
+              )
             } else if frame.stream_id < self.stream_id {
               if !h2_is_client_stream(frame.stream_id) {
                 // Server-push streams are never valid here because push is
                 // disabled. Do not silently ignore a malformed update for one,
                 // even when its increment is zero.
-                return Err(ProtocolError(
-                  "HTTP/2 WINDOW_UPDATE on a server-push stream",
-                ))
+                return Err(
+                  ProtocolError("HTTP/2 WINDOW_UPDATE on a server-push stream"),
+                )
               }
               // The stream has already ended; the update has no effect.
               return Ok(())
@@ -798,13 +876,16 @@ fn H2ResponseState::handle_frame(
       } else if frame.stream_id > self.stream_id {
         return Err(ProtocolError("HTTP/2 WINDOW_UPDATE on idle stream"))
       } else if !h2_is_client_stream(frame.stream_id) {
-        return Err(ProtocolError("HTTP/2 WINDOW_UPDATE on a server-push stream"))
+        return Err(
+          ProtocolError("HTTP/2 WINDOW_UPDATE on a server-push stream"),
+        )
       }
       Ok(())
     }
-    H2_FRAME_PING => {
+    H2_FRAME_PING =>
       if (frame.flags & H2_FLAG_ACK) == 0 {
-        match h2_write_frame(stream, H2_FRAME_PING, H2_FLAG_ACK, 0, frame.payload) {
+        match
+          h2_write_frame(stream, H2_FRAME_PING, H2_FLAG_ACK, 0, frame.payload) {
           Ok(_) => ()
           Err(err) => return Err(err)
         }
@@ -815,8 +896,7 @@ fn H2ResponseState::handle_frame(
       } else {
         Ok(())
       }
-    }
-    H2_FRAME_RST_STREAM => {
+    H2_FRAME_RST_STREAM =>
       if frame.stream_id == self.stream_id {
         let error_code = match h2_parse_rst_stream_error(frame.payload) {
           Ok(value) => value
@@ -838,16 +918,16 @@ fn H2ResponseState::handle_frame(
       } else {
         Ok(())
       }
-    }
     H2_FRAME_GOAWAY => {
       let (last_stream_id, error_code) = match h2_parse_goaway(frame.payload) {
         Ok(value) => value
         Err(err) => return Err(err)
       }
       match self.goaway_last_stream_id {
-        Some(previous) => if last_stream_id > previous {
-          return Err(ProtocolError("HTTP/2 GOAWAY stream id increased"))
-        }
+        Some(previous) =>
+          if last_stream_id > previous {
+            return Err(ProtocolError("HTTP/2 GOAWAY stream id increased"))
+          }
         None => ()
       }
       self.goaway_last_stream_id = Some(last_stream_id)
@@ -865,7 +945,9 @@ fn H2ResponseState::handle_frame(
         // process the request despite the contradictory GOAWAY id. Retrying
         // could duplicate side effects.
         return Err(
-          ProtocolError("HTTP/2 connection closed by GOAWAY after response headers"),
+          ProtocolError(
+            "HTTP/2 connection closed by GOAWAY after response headers",
+          ),
         )
       }
       if error_code != 0 {
@@ -875,14 +957,14 @@ fn H2ResponseState::handle_frame(
       }
       Ok(())
     }
-    H2_FRAME_PUSH_PROMISE => {
+    H2_FRAME_PUSH_PROMISE =>
       Err(ProtocolError("HTTP/2 server push is disabled"))
-    }
     H2_FRAME_PRIORITY => Ok(())
     _ => Ok(())
   }
 }
 
+///|
 /// Header names nominated by `Connection` are hop-by-hop for this message and
 /// must not be forwarded onto an HTTP/2 connection. Fixed hop-by-hop fields
 /// are handled by `h2_forbidden_header`; this also covers application-specific
@@ -892,7 +974,8 @@ fn h2_connection_nominated_names(headers : Headers) -> Array[String] {
   for value in headers.get_all("Connection") {
     for token in split_header_list(value) {
       let name = token.trim().to_owned().to_lower()
-      if name.length() > 0 && h2_valid_field_name(name) &&
+      if name.length() > 0 &&
+        h2_valid_field_name(name) &&
         !h2_name_in_array(names, name) {
         names.push(name)
       }
@@ -901,6 +984,7 @@ fn h2_connection_nominated_names(headers : Headers) -> Array[String] {
   names
 }
 
+///|
 fn h2_name_in_array(names : Array[String], name : String) -> Bool {
   for candidate in names {
     if candidate == name {
@@ -910,7 +994,8 @@ fn h2_name_in_array(names : Array[String], name : String) -> Bool {
   false
 }
 
-fn h2_header_list_size(headers : Array[(String, String)]) -> Int {
+///|
+fn h2_header_list_size(headers : Array[(String, String)]) -> Int32 {
   let mut total = 0
   for header in headers {
     let (name, value) = header
@@ -919,6 +1004,7 @@ fn h2_header_list_size(headers : Array[(String, String)]) -> Int {
   total
 }
 
+///|
 /// The first protocol token offered by a request's `Upgrade` field, if the
 /// request also nominated `upgrade` in its `Connection` field.
 fn h2_upgrade_protocol(request : Request) -> String? {
@@ -936,11 +1022,15 @@ fn h2_upgrade_protocol(request : Request) -> String? {
   None
 }
 
+///|
 #warnings("-unused_value")
-fn h2_request_headers(request : Request) -> Result[Array[(String, String)], HttpError] {
+fn h2_request_headers(
+  request : Request,
+) -> Result[Array[(String, String)], HttpError] {
   h2_request_headers_with_protocol(request, None)
 }
 
+///|
 /// Build the HTTP/2 field list for a request. When `extended_protocol` is set,
 /// the request is an RFC 8441 extended CONNECT: the wire method is CONNECT and
 /// `:protocol` names the upgraded protocol, while `:scheme` and `:path` remain
@@ -956,20 +1046,18 @@ fn h2_request_headers_with_protocol(
   // HTTP/2 carries upgrades through extended CONNECT. A caller-supplied
   // Upgrade field without the HTTP/1 Connection nomination is malformed and
   // must not be silently dropped as if it were an ordinary header.
-  if request.headers.contains("Upgrade") &&
-    h2_upgrade_protocol(request) is None {
+  if request.headers.contains("Upgrade") && h2_upgrade_protocol(request) is None {
     return Err(InvalidHeader("Upgrade"))
   }
   let resolved_method = canonical_http_method(request.verb)
   let extended_connect = extended_protocol is Some(_)
   if extended_connect && resolved_method != GET && resolved_method != CONNECT {
-    return Err(ProtocolError(
-      "Extended CONNECT requires a GET or CONNECT request",
-    ))
+    return Err(
+      ProtocolError("Extended CONNECT requires a GET or CONNECT request"),
+    )
   }
   let is_connect = resolved_method == CONNECT && !extended_connect
-  if is_connect &&
-    (request.url.path != "/" || request.url.query.length() > 0) {
+  if is_connect && (request.url.path != "/" || request.url.query.length() > 0) {
     return Err(InvalidUrl("CONNECT requires an authority-form target"))
   }
   let authority = if is_connect {
@@ -999,8 +1087,7 @@ fn h2_request_headers_with_protocol(
   }
   let connection_nominated = h2_connection_nominated_names(request.headers)
   let content_length_nominated = h2_name_in_array(
-    connection_nominated,
-    "content-length",
+    connection_nominated, "content-length",
   )
   let body_length = match request.body {
     Some(body) => body.length()
@@ -1030,9 +1117,10 @@ fn h2_request_headers_with_protocol(
     }
   }
   match content_length {
-    Some(declared) => if declared != body_length {
-      return Err(InvalidHeader("Content-Length"))
-    }
+    Some(declared) =>
+      if declared != body_length {
+        return Err(InvalidHeader("Content-Length"))
+      }
     None => ()
   }
   if (is_connect || extended_connect) && content_length is Some(_) {
@@ -1068,10 +1156,12 @@ fn h2_request_headers_with_protocol(
     ]
   }
   if (request.body is Some(_) || method_defines_body(resolved_method)) &&
-    content_lengths.length() == 0 && !content_length_nominated {
+    content_lengths.length() == 0 &&
+    !content_length_nominated {
     headers.push(("content-length", body_length.to_string()))
   }
-  if request.trailers.length() > 0 && !request.headers.contains("Trailer") &&
+  if request.trailers.length() > 0 &&
+    !request.headers.contains("Trailer") &&
     !h2_name_in_array(connection_nominated, "trailer") {
     headers.push(("trailer", h2_trailer_names(request.trailers)))
   }
@@ -1086,7 +1176,8 @@ fn h2_request_headers_with_protocol(
   let cookie_values : Array[String] = []
   for header in request.headers.iter() {
     let name = header.name.to_lower()
-    if h2_forbidden_header(name) || name == "host" ||
+    if h2_forbidden_header(name) ||
+      name == "host" ||
       h2_name_in_array(connection_nominated, name) {
       continue
     }
@@ -1126,17 +1217,23 @@ fn h2_request_headers_with_protocol(
   Ok(headers)
 }
 
+///|
 fn h2_body_stream(data : Bytes) -> H2BodyStream {
-  H2BodyStream::{ data, offset: 0, is_open: true }
+  H2BodyStream::{ data, offset: 0, is_open: true, }
 }
 
+///|
 struct H2BodyStream {
   data : Bytes
-  mut offset : Int
+  mut offset : Int32
   mut is_open : Bool
 }
 
-pub impl Stream for H2BodyStream with fn read(self : H2BodyStream, buf : Buffer) -> Result[Int, NetError] {
+///|
+pub impl Stream for H2BodyStream with fn read(self : H2BodyStream, buf : Buffer) -> Result[
+  Int32,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -1145,21 +1242,23 @@ pub impl Stream for H2BodyStream with fn read(self : H2BodyStream, buf : Buffer)
     return Ok(0)
   }
   let take = if remaining < 4096 { remaining } else { 4096 }
-  buf.write_bytes(self.data.exact_view(start=self.offset, end=self.offset + take))
+  buf.write_bytes(
+    self.data.exact_view(start=self.offset, end=self.offset + take),
+  )
   self.offset = self.offset + take
   Ok(take)
 }
 
-pub impl Stream for H2BodyStream with fn read_ready(
-  self : H2BodyStream,
-) -> Bool {
+///|
+pub impl Stream for H2BodyStream with fn read_ready(self : H2BodyStream) -> Bool {
   // Buffered bodies never block: an exhausted stream reads as EOF.
   self.is_open
 }
 
+///|
 pub impl Stream for H2BodyStream with fn wait_readable(
   self : H2BodyStream,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Bool, NetError] {
   let _ = timeout_ms
   if !self.is_open {
@@ -1168,7 +1267,11 @@ pub impl Stream for H2BodyStream with fn wait_readable(
   Ok(true)
 }
 
-pub impl Stream for H2BodyStream with fn write(self : H2BodyStream, buf : Buffer) -> Result[Int, NetError] {
+///|
+pub impl Stream for H2BodyStream with fn write(
+  self : H2BodyStream,
+  buf : Buffer,
+) -> Result[Int32, NetError] {
   let _ = buf
   if !self.is_open {
     return Err(NetError::Closed)
@@ -1176,19 +1279,31 @@ pub impl Stream for H2BodyStream with fn write(self : H2BodyStream, buf : Buffer
   Err(NetError::WriteError("HTTP/2 response body is read-only"))
 }
 
-pub impl Stream for H2BodyStream with fn flush(self : H2BodyStream) -> Result[Unit, NetError] {
+///|
+pub impl Stream for H2BodyStream with fn flush(self : H2BodyStream) -> Result[
+  Unit,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   Ok(())
 }
 
-pub impl Stream for H2BodyStream with fn close(self : H2BodyStream) -> Result[Unit, NetError] {
+///|
+pub impl Stream for H2BodyStream with fn close(self : H2BodyStream) -> Result[
+  Unit,
+  NetError,
+] {
   self.is_open = false
   Ok(())
 }
 
-pub impl Stream for H2BodyStream with fn set_timeout(self : H2BodyStream, timeout_ms : Int) -> Result[Unit, NetError] {
+///|
+pub impl Stream for H2BodyStream with fn set_timeout(
+  self : H2BodyStream,
+  timeout_ms : Int32,
+) -> Result[Unit, NetError] {
   let _ = timeout_ms
   if !self.is_open {
     return Err(NetError::Closed)
@@ -1196,20 +1311,29 @@ pub impl Stream for H2BodyStream with fn set_timeout(self : H2BodyStream, timeou
   Ok(())
 }
 
-pub impl Stream for H2BodyStream with fn peer_addr(self : H2BodyStream) -> Result[String, NetError] {
+///|
+pub impl Stream for H2BodyStream with fn peer_addr(self : H2BodyStream) -> Result[
+  String,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   Err(NetError::InvalidAddress("HTTP/2 response body has no peer"))
 }
 
-pub impl Stream for H2BodyStream with fn local_addr(self : H2BodyStream) -> Result[String, NetError] {
+///|
+pub impl Stream for H2BodyStream with fn local_addr(self : H2BodyStream) -> Result[
+  String,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   Err(NetError::InvalidAddress("HTTP/2 response body has no address"))
 }
 
+///|
 fn h2_make_response(state : H2ResponseState) -> Response {
   let response = Response::new_with_version(
     "HTTP/2",
@@ -1219,14 +1343,15 @@ fn h2_make_response(state : H2ResponseState) -> Response {
   )
   let trailers = @ref.Ref(state.trailers)
   response
-    .with_trailers(trailers)
-    .with_early_hints(state.early_hints)
-    .with_max_body_bytes(state.max_body_bytes)
+  .with_trailers(trailers)
+  .with_early_hints(state.early_hints)
+  .with_max_body_bytes(state.max_body_bytes)
 }
 
+///|
 fn h2_write_header_block(
   stream : &Stream,
-  stream_id : Int,
+  stream_id : Int32,
   block : Bytes,
   end_stream : Bool,
 ) -> Result[Unit, HttpError] {
@@ -1235,7 +1360,11 @@ fn h2_write_header_block(
   let mut first = true
   while true {
     let remaining = total - offset
-    let take = if remaining < H2_MAX_FRAME_SIZE { remaining } else { H2_MAX_FRAME_SIZE }
+    let take = if remaining < H2_MAX_FRAME_SIZE {
+      remaining
+    } else {
+      H2_MAX_FRAME_SIZE
+    }
     let payload = block.exact_view(start=offset, end=offset + take).to_owned()
     let mut flags = 0
     if first && end_stream {
@@ -1244,7 +1373,11 @@ fn h2_write_header_block(
     if offset + take == total {
       flags = flags | H2_FLAG_END_HEADERS
     }
-    let frame_type = if first { H2_FRAME_HEADERS } else { H2_FRAME_CONTINUATION }
+    let frame_type = if first {
+      H2_FRAME_HEADERS
+    } else {
+      H2_FRAME_CONTINUATION
+    }
     match h2_write_frame(stream, frame_type, flags, stream_id, payload) {
       Ok(_) => ()
       Err(err) => return Err(err)
@@ -1258,7 +1391,10 @@ fn h2_write_header_block(
   Ok(())
 }
 
-fn H2ClientConnection::send_preface(self : H2ClientConnection) -> Result[Unit, HttpError] {
+///|
+fn H2ClientConnection::send_preface(
+  self : H2ClientConnection,
+) -> Result[Unit, HttpError] {
   match write_all(self.stream, h2_preface_bytes) {
     Ok(_) => ()
     Err(err) => return Err(http_error_from_net(err))
@@ -1273,16 +1409,18 @@ fn H2ClientConnection::send_preface(self : H2ClientConnection) -> Result[Unit, H
     Ok(_) => ()
     Err(err) => return Err(err)
   }
-  match h2_send_window_update(
-    self.stream,
-    0,
-    H2_MAX_WINDOW_SIZE - H2_DEFAULT_WINDOW_SIZE,
-  ) {
+  match
+    h2_send_window_update(
+      self.stream,
+      0,
+      H2_MAX_WINDOW_SIZE - H2_DEFAULT_WINDOW_SIZE,
+    ) {
     Ok(_) => Ok(())
     Err(err) => Err(err)
   }
 }
 
+///|
 /// A persistent HTTP/2 client connection. It owns the client connection
 /// preface, its HPACK decoder, and the next available client-initiated stream
 /// id, so sequential requests can reuse the same TLS/TCP connection without
@@ -1292,7 +1430,7 @@ pub struct H2ClientConnection {
   reader : StreamReader
   decoder : HpackDecoder
   flow : H2FlowState
-  mut next_stream_id : Int
+  mut next_stream_id : Int32
   mut closed : Bool
   mut settings_received : Bool
   // A lazy response body owns the connection until it reaches END_STREAM or is
@@ -1300,10 +1438,13 @@ pub struct H2ClientConnection {
   mut streaming_busy : Bool
 }
 
+///|
 /// Create a connection and send the client preface and initial SETTINGS. The
 /// preface is flushed with the first request, matching the usual client
 /// behavior of batching the settings and request head.
-pub fn H2ClientConnection::new(stream : &Stream) -> Result[H2ClientConnection, HttpError] {
+pub fn H2ClientConnection::new(
+  stream : &Stream,
+) -> Result[H2ClientConnection, HttpError] {
   let connection = H2ClientConnection::{
     stream,
     reader: StreamReader::new(stream),
@@ -1320,11 +1461,13 @@ pub fn H2ClientConnection::new(stream : &Stream) -> Result[H2ClientConnection, H
   }
 }
 
+///|
 /// Whether this connection can still be used for another request.
 fn H2ClientConnection::is_open(self : H2ClientConnection) -> Bool {
   !self.closed && !self.streaming_busy && self.stream.is_alive()
 }
 
+///|
 /// Close the underlying stream. Closing an already closed connection is a
 /// no-op.
 pub fn H2ClientConnection::close(self : H2ClientConnection) -> Unit {
@@ -1332,6 +1475,7 @@ pub fn H2ClientConnection::close(self : H2ClientConnection) -> Unit {
   let _ = self.stream.close()
 }
 
+///|
 /// Lazily-read response body for `request_streaming`. It owns the connection
 /// exchange until the peer ends the stream or the caller closes the body.
 struct H2LiveBodyStream {
@@ -1340,7 +1484,7 @@ struct H2LiveBodyStream {
   flow : H2FlowState
   trailers : @ref.Ref[Headers]
   mut pending : Bytes
-  mut pending_offset : Int
+  mut pending_offset : Int32
   mut is_open : Bool
   mut completed : Bool
   // Set when the completed body handed its connection back to the pool. At
@@ -1351,6 +1495,7 @@ struct H2LiveBodyStream {
   on_complete : ((Bool) -> Unit)?
 }
 
+///|
 fn H2LiveBodyStream::finish(self : H2LiveBodyStream, reusable : Bool) -> Unit {
   if self.completed {
     return
@@ -1364,7 +1509,8 @@ fn H2LiveBodyStream::finish(self : H2LiveBodyStream, reusable : Bool) -> Unit {
     self.flow.stream_send_window_active = false
   }
   if keep && self.state.ended {
-    match self.connection.drain_buffered_connection_frames(self.state, self.flow) {
+    match
+      self.connection.drain_buffered_connection_frames(self.state, self.flow) {
       Ok(_) => ()
       Err(_) => self.connection.closed = true
     }
@@ -1392,6 +1538,7 @@ fn H2LiveBodyStream::finish(self : H2LiveBodyStream, reusable : Bool) -> Unit {
   }
 }
 
+///|
 fn h2_live_body_net_error(err : HttpError) -> NetError {
   match err {
     NetworkError(net) => net
@@ -1401,12 +1548,14 @@ fn h2_live_body_net_error(err : HttpError) -> NetError {
   }
 }
 
+///|
 fn H2LiveBodyStream::fail(self : H2LiveBodyStream, err : HttpError) -> NetError {
   self.error = Some(err)
   self.finish(false)
   h2_live_body_net_error(err)
 }
 
+///|
 /// Read frames until at least one body byte is available or the stream ends.
 /// SETTINGS/PING/WINDOW_UPDATE frames are handled and skipped.
 fn H2LiveBodyStream::pull(self : H2LiveBodyStream) -> Result[Unit, NetError] {
@@ -1420,19 +1569,18 @@ fn H2LiveBodyStream::pull(self : H2LiveBodyStream) -> Result[Unit, NetError] {
       Ok(frame) => frame
       Err(err) => return Err(self.fail(err))
     }
-    match self.state.handle_frame(
-      frame,
-      self.flow,
-      self.connection.stream,
-    ) {
+    match self.state.handle_frame(frame, self.flow, self.connection.stream) {
       Ok(_) => ()
       Err(err) => {
         if h2_error_is_stream_reset(err, self.state) {
           // The peer reset only this stream. Consume its already-buffered
           // frames so they cannot be mistaken for a later response, then
           // release the session as reusable instead of tearing it down.
-          self.connection
-            .discard_buffered_stream_frames(self.state, self.flow, self.state.stream_id)
+          self.connection.discard_buffered_stream_frames(
+            self.state,
+            self.flow,
+            self.state.stream_id,
+          )
           self.error = Some(err)
           self.finish(true)
           return Err(h2_live_body_net_error(err))
@@ -1454,10 +1602,11 @@ fn H2LiveBodyStream::pull(self : H2LiveBodyStream) -> Result[Unit, NetError] {
   Ok(())
 }
 
+///|
 pub impl Stream for H2LiveBodyStream with fn read(
   self : H2LiveBodyStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -1480,10 +1629,12 @@ pub impl Stream for H2LiveBodyStream with fn read(
   }
   let available = self.pending.length() - self.pending_offset
   let take = if available < 8192 { available } else { 8192 }
-  buf.write_bytes(self.pending.exact_view(
-    start=self.pending_offset,
-    end=self.pending_offset + take,
-  ))
+  buf.write_bytes(
+    self.pending.exact_view(
+      start=self.pending_offset,
+      end=self.pending_offset + take,
+    ),
+  )
   self.pending_offset = self.pending_offset + take
   if self.state.ended && self.pending_offset >= self.pending.length() {
     self.finish(true)
@@ -1491,9 +1642,10 @@ pub impl Stream for H2LiveBodyStream with fn read(
   Ok(take)
 }
 
+///|
 pub impl Stream for H2LiveBodyStream with fn set_body_limit(
   self : H2LiveBodyStream,
-  max_body_bytes : Int,
+  max_body_bytes : Int32,
 ) -> Unit {
   let limit = if max_body_bytes < 0 { 0 } else { max_body_bytes }
   if limit > self.state.max_body_bytes {
@@ -1501,9 +1653,8 @@ pub impl Stream for H2LiveBodyStream with fn set_body_limit(
   }
 }
 
-pub impl Stream for H2LiveBodyStream with fn read_ready(
-  self : H2LiveBodyStream,
-) -> Bool {
+///|
+pub impl Stream for H2LiveBodyStream with fn read_ready(self : H2LiveBodyStream) -> Bool {
   if !self.is_open || self.released_to_pool {
     return false
   }
@@ -1516,9 +1667,10 @@ pub impl Stream for H2LiveBodyStream with fn read_ready(
   self.connection.stream.read_ready()
 }
 
+///|
 pub impl Stream for H2LiveBodyStream with fn wait_readable(
   self : H2LiveBodyStream,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Bool, NetError] {
   if !self.is_open || self.released_to_pool {
     return Err(NetError::Closed)
@@ -1529,10 +1681,11 @@ pub impl Stream for H2LiveBodyStream with fn wait_readable(
   self.connection.stream.wait_readable(timeout_ms)
 }
 
+///|
 pub impl Stream for H2LiveBodyStream with fn write(
   self : H2LiveBodyStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   let _ = buf
   if !self.is_open {
     return Err(NetError::Closed)
@@ -1540,18 +1693,22 @@ pub impl Stream for H2LiveBodyStream with fn write(
   Err(NetError::WriteError("HTTP/2 response body is read-only"))
 }
 
-pub impl Stream for H2LiveBodyStream with fn flush(
-  self : H2LiveBodyStream,
-) -> Result[Unit, NetError] {
+///|
+pub impl Stream for H2LiveBodyStream with fn flush(self : H2LiveBodyStream) -> Result[
+  Unit,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   Ok(())
 }
 
-pub impl Stream for H2LiveBodyStream with fn close(
-  self : H2LiveBodyStream,
-) -> Result[Unit, NetError] {
+///|
+pub impl Stream for H2LiveBodyStream with fn close(self : H2LiveBodyStream) -> Result[
+  Unit,
+  NetError,
+] {
   if !self.is_open {
     return Ok(())
   }
@@ -1566,9 +1723,10 @@ pub impl Stream for H2LiveBodyStream with fn close(
   Ok(())
 }
 
+///|
 pub impl Stream for H2LiveBodyStream with fn set_timeout(
   self : H2LiveBodyStream,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Unit, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
@@ -1579,9 +1737,11 @@ pub impl Stream for H2LiveBodyStream with fn set_timeout(
   self.connection.stream.set_timeout(timeout_ms)
 }
 
-pub impl Stream for H2LiveBodyStream with fn peer_addr(
-  self : H2LiveBodyStream,
-) -> Result[String, NetError] {
+///|
+pub impl Stream for H2LiveBodyStream with fn peer_addr(self : H2LiveBodyStream) -> Result[
+  String,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -1591,9 +1751,11 @@ pub impl Stream for H2LiveBodyStream with fn peer_addr(
   self.connection.stream.peer_addr()
 }
 
-pub impl Stream for H2LiveBodyStream with fn local_addr(
-  self : H2LiveBodyStream,
-) -> Result[String, NetError] {
+///|
+pub impl Stream for H2LiveBodyStream with fn local_addr(self : H2LiveBodyStream) -> Result[
+  String,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -1603,6 +1765,7 @@ pub impl Stream for H2LiveBodyStream with fn local_addr(
   self.connection.stream.local_addr()
 }
 
+///|
 fn h2_tunnel_read_error(err : HttpError) -> NetError {
   match err {
     NetworkError(net) => net
@@ -1613,6 +1776,7 @@ fn h2_tunnel_read_error(err : HttpError) -> NetError {
   }
 }
 
+///|
 /// Write failures on a tunnel must surface as write errors, even when the
 /// underlying HTTP/2 framing layer reports a protocol problem (for example a
 /// frame that cannot be encoded). Read and write directions share the same
@@ -1628,6 +1792,7 @@ fn h2_tunnel_write_error(err : HttpError) -> NetError {
   }
 }
 
+///|
 /// Streaming body for a successful HTTP/2 CONNECT tunnel. A tunnel's
 /// END_STREAM may only arrive when the tunnelled peer closes, so the response
 /// must be returned as soon as its headers are complete and further DATA
@@ -1642,6 +1807,7 @@ struct H2TunnelBody {
   mut notified : Bool
 }
 
+///|
 fn H2TunnelBody::finish(self : H2TunnelBody) -> Unit {
   if self.notified {
     return
@@ -1659,10 +1825,12 @@ fn H2TunnelBody::finish(self : H2TunnelBody) -> Unit {
   self.connection.close()
 }
 
+///|
 fn H2TunnelBody::sync_trailers(self : H2TunnelBody) -> Unit {
   self.trailers.val = self.state.trailers
 }
 
+///|
 fn H2TunnelBody::advance(self : H2TunnelBody) -> Result[Unit, NetError] {
   let frame = match h2_read_connection_frame(self.connection.reader) {
     Ok(frame) => frame
@@ -1684,10 +1852,11 @@ fn H2TunnelBody::advance(self : H2TunnelBody) -> Result[Unit, NetError] {
   Ok(())
 }
 
+///|
 fn H2TunnelBody::drain_buffered(
   self : H2TunnelBody,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   let data = self.state.body.to_bytes()
   if data.length() == 0 {
     return Ok(0)
@@ -1699,12 +1868,13 @@ fn H2TunnelBody::drain_buffered(
   let acknowledge = if !self.state.ended && self.state.tunnel_unacked_bytes > 0 {
     let pending = self.state.tunnel_unacked_bytes
     let acknowledge = if take < pending { take } else { pending }
-    match h2_send_window_update(
-      self.connection.stream,
-      self.state.stream_id,
-      acknowledge,
-      flush=true,
-    ) {
+    match
+      h2_send_window_update(
+        self.connection.stream,
+        self.state.stream_id,
+        acknowledge,
+        flush=true,
+      ) {
       Ok(_) => acknowledge
       Err(err) => {
         self.finish()
@@ -1715,7 +1885,8 @@ fn H2TunnelBody::drain_buffered(
   } else {
     0
   }
-  self.state.tunnel_unacked_bytes = self.state.tunnel_unacked_bytes - acknowledge
+  self.state.tunnel_unacked_bytes = self.state.tunnel_unacked_bytes -
+    acknowledge
   buf.write_bytes(data.exact_view(start=0, end=take))
   let remaining = data.exact_view(start=take, end=data.length()).to_owned()
   let next = Buffer(size_hint=remaining.length())
@@ -1727,10 +1898,11 @@ fn H2TunnelBody::drain_buffered(
   Ok(take)
 }
 
-pub impl Stream for H2TunnelBody with fn read(
-  self : H2TunnelBody,
-  buf : Buffer,
-) -> Result[Int, NetError] {
+///|
+pub impl Stream for H2TunnelBody with fn read(self : H2TunnelBody, buf : Buffer) -> Result[
+  Int32,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -1757,9 +1929,8 @@ pub impl Stream for H2TunnelBody with fn read(
   Err(NetError::ReadError("HTTP/2 tunnel read did not converge"))
 }
 
-pub impl Stream for H2TunnelBody with fn read_ready(
-  self : H2TunnelBody,
-) -> Bool {
+///|
+pub impl Stream for H2TunnelBody with fn read_ready(self : H2TunnelBody) -> Bool {
   if !self.is_open {
     return false
   }
@@ -1770,9 +1941,10 @@ pub impl Stream for H2TunnelBody with fn read_ready(
   self.connection.stream.read_ready()
 }
 
+///|
 pub impl Stream for H2TunnelBody with fn wait_readable(
   self : H2TunnelBody,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Bool, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
@@ -1783,10 +1955,11 @@ pub impl Stream for H2TunnelBody with fn wait_readable(
   self.connection.stream.wait_readable(timeout_ms)
 }
 
+///|
 pub impl Stream for H2TunnelBody with fn write(
   self : H2TunnelBody,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -1804,7 +1977,8 @@ pub impl Stream for H2TunnelBody with fn write(
       self.finish()
       return if sent > 0 { Ok(sent) } else { Err(NetError::Closed) }
     }
-    let available = if self.flow.connection_send_window < self.flow.stream_send_window {
+    let available = if self.flow.connection_send_window <
+      self.flow.stream_send_window {
       self.flow.connection_send_window
     } else {
       self.flow.stream_send_window
@@ -1820,13 +1994,14 @@ pub impl Stream for H2TunnelBody with fn write(
     let frame_limit = h2_outbound_frame_limit(self.flow.peer_max_frame_size)
     let wanted = if remaining < available { remaining } else { available }
     let take = if wanted < frame_limit { wanted } else { frame_limit }
-    match h2_write_frame(
-      self.connection.stream,
-      H2_FRAME_DATA,
-      0,
-      self.state.stream_id,
-      data.exact_view(start=sent, end=sent + take).to_owned(),
-    ) {
+    match
+      h2_write_frame(
+        self.connection.stream,
+        H2_FRAME_DATA,
+        0,
+        self.state.stream_id,
+        data.exact_view(start=sent, end=sent + take).to_owned(),
+      ) {
       Ok(_) => ()
       Err(err) => {
         self.finish()
@@ -1850,18 +2025,22 @@ pub impl Stream for H2TunnelBody with fn write(
   Ok(sent)
 }
 
-pub impl Stream for H2TunnelBody with fn flush(
-  self : H2TunnelBody,
-) -> Result[Unit, NetError] {
+///|
+pub impl Stream for H2TunnelBody with fn flush(self : H2TunnelBody) -> Result[
+  Unit,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   Ok(())
 }
 
-pub impl Stream for H2TunnelBody with fn close(
-  self : H2TunnelBody,
-) -> Result[Unit, NetError] {
+///|
+pub impl Stream for H2TunnelBody with fn close(self : H2TunnelBody) -> Result[
+  Unit,
+  NetError,
+] {
   if !self.is_open {
     return Ok(())
   }
@@ -1870,9 +2049,10 @@ pub impl Stream for H2TunnelBody with fn close(
   Ok(())
 }
 
+///|
 pub impl Stream for H2TunnelBody with fn set_timeout(
   self : H2TunnelBody,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Unit, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
@@ -1880,24 +2060,29 @@ pub impl Stream for H2TunnelBody with fn set_timeout(
   self.connection.stream.set_timeout(timeout_ms)
 }
 
-pub impl Stream for H2TunnelBody with fn peer_addr(
-  self : H2TunnelBody,
-) -> Result[String, NetError] {
+///|
+pub impl Stream for H2TunnelBody with fn peer_addr(self : H2TunnelBody) -> Result[
+  String,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   self.connection.stream.peer_addr()
 }
 
-pub impl Stream for H2TunnelBody with fn local_addr(
-  self : H2TunnelBody,
-) -> Result[String, NetError] {
+///|
+pub impl Stream for H2TunnelBody with fn local_addr(self : H2TunnelBody) -> Result[
+  String,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   self.connection.stream.local_addr()
 }
 
+///|
 fn h2_make_tunnel_response(
   connection : H2ClientConnection,
   state : H2ResponseState,
@@ -1915,17 +2100,13 @@ fn h2_make_tunnel_response(
     notified: false,
   }
   let stream : &Stream = body
-  Response::new_with_version(
-    "HTTP/2",
-    state.status,
-    state.headers,
-    stream,
-  )
-    .with_trailers(trailers)
-    .with_early_hints(state.early_hints)
-    .with_max_body_bytes(TUNNEL_BODY_LIMIT)
+  Response::new_with_version("HTTP/2", state.status, state.headers, stream)
+  .with_trailers(trailers)
+  .with_early_hints(state.early_hints)
+  .with_max_body_bytes(TUNNEL_BODY_LIMIT)
 }
 
+///|
 /// Consume connection-level frames that were already buffered when the
 /// response ended. A GOAWAY or malformed trailing frame makes the session
 /// unusable for another request; SETTINGS and PING are acknowledged.
@@ -1958,7 +2139,9 @@ fn H2ClientConnection::drain_buffered_connection_frames(
       | H2_FRAME_PRIORITY => ()
       H2_FRAME_RST_STREAM => {
         let offset = self.reader.pending_offset
-        let frame_stream_id = ((self.reader.pending[offset + 5].to_int() & 0x7f) << 24) |
+        let frame_stream_id = (
+            (self.reader.pending[offset + 5].to_int() & 0x7f) << 24
+          ) |
           (self.reader.pending[offset + 6].to_int() << 16) |
           (self.reader.pending[offset + 7].to_int() << 8) |
           self.reader.pending[offset + 8].to_int()
@@ -1982,7 +2165,9 @@ fn H2ClientConnection::drain_buffered_connection_frames(
       }
       H2_FRAME_DATA => {
         let offset = self.reader.pending_offset
-        let frame_stream_id = ((self.reader.pending[offset + 5].to_int() & 0x7f) << 24) |
+        let frame_stream_id = (
+            (self.reader.pending[offset + 5].to_int() & 0x7f) << 24
+          ) |
           (self.reader.pending[offset + 6].to_int() << 16) |
           (self.reader.pending[offset + 7].to_int() << 8) |
           self.reader.pending[offset + 8].to_int()
@@ -2017,7 +2202,13 @@ fn H2ClientConnection::drain_buffered_connection_frames(
         // The stream has already ended (or was reset); discard its payload
         // but keep the connection-level receive window open.
         if frame.payload.length() > 0 {
-          match h2_send_window_update(self.stream, 0, frame.payload.length(), flush=true) {
+          match
+            h2_send_window_update(
+              self.stream,
+              0,
+              frame.payload.length(),
+              flush=true,
+            ) {
             Ok(_) => ()
             Err(_) => {
               self.closed = true
@@ -2045,7 +2236,9 @@ fn H2ClientConnection::drain_buffered_connection_frames(
         // invalid. Keep frames for a not-yet-opened stream buffered: callers
         // may have supplied several sequential responses in one test buffer.
         let offset = self.reader.pending_offset
-        let frame_stream_id = ((self.reader.pending[offset + 5].to_int() & 0x7f) << 24) |
+        let frame_stream_id = (
+            (self.reader.pending[offset + 5].to_int() & 0x7f) << 24
+          ) |
           (self.reader.pending[offset + 6].to_int() << 16) |
           (self.reader.pending[offset + 7].to_int() << 8) |
           self.reader.pending[offset + 8].to_int()
@@ -2075,7 +2268,8 @@ fn H2ClientConnection::drain_buffered_connection_frames(
         }
       H2_FRAME_GOAWAY => {
         match h2_parse_goaway(frame.payload) {
-          Ok((last_stream_id, _)) => state.goaway_last_stream_id = Some(last_stream_id)
+          Ok((last_stream_id, _)) =>
+            state.goaway_last_stream_id = Some(last_stream_id)
           Err(_) => ()
         }
         self.closed = true
@@ -2091,6 +2285,7 @@ fn H2ClientConnection::drain_buffered_connection_frames(
   Ok(())
 }
 
+///|
 /// After resetting one stream, consume already-buffered frames that belong to
 /// it so they cannot be mistaken for the next stream's response. Feeding them
 /// through the response state keeps the HPACK dynamic table synchronized.
@@ -2098,7 +2293,7 @@ fn H2ClientConnection::discard_buffered_stream_frames(
   self : H2ClientConnection,
   state : H2ResponseState,
   flow : H2FlowState,
-  stream_id : Int,
+  stream_id : Int32,
 ) -> Unit {
   // The affected stream is already reset/closed; a buffered SETTINGS frame
   // must not apply its initial-window delta to that stream's stale window.
@@ -2117,7 +2312,9 @@ fn H2ClientConnection::discard_buffered_stream_frames(
       return
     }
     let frame_type = self.reader.pending[offset + 3].to_int()
-    let frame_stream_id = ((self.reader.pending[offset + 5].to_int() & 0x7f) << 24) |
+    let frame_stream_id = (
+        (self.reader.pending[offset + 5].to_int() & 0x7f) << 24
+      ) |
       (self.reader.pending[offset + 6].to_int() << 16) |
       (self.reader.pending[offset + 7].to_int() << 8) |
       self.reader.pending[offset + 8].to_int()
@@ -2180,7 +2377,13 @@ fn H2ClientConnection::discard_buffered_stream_frames(
         }
       }
       if frame.payload.length() > 0 {
-        match h2_send_window_update(self.stream, 0, frame.payload.length(), flush=true) {
+        match
+          h2_send_window_update(
+            self.stream,
+            0,
+            frame.payload.length(),
+            flush=true,
+          ) {
           Ok(_) => ()
           Err(_) => {
             self.closed = true
@@ -2192,7 +2395,7 @@ fn H2ClientConnection::discard_buffered_stream_frames(
     }
     match state.handle_frame(frame, flow, self.stream) {
       Ok(_) => ()
-      Err(_) => {
+      Err(_) =>
         // Header blocks that fail to decode can leave HPACK state unusable,
         // and malformed push frames are connection-level protocol errors even
         // when they target a stream that was already reset.
@@ -2202,12 +2405,12 @@ fn H2ClientConnection::discard_buffered_stream_frames(
           self.closed = true
           return
         }
-      }
     }
     let _ = frame_type
   }
 }
 
+///|
 /// Read and apply the server's initial SETTINGS frame before opening the first
 /// stream. The server connection preface always starts with SETTINGS, so this
 /// establishes its limits without guessing at defaults.
@@ -2245,7 +2448,8 @@ fn H2ClientConnection::read_initial_settings(
             return Err(err)
           }
         }
-        match h2_write_frame(self.stream, H2_FRAME_SETTINGS, H2_FLAG_ACK, 0, b"") {
+        match
+          h2_write_frame(self.stream, H2_FRAME_SETTINGS, H2_FLAG_ACK, 0, b"") {
           Ok(_) => ()
           Err(err) => {
             self.closed = true
@@ -2271,6 +2475,7 @@ fn H2ClientConnection::read_initial_settings(
   Err(ProtocolError("HTTP/2 server did not send SETTINGS"))
 }
 
+///|
 /// Apply settings and answer PING frames that are already buffered before
 /// opening a new stream. WINDOW_UPDATE is left for the body loop because it
 /// may target the stream that is about to be opened.
@@ -2321,7 +2526,8 @@ fn H2ClientConnection::drain_buffered_settings(
               return Err(err)
             }
           }
-          match h2_write_frame(self.stream, H2_FRAME_SETTINGS, H2_FLAG_ACK, 0, b"") {
+          match
+            h2_write_frame(self.stream, H2_FRAME_SETTINGS, H2_FLAG_ACK, 0, b"") {
             Ok(_) => ()
             Err(err) => {
               self.closed = true
@@ -2338,7 +2544,14 @@ fn H2ClientConnection::drain_buffered_settings(
         }
       H2_FRAME_PING =>
         if (frame.flags & H2_FLAG_ACK) == 0 {
-          match h2_write_frame(self.stream, H2_FRAME_PING, H2_FLAG_ACK, 0, frame.payload) {
+          match
+            h2_write_frame(
+              self.stream,
+              H2_FRAME_PING,
+              H2_FLAG_ACK,
+              0,
+              frame.payload,
+            ) {
             Ok(_) => ()
             Err(err) => {
               self.closed = true
@@ -2370,22 +2583,30 @@ fn H2ClientConnection::drain_buffered_settings(
                   false,
                   false,
                 )
-                self.discard_buffered_stream_frames(skipped, flow, frame.stream_id)
+                self.discard_buffered_stream_frames(
+                  skipped,
+                  flow,
+                  frame.stream_id,
+                )
                 self.next_stream_id = self.next_stream_id + 2
                 // Any WINDOW_UPDATE credit buffered for the skipped stream
                 // belonged to that stream, not to the next id. Carrying it
                 // forward would let the next stream exceed the peer's window.
                 flow.pending_stream_window = 0
-                return Err(ProtocolError("HTTP/2 stream WINDOW_UPDATE increment is zero"))
+                return Err(
+                  ProtocolError("HTTP/2 stream WINDOW_UPDATE increment is zero"),
+                )
               } else if frame.stream_id < self.next_stream_id {
                 if !h2_is_client_stream(frame.stream_id) {
                   // Server push is disabled, so an even stream id can never
                   // have existed. Reject a malformed update for it instead of
                   // treating it like a harmless update for a closed stream.
                   self.closed = true
-                  return Err(ProtocolError(
-                    "HTTP/2 WINDOW_UPDATE on a server-push stream",
-                  ))
+                  return Err(
+                    ProtocolError(
+                      "HTTP/2 WINDOW_UPDATE on a server-push stream",
+                    ),
+                  )
                 }
                 // The stream has already ended; the update has no effect.
                 continue
@@ -2419,9 +2640,9 @@ fn H2ClientConnection::drain_buffered_settings(
           // disabled and no such stream can exist, even after it would have
           // been closed. Do not silently ignore it as a stale update.
           self.closed = true
-          return Err(ProtocolError(
-            "HTTP/2 WINDOW_UPDATE on a server-push stream",
-          ))
+          return Err(
+            ProtocolError("HTTP/2 WINDOW_UPDATE on a server-push stream"),
+          )
         }
       }
       H2_FRAME_GOAWAY => {
@@ -2434,11 +2655,13 @@ fn H2ClientConnection::drain_buffered_settings(
           // No stream has been opened yet, so the request is guaranteed not to
           // have been processed. Keep the code in the message for diagnostics,
           // but use wording the client can recognise as safe to retry.
-          return Err(ProtocolError(
-            "HTTP/2 connection closed by GOAWAY before opening a stream (error " +
-            error_code.to_string() +
-            ")",
-          ))
+          return Err(
+            ProtocolError(
+              "HTTP/2 connection closed by GOAWAY before opening a stream (error " +
+              error_code.to_string() +
+              ")",
+            ),
+          )
         }
         return Err(ProtocolError("HTTP/2 connection closed by GOAWAY"))
       }
@@ -2448,16 +2671,18 @@ fn H2ClientConnection::drain_buffered_settings(
   Ok(())
 }
 
+///|
 /// Perform one request on this connection, reusing the client connection
 /// preface, HPACK decoder and connection-level flow-control window.
 pub fn H2ClientConnection::request_with_limit(
   self : H2ClientConnection,
   request : Request,
-  max_body_bytes : Int,
+  max_body_bytes : Int32,
 ) -> Result[Response, HttpError] {
   self.request_with_limit_and_callback(request, max_body_bytes, None)
 }
 
+///|
 /// Start an HTTP/2 exchange whose response body is read lazily from the
 /// connection instead of being buffered before `request` returns.
 ///
@@ -2474,23 +2699,27 @@ pub fn H2ClientConnection::request_streaming(
   self.request_streaming_with_limit(request, DEFAULT_MAX_BODY_BYTES)
 }
 
+///|
 /// Like `request_streaming`, but bound the response body at `max_body_bytes`.
 pub fn H2ClientConnection::request_streaming_with_limit(
   self : H2ClientConnection,
   request : Request,
-  max_body_bytes : Int,
+  max_body_bytes : Int32,
 ) -> Result[Response, HttpError] {
   self.request_streaming_with_callback(request, max_body_bytes, None)
 }
 
+///|
 fn H2ClientConnection::request_streaming_with_callback(
   self : H2ClientConnection,
   request : Request,
-  max_body_bytes : Int,
+  max_body_bytes : Int32,
   on_complete : ((Bool) -> Unit)?,
 ) -> Result[Response, HttpError] {
   if self.streaming_busy {
-    return Err(ProtocolError("HTTP/2 connection has an outstanding streaming body"))
+    return Err(
+      ProtocolError("HTTP/2 connection has an outstanding streaming body"),
+    )
   }
   if !self.is_open() {
     return Err(ConnectionClosed)
@@ -2502,8 +2731,10 @@ fn H2ClientConnection::request_streaming_with_callback(
   }
   // Content uploads and tunnels interleave request and response frames. Keep
   // the well-tested buffered exchange for those cases.
-  if body_length > 0 || request.trailers.length() > 0 ||
-    resolved_method == CONNECT || request_requests_upgrade(request.headers) {
+  if body_length > 0 ||
+    request.trailers.length() > 0 ||
+    resolved_method == CONNECT ||
+    request_requests_upgrade(request.headers) {
     let tunnel = resolved_method == CONNECT ||
       request_requests_upgrade(request.headers)
     if tunnel {
@@ -2512,18 +2743,13 @@ fn H2ClientConnection::request_streaming_with_callback(
         None => None
       }
       return self.request_with_limit_and_callback(
-        request,
-        max_body_bytes,
-        tunnel_completion,
+        request, max_body_bytes, tunnel_completion,
       )
     }
     // A buffered exchange is complete when it returns, so hand ownership back
     // before the caller sees the response.
-    return match self.request_with_limit_and_callback(
-      request,
-      max_body_bytes,
-      None,
-    ) {
+    return match
+      self.request_with_limit_and_callback(request, max_body_bytes, None) {
       Ok(response) => {
         match on_complete {
           Some(callback) => callback(true)
@@ -2669,17 +2895,20 @@ fn H2ClientConnection::request_streaming_with_callback(
   )
 }
 
+///|
 /// Like `request_with_limit`, but a successful CONNECT tunnel owns the
 /// connection until its streaming body is exhausted or closed. `on_close` is
 /// invoked exactly once when that happens.
 fn H2ClientConnection::request_with_limit_and_callback(
   self : H2ClientConnection,
   request : Request,
-  max_body_bytes : Int,
+  max_body_bytes : Int32,
   connect_completion : (() -> Unit)?,
 ) -> Result[Response, HttpError] {
   if self.streaming_busy {
-    return Err(ProtocolError("HTTP/2 connection has an outstanding streaming body"))
+    return Err(
+      ProtocolError("HTTP/2 connection has an outstanding streaming body"),
+    )
   }
   if !self.is_open() {
     return Err(ConnectionClosed)
@@ -2724,7 +2953,8 @@ fn H2ClientConnection::request_with_limit_and_callback(
   }
   let resolved_method = canonical_http_method(request.verb)
   let tunnel = resolved_method == CONNECT || extended_protocol is Some(_)
-  let headers = match h2_request_headers_with_protocol(request, extended_protocol) {
+  let headers = match
+    h2_request_headers_with_protocol(request, extended_protocol) {
     Ok(headers) => headers
     Err(err) => return Err(err)
   }
@@ -2834,13 +3064,14 @@ fn H2ClientConnection::request_with_limit_and_callback(
     let take = if wanted < frame_limit { wanted } else { frame_limit }
     let last = sent + take == body.length()
     let flags = if last && !has_trailers { H2_FLAG_END_STREAM } else { 0 }
-    match h2_write_frame(
-      self.stream,
-      H2_FRAME_DATA,
-      flags,
-      stream_id,
-      body.exact_view(start=sent, end=sent + take).to_owned(),
-    ) {
+    match
+      h2_write_frame(
+        self.stream,
+        H2_FRAME_DATA,
+        flags,
+        stream_id,
+        body.exact_view(start=sent, end=sent + take).to_owned(),
+      ) {
       Ok(_) => ()
       Err(err) => {
         self.closed = true
@@ -2898,13 +3129,17 @@ fn H2ClientConnection::request_with_limit_and_callback(
         return Err(err)
       }
     }
-    if state.connect && state.status_seen &&
-      state.status >= 200 && state.status < 300 {
+    if state.connect &&
+      state.status_seen &&
+      state.status >= 200 &&
+      state.status < 300 {
       break
     }
   }
-  if state.connect && state.status_seen &&
-    state.status >= 200 && state.status < 300 {
+  if state.connect &&
+    state.status_seen &&
+    state.status >= 200 &&
+    state.status < 300 {
     // A successful CONNECT response ends the HTTP exchange but not the
     // tunnel. Return as soon as the response head is complete so the caller
     // can exchange tunnelled bytes while the stream remains open. The tunnel
@@ -2927,13 +3162,14 @@ fn H2ClientConnection::request_with_limit_and_callback(
   // open for tunnel DATA, but no tunnel was established.
   let request_finished = sent == body.length() && trailers_sent && !tunnel
   if !request_finished && !self.closed {
-    match h2_write_frame(
-      self.stream,
-      H2_FRAME_RST_STREAM,
-      0,
-      stream_id,
-      b"\x00\x00\x00\x08",
-    ) {
+    match
+      h2_write_frame(
+        self.stream,
+        H2_FRAME_RST_STREAM,
+        0,
+        stream_id,
+        b"\x00\x00\x00\x08",
+      ) {
       Ok(_) => ()
       Err(_) => self.closed = true
     }
@@ -2952,6 +3188,7 @@ fn H2ClientConnection::request_with_limit_and_callback(
   Ok(h2_make_response(state))
 }
 
+///|
 /// Perform one request with the default response body limit.
 pub fn H2ClientConnection::request(
   self : H2ClientConnection,
@@ -2960,18 +3197,20 @@ pub fn H2ClientConnection::request(
   self.request_with_limit(request, DEFAULT_MAX_BODY_BYTES)
 }
 
+///|
 fn h2_request_with_limit(
   stream : &Stream,
   request : Request,
-  max_body_bytes : Int,
+  max_body_bytes : Int32,
 ) -> Result[Response, HttpError] {
   h2_request_with_limit_and_callback(stream, request, max_body_bytes, None)
 }
 
+///|
 fn h2_request_with_limit_and_callback(
   stream : &Stream,
   request : Request,
-  max_body_bytes : Int,
+  max_body_bytes : Int32,
   connect_completion : (() -> Unit)?,
 ) -> Result[Response, HttpError] {
   let connection = match H2ClientConnection::new(stream) {
@@ -2979,16 +3218,15 @@ fn h2_request_with_limit_and_callback(
     Err(err) => return Err(err)
   }
   connection.request_with_limit_and_callback(
-    request,
-    max_body_bytes,
-    connect_completion,
+    request, max_body_bytes, connect_completion,
   )
 }
 
+///|
 fn h2_request_streaming_with_callback(
   stream : &Stream,
   request : Request,
-  max_body_bytes : Int,
+  max_body_bytes : Int32,
   on_complete : ((Bool) -> Unit)?,
 ) -> Result[Response, HttpError] {
   let connection = match H2ClientConnection::new(stream) {
@@ -2996,12 +3234,11 @@ fn h2_request_streaming_with_callback(
     Err(err) => return Err(err)
   }
   connection.request_streaming_with_callback(
-    request,
-    max_body_bytes,
-    on_complete,
+    request, max_body_bytes, on_complete,
   )
 }
 
+///|
 /// Run HTTP/2 exchanges on this persistent connection through the common
 /// `HttpClient` interface. Unlike the inherent `request` method, this keeps the
 /// connection object so later requests can reuse its preface and HPACK state.
@@ -3012,12 +3249,17 @@ pub impl HttpClient for H2ClientConnection with fn request(
   self.request_with_limit(request, DEFAULT_MAX_BODY_BYTES)
 }
 
+///|
 /// Perform one HTTP/2 request over an ALPN-negotiated stream. The connection
 /// must already have negotiated the `h2` protocol; the caller owns closing it.
-pub fn h2_request(stream : &Stream, request : Request) -> Result[Response, HttpError] {
+pub fn h2_request(
+  stream : &Stream,
+  request : Request,
+) -> Result[Response, HttpError] {
   h2_request_with_limit(stream, request, DEFAULT_MAX_BODY_BYTES)
 }
 
+///|
 /// Perform one HTTP/2 request whose response body is read lazily from `stream`.
 /// This is the one-shot counterpart to `H2ClientConnection::request_streaming`
 /// for callers that provide their own ALPN-negotiated stream. The returned
@@ -3029,13 +3271,14 @@ pub fn h2_request_streaming(
   h2_request_streaming_with_limit(stream, request, DEFAULT_MAX_BODY_BYTES)
 }
 
+///|
 /// Like `h2_request_streaming`, but bound the lazily-read response body at
 /// `max_body_bytes`. An explicit larger limit can still be authorized through
 /// `Response::read_body_with_limit` before the first body byte is consumed.
 pub fn h2_request_streaming_with_limit(
   stream : &Stream,
   request : Request,
-  max_body_bytes : Int,
+  max_body_bytes : Int32,
 ) -> Result[Response, HttpError] {
   let connection = match H2ClientConnection::new(stream) {
     Ok(connection) => connection
@@ -3044,14 +3287,11 @@ pub fn h2_request_streaming_with_limit(
   // This helper owns the connection. Close it once the body is finished or
   // discarded, including the buffered fallback used for uploads, and also when
   // the exchange fails before a body is returned.
-  let completion : ((Bool) -> Unit)? = Some(fn(_reusable) {
-    connection.close()
-  })
-  match connection.request_streaming_with_callback(
-    request,
-    max_body_bytes,
-    completion,
-  ) {
+  let completion : ((Bool) -> Unit)? = Some(fn(_reusable) { connection.close() })
+  match
+    connection.request_streaming_with_callback(
+      request, max_body_bytes, completion,
+    ) {
     Ok(response) => Ok(response)
     Err(err) => {
       connection.close()

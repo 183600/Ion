@@ -1,23 +1,25 @@
+///|
 /// SOCKS5 scheme semantics: plain `socks5` resolves destination names
 /// locally, while `socks5h` delegates resolution to the proxy.
-
 struct Socks5ResolvingDialer {
   stream : &Stream
-  mut resolve_calls : Int
+  mut resolve_calls : Int32
   mut resolved_host : String
   mut dialed_host : String
 }
 
+///|
 pub impl Dialer for Socks5ResolvingDialer with fn dial_tcp(
   self : Socks5ResolvingDialer,
   host : String,
-  port : Int,
+  port : Int32,
 ) -> Result[&Stream, NetError] {
   let _ = port
   self.dialed_host = host
   Ok(self.stream)
 }
 
+///|
 pub impl Dialer for Socks5ResolvingDialer with fn resolve(
   self : Socks5ResolvingDialer,
   host : String,
@@ -27,9 +29,8 @@ pub impl Dialer for Socks5ResolvingDialer with fn resolve(
   Ok(@list.List(["192.0.2.7"]))
 }
 
-fn socks5_dns_stream(
-  input : Bytes,
-) -> RegressionMockStream {
+///|
+fn socks5_dns_stream(input : Bytes) -> RegressionMockStream {
   RegressionMockStream::{
     input,
     offset: 0,
@@ -41,6 +42,7 @@ fn socks5_dns_stream(
   }
 }
 
+///|
 fn socks5_dns_reply() -> Bytes {
   let server = Buffer(size_hint=128)
   server.write_bytes(socks5_test_bytes([5, 0, 5, 0, 0, 1, 127, 0, 0, 1, 0, 80]))
@@ -48,6 +50,7 @@ fn socks5_dns_reply() -> Bytes {
   server.to_bytes()
 }
 
+///|
 fn socks5_dns_prefix(output : Bytes, expected : Bytes) -> Bool {
   if output.length() < expected.length() {
     return false
@@ -62,6 +65,7 @@ fn socks5_dns_prefix(output : Bytes, expected : Bytes) -> Bool {
   true
 }
 
+///|
 fn socks5_dns_client(
   dialer : Socks5ResolvingDialer,
   proxy_url : String,

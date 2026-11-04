@@ -1,16 +1,20 @@
+///|
 /// A pooled connection can go stale between requests. A write may then fail
 /// before the peer receives the request, so idempotent requests should retry
 /// on a fresh connection just like a failed read.
-
 struct WriteFailureStream {
   input : Bytes
-  mut offset : Int
-  mut write_calls : Int
-  fail_write : Int
+  mut offset : Int32
+  mut write_calls : Int32
+  fail_write : Int32
   mut is_open : Bool
 }
 
-fn write_failure_stream(input : String, fail_write : Int) -> WriteFailureStream {
+///|
+fn write_failure_stream(
+  input : String,
+  fail_write : Int32,
+) -> WriteFailureStream {
   WriteFailureStream::{
     input: @utf8.encode(input),
     offset: 0,
@@ -20,10 +24,11 @@ fn write_failure_stream(input : String, fail_write : Int) -> WriteFailureStream 
   }
 }
 
+///|
 pub impl Stream for WriteFailureStream with fn read(
   self : WriteFailureStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -36,10 +41,11 @@ pub impl Stream for WriteFailureStream with fn read(
   Ok(1)
 }
 
+///|
 pub impl Stream for WriteFailureStream with fn write(
   self : WriteFailureStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -51,25 +57,30 @@ pub impl Stream for WriteFailureStream with fn write(
   Ok(buf.length())
 }
 
-pub impl Stream for WriteFailureStream with fn flush(
-  self : WriteFailureStream,
-) -> Result[Unit, NetError] {
+///|
+pub impl Stream for WriteFailureStream with fn flush(self : WriteFailureStream) -> Result[
+  Unit,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   Ok(())
 }
 
-pub impl Stream for WriteFailureStream with fn close(
-  self : WriteFailureStream,
-) -> Result[Unit, NetError] {
+///|
+pub impl Stream for WriteFailureStream with fn close(self : WriteFailureStream) -> Result[
+  Unit,
+  NetError,
+] {
   self.is_open = false
   Ok(())
 }
 
+///|
 pub impl Stream for WriteFailureStream with fn set_timeout(
   self : WriteFailureStream,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Unit, NetError] {
   let _ = timeout_ms
   if !self.is_open {
@@ -78,6 +89,7 @@ pub impl Stream for WriteFailureStream with fn set_timeout(
   Ok(())
 }
 
+///|
 pub impl Stream for WriteFailureStream with fn peer_addr(
   self : WriteFailureStream,
 ) -> Result[String, NetError] {
@@ -87,6 +99,7 @@ pub impl Stream for WriteFailureStream with fn peer_addr(
   Ok("mock:0")
 }
 
+///|
 pub impl Stream for WriteFailureStream with fn local_addr(
   self : WriteFailureStream,
 ) -> Result[String, NetError] {
@@ -96,10 +109,11 @@ pub impl Stream for WriteFailureStream with fn local_addr(
   Ok("mock:0")
 }
 
+///|
 fn write_retry_client(
   streams : Array[&Stream],
 ) -> (UnifiedClient, RegressionQueueDialer) {
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let client = UnifiedClient::{
     connector,
@@ -109,14 +123,13 @@ fn write_retry_client(
   (client, dialer)
 }
 
+///|
 test "idempotent request retries when writing to a stale pooled connection fails" {
   let stale = write_failure_stream(
-    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
-    2,
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok", 2,
   )
   let fresh = write_failure_stream(
-    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
-    2,
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok", 2,
   )
   let streams : Array[&Stream] = [stale, fresh]
   let (client, dialer) = write_retry_client(streams)
@@ -130,14 +143,13 @@ test "idempotent request retries when writing to a stale pooled connection fails
   let _ = client.close_all()
 }
 
+///|
 test "non-idempotent request is not retried after a stale write failure" {
   let stale = write_failure_stream(
-    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
-    2,
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok", 2,
   )
   let unused = write_failure_stream(
-    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
-    2,
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok", 2,
   )
   let streams : Array[&Stream] = [stale, unused]
   let (client, dialer) = write_retry_client(streams)

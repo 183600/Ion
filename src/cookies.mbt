@@ -1,13 +1,17 @@
+///|
 /// Maximum serialized size of a single `Set-Cookie` value. RFC 6265 §6.1
 /// requires implementations to support at least 4096 bytes per cookie; larger
 /// cookies are ignored rather than partially stored.
-const MAX_COOKIE_BYTES : Int = 4096
+const MAX_COOKIE_BYTES : Int32 = 4096
 
+///|
 /// RFC 6265 §6.1 requires supporting at least 50 cookies per domain and
 /// 3000 cookies overall. Older cookies are evicted first to stay within
 /// those bounds.
-const MAX_COOKIES_PER_DOMAIN : Int = 50
-const MAX_TOTAL_COOKIES : Int = 3000
+const MAX_COOKIES_PER_DOMAIN : Int32 = 50
+
+///|
+const MAX_TOTAL_COOKIES : Int32 = 3000
 
 /// Minimal RFC 6265 cookie jar.
 ///
@@ -124,15 +128,20 @@ fn cookie_valid_name(name : String) -> Bool {
 
 ///|
 fn cookie_octet(ch : Char) -> Bool {
-  ch == '!' || (ch >= '#' && ch <= '+') || (ch >= '-' && ch <= ':') ||
-  (ch >= '<' && ch <= '[') || (ch >= ']' && ch <= '~')
+  ch == '!' ||
+  (ch >= '#' && ch <= '+') ||
+  (ch >= '-' && ch <= ':') ||
+  (ch >= '<' && ch <= '[') ||
+  (ch >= ']' && ch <= '~')
 }
 
+///|
 fn cookie_valid_value(value : String) -> Bool {
   // RFC 6265 §4.1.1 allows `*cookie-octet` or a double-quoted
   // `*cookie-octet`. Whitespace, commas, backslashes and non-ASCII bytes are
   // not cookie-octets and would make the resulting Cookie header ambiguous.
-  let body = if value.length() >= 2 && value.get_char(0) == Some('"') &&
+  let body = if value.length() >= 2 &&
+    value.get_char(0) == Some('"') &&
     value.get_char(value.length() - 1) == Some('"') {
     value[1:value.length() - 1]
   } else {
@@ -167,13 +176,13 @@ fn cookie_default_path(url : Url) -> String {
   }
 }
 
+///|
 /// Whether bracketing distinguishes this cookie's authority. IPv4 and IPv6
 /// literals have canonical textual forms, so their bracketed and unbracketed
 /// spellings denote the same authority. Bracketed IPvFuture text, however,
 /// looks like a DNS name and must stay distinct from that name.
 fn cookie_bracket_identity(bracketed : Bool, domain : String) -> Bool {
-  bracketed && !is_ipv4_literal(domain) &&
-  !is_ipv6_literal_with_zone(domain)
+  bracketed && !is_ipv4_literal(domain) && !is_ipv6_literal_with_zone(domain)
 }
 
 ///|
@@ -188,6 +197,7 @@ fn cookie_same_identity(a : Cookie, b : Cookie) -> Bool {
   cookie_bracket_identity(b.bracketed, b.domain)
 }
 
+///|
 /// Whether `host` falls inside the scope of `cookie`'s domain. This is the
 /// §5.1.3 domain-match relation applied to another cookie's domain, used by
 /// the secure-cookie overlay protection below.
@@ -196,11 +206,14 @@ fn cookie_domain_scope_matches(
   host : String,
   bracketed : Bool,
 ) -> Bool {
-  let literal_host = bracketed || is_ipv4_literal(host) ||
-    is_numeric_dotted_host(host) || is_ipv6_literal_with_zone(host)
+  let literal_host = bracketed ||
+    is_ipv4_literal(host) ||
+    is_numeric_dotted_host(host) ||
+    is_ipv6_literal_with_zone(host)
   cookie_domain_matches(cookie, host, literal_host, bracketed)
 }
 
+///|
 /// Whether a new non-secure cookie would overlay an existing secure cookie.
 /// RFC 6265bis §5.7 step 16 compares domains with domain-match (in either
 /// direction) and checks that the new path path-matches the old one; exact
@@ -211,8 +224,10 @@ fn cookie_overlays_secure(existing : Cookie, candidate : Cookie) -> Bool {
   existing.secure &&
   cookie_bracket_identity(existing.bracketed, existing.domain) ==
   cookie_bracket_identity(candidate.bracketed, candidate.domain) &&
-  (cookie_domain_scope_matches(existing, candidate.domain, candidate.bracketed) ||
-    cookie_domain_scope_matches(candidate, existing.domain, existing.bracketed)) &&
+  (
+    cookie_domain_scope_matches(existing, candidate.domain, candidate.bracketed) ||
+    cookie_domain_scope_matches(candidate, existing.domain, existing.bracketed)
+  ) &&
   cookie_path_matches(existing.path, candidate.path)
 }
 
@@ -224,6 +239,7 @@ fn cookie_expired(cookie : Cookie, now_ms : UInt64) -> Bool {
   }
 }
 
+///|
 /// Format the canonical (RFC 5952) text of one IPv6 address. Keeping a single
 /// spelling is important for cookie identity: the same address may be written
 /// in expanded, uppercase, or compressed form by different requests.
@@ -282,7 +298,8 @@ fn cookie_format_ipv6(address : Bytes) -> String {
 ///|
 fn cookie_canonical_host(host : String) -> String {
   let host = lowercase_host_preserving_zone(host)
-  let host = if host.length() > 1 && host.has_suffix(".") &&
+  let host = if host.length() > 1 &&
+    host.has_suffix(".") &&
     !is_ipv6_literal_with_zone(host) {
     host[0:host.length() - 1].to_owned()
   } else {
@@ -331,7 +348,8 @@ fn cookie_domain_matches(
   if host == cookie.domain {
     return true
   }
-  !is_ipv4_literal(host) && !is_ipv6_literal_with_zone(host) &&
+  !is_ipv4_literal(host) &&
+  !is_ipv6_literal_with_zone(host) &&
   host.has_suffix("." + cookie.domain)
 }
 
@@ -354,8 +372,11 @@ fn cookie_path_matches(cookie_path : String, request_path : String) -> Bool {
 // RFC 6265 §5.1.1: date-tokens are separated by any delimiter character,
 // not just spaces. Colons remain inside time tokens.
 fn cookie_is_date_delimiter(ch : Char) -> Bool {
-  ch == '\t' || (ch >= ' ' && ch <= '/') || (ch >= ';' && ch <= '@') ||
-  (ch >= '[' && ch <= '`') || (ch >= '{' && ch <= '~')
+  ch == '\t' ||
+  (ch >= ' ' && ch <= '/') ||
+  (ch >= ';' && ch <= '@') ||
+  (ch >= '[' && ch <= '`') ||
+  (ch >= '{' && ch <= '~')
 }
 
 ///|
@@ -387,11 +408,7 @@ fn cookie_month(value : String) -> Int32? {
   // RFC 6265 §5.1.1: month = ( "jan" / ... / "dec" ) *OCTET. Only the
   // three-letter prefix is significant, so both "Sept" and "September" work.
   let lower = value.to_lower()
-  let prefix = if lower.length() > 3 {
-    lower[0:3].to_owned()
-  } else {
-    lower
-  }
+  let prefix = if lower.length() > 3 { lower[0:3].to_owned() } else { lower }
   match prefix {
     "jan" => Some(1)
     "feb" => Some(2)
@@ -440,10 +457,15 @@ fn cookie_parse_decimal(value : String) -> Int32? {
   Some(parsed)
 }
 
+///|
 /// Parse between `min` and `max` leading digits. RFC 6265 date productions
 /// allow the digits to be followed by `non-digit *OCTET`, so the remainder is
 /// accepted as long as it does not start with another digit.
-fn cookie_leading_number(value : String, min_digits : Int, max_digits : Int) -> Int32? {
+fn cookie_leading_number(
+  value : String,
+  min_digits : Int32,
+  max_digits : Int32,
+) -> Int32? {
   let mut index = 0
   let mut number : Int32 = 0
   while index < value.length() && index < max_digits {
@@ -492,6 +514,7 @@ fn cookie_parse_year(value : String) -> Int32? {
   Some(normalized)
 }
 
+///|
 /// Whether a token has the shape of an RFC 6265 hms-time production,
 /// independent of whether its fields are in range. This distinction matters:
 /// a token that matches the time grammar but has an invalid minute is a hard
@@ -510,8 +533,10 @@ fn cookie_is_time_token(value : String) -> Bool {
   let hour_text = value[0:first_colon].to_owned()
   let minute_text = rest[0:second_colon].to_owned()
   let second_text = rest[second_colon + 1:].to_owned()
-  if hour_text.length() < 1 || hour_text.length() > 2 ||
-    minute_text.length() < 1 || minute_text.length() > 2 {
+  if hour_text.length() < 1 ||
+    hour_text.length() > 2 ||
+    minute_text.length() < 1 ||
+    minute_text.length() > 2 {
     return false
   }
   if cookie_parse_decimal(hour_text) is None ||
@@ -537,8 +562,10 @@ fn cookie_parse_clock(value : String) -> (Int32, Int32, Int32)? {
   let hour_text = value[0:first_colon].to_owned()
   let minute_text = rest[0:second_colon].to_owned()
   let second_text = rest[second_colon + 1:].to_owned()
-  if hour_text.length() < 1 || hour_text.length() > 2 ||
-    minute_text.length() < 1 || minute_text.length() > 2 {
+  if hour_text.length() < 1 ||
+    hour_text.length() > 2 ||
+    minute_text.length() < 1 ||
+    minute_text.length() > 2 {
     return None
   }
   let hour = match cookie_parse_decimal(hour_text) {
@@ -698,9 +725,7 @@ fn cookie_parse_max_age(value : String) -> Int64? {
   if !is_decimal_digits(digits) {
     return None
   }
-  let seconds = try {
-    @string.parse_int64(text[:])
-  } catch {
+  let seconds = @string.parse_int64(text[:]) catch {
     _ => if negative { -9223372036854775808L } else { 9223372036854775807L }
   }
   Some(seconds)
@@ -841,11 +866,15 @@ fn cookie_from_set_cookie(
         }
         // Bracketed IPvFuture literals have DNS-looking text but are still IP
         // literals; they must never be treated as a domain suffix.
-        let literal_host = url.bracketed || is_ipv4_literal(host) ||
-          is_numeric_dotted_host(host) || is_ipv6_literal_with_zone(host)
+        let literal_host = url.bracketed ||
+          is_ipv4_literal(host) ||
+          is_numeric_dotted_host(host) ||
+          is_ipv6_literal_with_zone(host)
         if valid_url_host_chars(candidate) &&
-          (host == candidate ||
-            (!literal_host && host.has_suffix("." + candidate))) {
+          (
+            host == candidate ||
+            (!literal_host && host.has_suffix("." + candidate))
+          ) {
           domain = candidate
           // RFC 6265bis: a Domain attribute for an IP address host, or for a
           // public-suffix label identical to the request host, is ignored,
@@ -877,12 +906,14 @@ fn cookie_from_set_cookie(
     return None
   }
   if lower_name.has_prefix("__host-") &&
-    (!secure ||
+    (
+      !secure ||
       !host_only ||
       !path_attribute_seen ||
       !path_attribute_is_root ||
       path != "/" ||
-      domain_attribute_seen) {
+      domain_attribute_seen
+    ) {
     return None
   }
   Some(Cookie::{
@@ -899,14 +930,18 @@ fn cookie_from_set_cookie(
   })
 }
 
+///|
 /// Whether `candidate` should be evicted before `current`: earliest
 /// last-access time wins, with creation order breaking ties deterministically.
 fn cookie_older(candidate : Cookie, current : Cookie) -> Bool {
   candidate.last_access_ms < current.last_access_ms ||
-  (candidate.last_access_ms == current.last_access_ms &&
-    candidate.creation < current.creation)
+  (
+    candidate.last_access_ms == current.last_access_ms &&
+    candidate.creation < current.creation
+  )
 }
 
+///|
 /// Find the least-recently-used cookie in `domain`. When `secure_filter` is
 /// set, only cookies with that secure-only flag are considered.
 fn cookie_oldest_in_domain(
@@ -920,17 +955,16 @@ fn cookie_oldest_in_domain(
       continue
     }
     match secure_filter {
-      Some(expected) => if candidate.secure != expected {
-        continue
-      }
+      Some(expected) => if candidate.secure != expected { continue }
       None => ()
     }
     oldest = match oldest {
-      Some(current) => if cookie_older(candidate, current) {
-        Some(candidate)
-      } else {
-        Some(current)
-      }
+      Some(current) =>
+        if cookie_older(candidate, current) {
+          Some(candidate)
+        } else {
+          Some(current)
+        }
       None => Some(candidate)
     }
   }
@@ -942,11 +976,12 @@ fn cookie_oldest(cookies : List[Cookie]) -> Cookie? {
   let mut oldest : Cookie? = None
   for candidate in cookies {
     oldest = match oldest {
-      Some(current) => if cookie_older(candidate, current) {
-        Some(candidate)
-      } else {
-        Some(current)
-      }
+      Some(current) =>
+        if cookie_older(candidate, current) {
+          Some(candidate)
+        } else {
+          Some(current)
+        }
       None => Some(candidate)
     }
   }
@@ -1005,7 +1040,7 @@ fn CookieJar::store_parsed(
     }
   }
   let mut remaining = @list.List([])
-  let mut preserved_creation : Int? = None
+  let mut preserved_creation : Int32? = None
   for existing in self.cookies {
     if cookie_same_identity(existing, cookie) {
       if !cookie_expired(existing, now_ms) {
@@ -1098,8 +1133,10 @@ pub fn CookieJar::cookie_header_at(
   // was legitimately set from a DNS name such as `foo.127.0.0.1` could be
   // replayed to the literal address `127.0.0.1.`.
   let host = cookie_canonical_host(url.host)
-  let literal_host = url.bracketed || is_ipv4_literal(host) ||
-    is_numeric_dotted_host(host) || is_ipv6_literal_with_zone(host)
+  let literal_host = url.bracketed ||
+    is_ipv4_literal(host) ||
+    is_numeric_dotted_host(host) ||
+    is_ipv6_literal_with_zone(host)
   let candidates : Array[Cookie] = []
   let mut alive = @list.List([])
   for cookie in self.cookies {
@@ -1111,7 +1148,7 @@ pub fn CookieJar::cookie_header_at(
       (!cookie.secure || secure) {
       // Retrieval refreshes last-access for the cookies actually sent, so
       // later eviction prefers genuinely unused cookies.
-      let current = Cookie::{ ..cookie, last_access_ms: now_ms }
+      let current = Cookie::{ ..cookie, last_access_ms: now_ms, }
       alive = alive.prepend(current)
       candidates.push(current)
     } else {

@@ -1,9 +1,6 @@
 ///|
 test "CLI arguments skip the executable prefix" {
-  let request = parse_cli_args([
-    "/usr/bin/feather",
-    "http://example.com/path",
-  ]).unwrap()
+  let request = parse_cli_args(["/usr/bin/feather", "http://example.com/path"]).unwrap()
   assert_eq(request.method_text, "")
   assert_eq(request.url, "http://example.com/path")
   assert_eq(request.body, "")
@@ -12,10 +9,7 @@ test "CLI arguments skip the executable prefix" {
 ///|
 test "CLI accepts a method, URL, and optional body" {
   let request = parse_cli_args([
-    "/usr/bin/feather",
-    "post",
-    "https://example.com/submit",
-    "payload",
+    "/usr/bin/feather", "post", "https://example.com/submit", "payload",
   ]).unwrap()
   assert_eq(request.method_text, "post")
   assert_eq(request.url, "https://example.com/submit")
@@ -25,15 +19,15 @@ test "CLI accepts a method, URL, and optional body" {
 ///|
 test "CLI preserves extension method spelling" {
   let request = parse_cli_args([
-    "/usr/bin/feather",
-    "PROPFIND",
-    "https://example.com/dav",
-    "depth",
+    "/usr/bin/feather", "PROPFIND", "https://example.com/dav", "depth",
   ]).unwrap()
   assert_eq(request.method_text, "PROPFIND")
   assert_eq(request.url, "https://example.com/dav")
   assert_eq(request.body, "depth")
-  assert_eq(HttpMethod::custom(request.method_text).unwrap(), Custom("PROPFIND"))
+  assert_eq(
+    HttpMethod::custom(request.method_text).unwrap(),
+    Custom("PROPFIND"),
+  )
 }
 
 ///|
@@ -46,15 +40,16 @@ test "CLI handles the no-argument case" {
 
 ///|
 test "CLI methods map to their HTTP verbs" {
-  for (text, verb) in [
-    ("get", GET),
-    ("post", POST),
-    ("put", PUT),
-    ("delete", DELETE),
-    ("head", HEAD),
-    ("options", OPTIONS),
-    ("patch", PATCH),
-  ] {
+  for
+    (text, verb) in [
+      ("get", GET),
+      ("post", POST),
+      ("put", PUT),
+      ("delete", DELETE),
+      ("head", HEAD),
+      ("options", OPTIONS),
+      ("patch", PATCH),
+    ] {
     assert_true(HttpMethod::parse(text) is Ok(_))
     assert_eq(HttpMethod::parse(text).unwrap(), verb)
   }
@@ -63,7 +58,7 @@ test "CLI methods map to their HTTP verbs" {
 
 ///|
 test "TLS config carries a key-log sink" {
-  let capturing = CapturingKeyLogSink::{ lines: [] }
+  let capturing = CapturingKeyLogSink::{ lines: [], }
   let config = TlsConfig::new("example.com").with_key_log(capturing)
   assert_true(config.key_log is Some(_))
   capturing.log("CLIENT_RANDOM", @utf8.encode("CLIENT_RANDOM abc def"))
@@ -73,7 +68,7 @@ test "TLS config carries a key-log sink" {
 
 ///|
 test "the print key-log sink can be constructed" {
-  let sink : &KeyLogSink = PrintKeyLogSink::{}
+  let sink : &KeyLogSink = PrintKeyLogSink::{ }
   sink.log("LABEL", @utf8.encode("LABEL x y"))
 }
 
@@ -94,6 +89,8 @@ impl KeyLogSink for CapturingKeyLogSink with fn log(
 
 ///|
 test "CLI reports response body read errors" {
-  let response = Response::new(200, Headers::new(), ReadErrorStream::{ is_open: true })
+  let response = Response::new(200, Headers::new(), ReadErrorStream::{
+    is_open: true,
+  })
   assert_false(print_response(response))
 }

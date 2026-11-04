@@ -1,4 +1,5 @@
-fn gzip_member_ints(ints : Array[Int]) -> Bytes {
+///|
+fn gzip_member_ints(ints : Array[Int32]) -> Bytes {
   let output = Buffer(size_hint=ints.length())
   for value in ints {
     output.write_byte(value.to_byte())
@@ -6,6 +7,7 @@ fn gzip_member_ints(ints : Array[Int]) -> Bytes {
   output.to_bytes()
 }
 
+///|
 /// A gzip payload may contain many concatenated members. Decoding each member
 /// must continue from a view of the remaining input rather than copying the
 /// whole tail every time; this exercises a long member chain and confirms the
@@ -17,8 +19,8 @@ test "gzip decodes a long concatenated member chain" {
   ])
   // Final member carrying "done".
   let done = gzip_member_ints([
-    31, 139, 8, 0, 0, 0, 0, 0, 2, 3, 75, 201, 207, 75, 5, 0, 171, 224, 45,
-    16, 4, 0, 0, 0,
+    31, 139, 8, 0, 0, 0, 0, 0, 2, 3, 75, 201, 207, 75, 5, 0, 171, 224, 45, 16, 4,
+    0, 0, 0,
   ])
   let input = Buffer(size_hint=empty.length() * 20000 + done.length())
   let mut index = 0

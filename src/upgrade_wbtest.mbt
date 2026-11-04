@@ -22,14 +22,16 @@ test "Request::with_upgrade merges the Connection nomination" {
 test "HTTP/1 upgrade exposes a writable tunnel after 101" {
   let stream = regression_mock_stream(
     "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n",
-    0,
-    0,
+    0, 0,
   )
   let codec = H1Codec::new(stream)
-  codec.encode_request(
-    Request::new(GET, Url::parse("http://example.com/socket").unwrap())
-      .with_upgrade("websocket"),
-  ).unwrap()
+  codec
+  .encode_request(
+    Request::new(GET, Url::parse("http://example.com/socket").unwrap()).with_upgrade(
+      "websocket",
+    ),
+  )
+  .unwrap()
   let wire = @utf8.decode_lossy(stream.output.to_bytes()[:])
   assert_true(wire.contains("Connection: Upgrade\r\n"))
   assert_true(wire.contains("Upgrade: websocket\r\n"))
@@ -52,14 +54,16 @@ test "HTTP/1 upgrade exposes a writable tunnel after 101" {
 test "HTTP/1 upgrade streams server bytes as body data" {
   let stream = regression_mock_stream(
     "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\nserver",
-    0,
-    0,
+    0, 0,
   )
   let codec = H1Codec::new(stream)
-  codec.encode_request(
-    Request::new(GET, Url::parse("http://example.com/socket").unwrap())
-      .with_upgrade("websocket"),
-  ).unwrap()
+  codec
+  .encode_request(
+    Request::new(GET, Url::parse("http://example.com/socket").unwrap()).with_upgrade(
+      "websocket",
+    ),
+  )
+  .unwrap()
   let response = codec.decode_response().unwrap()
   assert_eq(response.status, 101)
   assert_eq(response.read_body().unwrap(), b"server")
@@ -70,14 +74,16 @@ test "HTTP/1 upgrade streams server bytes as body data" {
 test "HTTP/1 upgrade rejects framing headers on 101" {
   let stream = regression_mock_stream(
     "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nContent-Length: 4\r\n\r\n",
-    0,
-    0,
+    0, 0,
   )
   let codec = H1Codec::new(stream)
-  codec.encode_request(
-    Request::new(GET, Url::parse("http://example.com/socket").unwrap())
-      .with_upgrade("websocket"),
-  ).unwrap()
+  codec
+  .encode_request(
+    Request::new(GET, Url::parse("http://example.com/socket").unwrap()).with_upgrade(
+      "websocket",
+    ),
+  )
+  .unwrap()
   match codec.decode_response() {
     Ok(_) => fail("101 response with framing headers was accepted")
     Err(err) => assert_true(err is ProtocolError(_))
@@ -88,10 +94,9 @@ test "HTTP/1 upgrade rejects framing headers on 101" {
 test "UnifiedClient keeps an HTTP/1 upgrade tunnel out of the pool" {
   let stream = regression_mock_stream(
     "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\nhello",
-    0,
-    0,
+    0, 0,
   )
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let client = UnifiedClient::{
     connector,
@@ -115,10 +120,7 @@ test "UnifiedClient keeps an HTTP/1 upgrade tunnel out of the pool" {
 test "HTTP/2 extended CONNECT carries the upgraded protocol and target" {
   let url = Url::parse("https://example.com/socket?x=1").unwrap()
   let request = Request::new(GET, url).with_upgrade("websocket")
-  let fields = h2_request_headers_with_protocol(
-    request,
-    Some("websocket"),
-  ).unwrap()
+  let fields = h2_request_headers_with_protocol(request, Some("websocket")).unwrap()
   assert_eq(h2_test_header_value(fields, ":method"), Some("CONNECT"))
   assert_eq(h2_test_header_value(fields, ":scheme"), Some("https"))
   assert_eq(h2_test_header_value(fields, ":authority"), Some("example.com"))
@@ -149,10 +151,7 @@ test "HTTP/2 rejects an invalid extended CONNECT setting" {
     match h2_apply_settings(payload, flow) {
       Ok(_) => fail("invalid SETTINGS_ENABLE_CONNECT_PROTOCOL was accepted")
       Err(err) =>
-        assert_eq(
-          err,
-          ProtocolError("Invalid HTTP/2 enable connect protocol"),
-        )
+        assert_eq(err, ProtocolError("Invalid HTTP/2 enable connect protocol"))
     }
   }
 }
@@ -266,17 +265,16 @@ test "UnifiedClient keeps an HTTP/2 upgrade lease until the tunnel closes" {
     h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, response_headers),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2"), }
   let client = UnifiedClient::with_transport(
     dialer,
     provider,
     ClientOptions::new().with_follow_redirects(false),
   )
-  let request = Request::from_url(
-    GET,
-    "https://example.com/socket",
-  ).unwrap().with_upgrade("websocket")
+  let request = Request::from_url(GET, "https://example.com/socket")
+    .unwrap()
+    .with_upgrade("websocket")
   let response = client.request(request).unwrap()
   assert_eq(response.status, 200)
   assert_eq(client.connector.pool.val.active.length(), 1)
@@ -288,22 +286,24 @@ test "UnifiedClient keeps an HTTP/2 upgrade lease until the tunnel closes" {
 ///|
 test "HTTP/1 upgrade requires a matching confirmation from the server" {
   let url = Url::parse("http://example.com/socket").unwrap()
-  for raw in [
-    "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: h2c\r\n\r\n",
-    "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\n\r\n",
-    "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n\r\n",
-  ] {
+  for
+    raw in [
+      "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: h2c\r\n\r\n",
+      "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\n\r\n", "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n\r\n",
+    ] {
     let stream = regression_mock_stream(raw, 0, 0)
     let codec = H1Codec::new(stream)
-    codec.encode_request(
-      Request::new(GET, url).with_upgrade("websocket"),
-    ).unwrap()
+    codec
+    .encode_request(Request::new(GET, url).with_upgrade("websocket"))
+    .unwrap()
     match codec.decode_response() {
       Ok(_) => fail("unconfirmed HTTP/1 upgrade was accepted")
       Err(err) =>
         assert_eq(
           err,
-          ProtocolError("HTTP/1.1 101 response does not confirm the requested upgrade"),
+          ProtocolError(
+            "HTTP/1.1 101 response does not confirm the requested upgrade",
+          ),
         )
     }
     assert_false(stream.is_open)
@@ -324,6 +324,7 @@ test "HTTP/1 upgrade protocols must be HTTP tokens" {
   }
 }
 
+///|
 test "Upgrade requires a Connection upgrade nomination" {
   let url = Url::parse("http://example.com/socket").unwrap()
   let request = Request::new(GET, url).with_header("Upgrade", "websocket")
@@ -344,11 +345,12 @@ test "Upgrade requires a Connection upgrade nomination" {
   }
 }
 
+///|
 test "HTTP/2 rejects an Upgrade protocol it cannot express" {
   let request = Request::new(
-    GET,
-    Url::parse("https://example.com/socket").unwrap(),
-  )
+      GET,
+      Url::parse("https://example.com/socket").unwrap(),
+    )
     .with_header("Connection", "upgrade")
     .with_header("Upgrade", "bad protocol")
   let stream = h2_frame_mock_stream(h2_test_settings(), 0)

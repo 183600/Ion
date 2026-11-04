@@ -16,10 +16,7 @@ test "CLI keeps method-only arguments case-insensitive" {
 
 ///|
 test "CLI does not mistake a lone URL for a method" {
-  let request = parse_cli_args([
-    "/usr/bin/feather",
-    "HTTPS://example.com/x",
-  ]).unwrap()
+  let request = parse_cli_args(["/usr/bin/feather", "HTTPS://example.com/x"]).unwrap()
   assert_eq(request.method_text, "")
   assert_eq(request.url, "HTTPS://example.com/x")
   assert_eq(request.body, "")

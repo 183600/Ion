@@ -23,7 +23,9 @@ test "http2 combines split cookie fields into one header" {
       header_frame = Some(frame)
     }
   }
-  let fields = HpackDecoder::new().decode(header_frame.unwrap().payload).unwrap()
+  let fields = HpackDecoder::new()
+    .decode(header_frame.unwrap().payload)
+    .unwrap()
   assert_eq(h2_test_header_value(fields, "cookie"), Some("a=1; b=2"))
   let mut cookie_fields = 0
   for field in fields {
@@ -47,8 +49,9 @@ test "http2 keeps a single cookie field unchanged" {
     ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
-    .with_header("Cookie", "session=abc")
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap()).with_header(
+    "Cookie", "session=abc",
+  )
   let _ = h2_request(stream, request).unwrap()
   let frames = h2_test_client_frames(stream)
   let mut header_frame : H2Frame? = None
@@ -57,7 +60,9 @@ test "http2 keeps a single cookie field unchanged" {
       header_frame = Some(frame)
     }
   }
-  let fields = HpackDecoder::new().decode(header_frame.unwrap().payload).unwrap()
+  let fields = HpackDecoder::new()
+    .decode(header_frame.unwrap().payload)
+    .unwrap()
   assert_eq(h2_test_header_value(fields, "cookie"), Some("session=abc"))
 }
 

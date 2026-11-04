@@ -1,12 +1,8 @@
+///|
 test "http2 applies buffered connection frames after a next-stream window update" {
   let input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(
-      H2_FRAME_WINDOW_UPDATE,
-      0,
-      1,
-      h2_window_update_payload(1),
-    ),
+    h2_test_frame(H2_FRAME_WINDOW_UPDATE, 0, 1, h2_window_update_payload(1)),
     h2_test_frame(
       H2_FRAME_GOAWAY,
       0,

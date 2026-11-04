@@ -1,3 +1,4 @@
+///|
 /// Proxy configuration.
 ///
 /// Feather supports `http://` and `https://` forward proxies as well as
@@ -16,6 +17,7 @@ pub struct Proxy {
   socks_password : Bytes?
 }
 
+///|
 fn proxy_userinfo(url : String) -> String? {
   let scheme_end = match url.find("://") {
     Some(index) => index
@@ -33,12 +35,11 @@ fn proxy_userinfo(url : String) -> String? {
   }
 }
 
+///|
 fn proxy_basic_authorization(userinfo : String) -> Result[String, HttpError] {
   let (user, password) = match userinfo.find(":") {
-    Some(index) => (
-      userinfo[0:index].to_owned(),
-      userinfo[index + 1:].to_owned(),
-    )
+    Some(index) =>
+      (userinfo[0:index].to_owned(), userinfo[index + 1:].to_owned())
     None => (userinfo, "")
   }
   let user = percent_decode_bytes(user)
@@ -54,12 +55,13 @@ fn proxy_basic_authorization(userinfo : String) -> Result[String, HttpError] {
   Ok(@base64.encode(credentials.to_bytes()))
 }
 
-fn proxy_socks5_credentials(userinfo : String) -> Result[(Bytes, Bytes), HttpError] {
+///|
+fn proxy_socks5_credentials(
+  userinfo : String,
+) -> Result[(Bytes, Bytes), HttpError] {
   let (user, password) = match userinfo.find(":") {
-    Some(index) => (
-      userinfo[0:index].to_owned(),
-      userinfo[index + 1:].to_owned(),
-    )
+    Some(index) =>
+      (userinfo[0:index].to_owned(), userinfo[index + 1:].to_owned())
     None => (userinfo, "")
   }
   let username = percent_decode_bytes(user)
@@ -70,6 +72,7 @@ fn proxy_socks5_credentials(userinfo : String) -> Result[(Bytes, Bytes), HttpErr
   }
 }
 
+///|
 fn proxy_from_url(url : String, scheme : String) -> Result[Proxy, HttpError] {
   let parsed = match Url::parse(url) {
     Ok(parsed) => parsed
@@ -82,9 +85,14 @@ fn proxy_from_url(url : String, scheme : String) -> Result[Proxy, HttpError] {
   // also reject the raw delimiters. This catches URLs such as
   // `http://proxy.example?` and `http://proxy.example#` that parse to an
   // empty query/fragment but still contain those components.
-  if url.contains("?") || url.contains("#") || parsed.path != "/" ||
-    parsed.query.length() > 0 || parsed.fragment.length() > 0 {
-    return Err(InvalidUrl("Proxy URL must not include a path, query, or fragment"))
+  if url.contains("?") ||
+    url.contains("#") ||
+    parsed.path != "/" ||
+    parsed.query.length() > 0 ||
+    parsed.fragment.length() > 0 {
+    return Err(
+      InvalidUrl("Proxy URL must not include a path, query, or fragment"),
+    )
   }
   let authorization = match proxy_userinfo(url) {
     Some(userinfo) =>
@@ -107,12 +115,14 @@ fn proxy_from_url(url : String, scheme : String) -> Result[Proxy, HttpError] {
   })
 }
 
+///|
 /// Create an HTTP proxy from an `http://`
 /// `[user:password@]host[:port]` URL.
 pub fn Proxy::new(url : String) -> Result[Proxy, HttpError] {
   proxy_from_url(url, "http")
 }
 
+///|
 /// Create an HTTPS proxy from an `https://`
 /// `[user:password@]host[:port]` URL. The connection to the proxy is
 /// protected with TLS before any proxy request is sent.
@@ -120,6 +130,7 @@ pub fn Proxy::new_https(url : String) -> Result[Proxy, HttpError] {
   proxy_from_url(url, "https")
 }
 
+///|
 /// Create a SOCKS5 proxy from a `socks5://` or `socks5h://`
 /// `[user:password@]host[:port]` URL. The default port is 1080. `socks5h`
 /// sends the target host name so DNS resolution happens on the proxy side;
@@ -141,9 +152,14 @@ pub fn Proxy::new_socks5(url : String) -> Result[Proxy, HttpError] {
     Ok(parsed) => parsed
     Err(err) => return Err(err)
   }
-  if rest.contains("?") || rest.contains("#") || parsed.path != "/" ||
-    parsed.query.length() > 0 || parsed.fragment.length() > 0 {
-    return Err(InvalidUrl("Proxy URL must not include a path, query, or fragment"))
+  if rest.contains("?") ||
+    rest.contains("#") ||
+    parsed.path != "/" ||
+    parsed.query.length() > 0 ||
+    parsed.fragment.length() > 0 {
+    return Err(
+      InvalidUrl("Proxy URL must not include a path, query, or fragment"),
+    )
   }
   let authority_end = match find_first_delimiter(rest) {
     Some(index) => index
@@ -190,17 +206,18 @@ pub fn Proxy::new_socks5(url : String) -> Result[Proxy, HttpError] {
     None => (None, None)
   }
   Ok(Proxy::{
-    url: Url::{ ..parsed, scheme, port },
+    url: Url::{ ..parsed, scheme, port, },
     authorization: None,
     socks_username,
     socks_password,
   })
 }
 
+///|
 /// Create a SOCKS5 proxy with username/password authentication.
 pub fn Proxy::new_socks5_with_auth(
   host : String,
-  port : Int,
+  port : Int32,
   username : String,
   password : String,
 ) -> Result[Proxy, HttpError] {
@@ -225,6 +242,7 @@ pub fn Proxy::new_socks5_with_auth(
   })
 }
 
+///|
 /// Parse a proxy URL, accepting the schemes Feather can route through. A bare
 /// `host:port` value selects an HTTP proxy, matching the convention used by
 /// the standard proxy environment variables.
@@ -244,10 +262,11 @@ pub fn Proxy::parse(url : String) -> Result[Proxy, HttpError] {
   }
 }
 
+///|
 /// Create a proxy that authenticates with the given credentials.
 pub fn Proxy::new_with_basic_auth(
   host : String,
-  port : Int,
+  port : Int32,
   username : String,
   password : String,
 ) -> Result[Proxy, HttpError] {
@@ -270,22 +289,26 @@ pub fn Proxy::new_with_basic_auth(
   })
 }
 
+///|
 /// Host and port of the proxy server.
 pub fn Proxy::authority(self : Proxy) -> String {
   self.url.authority()
 }
 
+///|
 /// Whether the connection to the proxy itself must use TLS.
 pub fn Proxy::is_secure(self : Proxy) -> Bool {
   self.url.scheme.to_lower() == "https"
 }
 
+///|
 /// Whether this proxy is a SOCKS5 tunnel.
 pub fn Proxy::is_socks5(self : Proxy) -> Bool {
   let scheme = self.url.scheme.to_lower()
   scheme == "socks5" || scheme == "socks5h"
 }
 
+///|
 /// Whether this is a SOCKS5 proxy that resolves destination names on the proxy
 /// side (`socks5h`). Plain `socks5` resolves names locally and sends an
 /// address, matching the convention used by curl and other clients.
@@ -293,6 +316,7 @@ pub fn Proxy::is_socks5h(self : Proxy) -> Bool {
   self.url.scheme.to_lower() == "socks5h"
 }
 
+///|
 /// SOCKS5 username/password credentials, if configured.
 pub fn Proxy::socks_credentials(self : Proxy) -> (Bytes, Bytes)? {
   match (self.socks_username, self.socks_password) {
@@ -301,11 +325,13 @@ pub fn Proxy::socks_credentials(self : Proxy) -> (Bytes, Bytes)? {
   }
 }
 
+///|
 /// Authorization header value for the proxy, if credentials were supplied.
 pub fn Proxy::authorization(self : Proxy) -> String? {
   self.authorization
 }
 
+///|
 fn proxy_env_value(
   names : Array[String],
   lookup : (String) -> String?,
@@ -322,13 +348,17 @@ fn proxy_env_value(
   None
 }
 
+///|
 /// Parse a proxy URL from an environment variable. A bare `host:port` value is
 /// treated as an HTTP proxy, matching the convention used by common HTTP
 /// clients and tools. SOCKS5 URLs are only accepted from `ALL_PROXY`, the
 /// conventional fallback variable for every protocol; `HTTPS_PROXY` and
 /// `http_proxy` stay limited to HTTP(S) proxies so their meaning cannot
 /// change silently.
-fn proxy_from_env_url(value : String, allow_socks : Bool) -> Result[Proxy, HttpError] {
+fn proxy_from_env_url(
+  value : String,
+  allow_socks : Bool,
+) -> Result[Proxy, HttpError] {
   let lower = value.to_lower()
   if lower.has_prefix("socks5://") || lower.has_prefix("socks5h://") {
     if allow_socks {
@@ -345,6 +375,7 @@ fn proxy_from_env_url(value : String, allow_socks : Bool) -> Result[Proxy, HttpE
   }
 }
 
+///|
 fn proxy_from_env_lookup(
   url : Url,
   lookup : (String) -> String?,
@@ -378,6 +409,7 @@ fn proxy_from_env_lookup(
   }
 }
 
+///|
 /// Resolve the proxy configured through the standard environment variables for
 /// `url`: `HTTPS_PROXY` for HTTPS, `http_proxy` (and `HTTP_PROXY` outside CGI)
 /// for HTTP, with `ALL_PROXY` as a fallback. Values without a scheme are
@@ -389,6 +421,7 @@ pub fn Proxy::from_env(url : Url) -> Result[Proxy?, HttpError] {
   proxy_from_env_lookup(url, @env.get_env_var)
 }
 
+///|
 fn proxy_no_proxy_lookup(lookup : (String) -> String?) -> Array[String] {
   let value = match proxy_env_value(["NO_PROXY", "no_proxy"], lookup) {
     Some(value) => value
@@ -404,6 +437,7 @@ fn proxy_no_proxy_lookup(lookup : (String) -> String?) -> Array[String] {
   patterns
 }
 
+///|
 /// The `NO_PROXY` / `no_proxy` exclusion list from the environment. The
 /// patterns use the syntax accepted by `Connector::with_proxy_bypass`.
 pub fn Proxy::no_proxy_from_env() -> Array[String] {

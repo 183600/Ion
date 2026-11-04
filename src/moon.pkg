@@ -10,23 +10,20 @@ import {
   "moonbitlang/core/string",
 }
 
+pkgtype(kind: "executable")
+
 options(
   name: "feather",
-  is_main: true,
   "native-stub": [
     "tcp_native_stub.c",
     "tls_native_stub.c",
     "udp_native_stub.c",
   ],
   targets: {
-    "native_error.mbt": ["native"],
-    "native_tcp.mbt": ["native"],
-    "native_tls.mbt": ["native"],
-    "native_udp.mbt": ["native"],
+    "native_error.mbt": [ "native" ],
+    "native_tcp.mbt": [ "native" ],
+    "native_tls.mbt": [ "native" ],
+    "native_udp.mbt": [ "native" ],
   },
-  link: {
-    "native": {
-      "cc-link-flags": "-lssl -lcrypto",
-    },
-  },
+  link: { "native": { "cc-link-flags": "-lssl -lcrypto" } },
 )

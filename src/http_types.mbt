@@ -1,3 +1,4 @@
+///|
 /// HTTP error types
 #derive(Eq, Debug)
 pub enum HttpError {
@@ -12,6 +13,7 @@ pub enum HttpError {
   RedirectLimitExceeded
 }
 
+///|
 /// Promote low-level network failures onto the dedicated HTTP error variants.
 /// Callers can then match `Timeout` / `ConnectionClosed` without having to
 /// unwrap the nested `NetError`.
@@ -23,6 +25,7 @@ fn http_error_from_net(err : NetError) -> HttpError {
   }
 }
 
+///|
 /// Normalize an existing `HttpError` that may wrap a timeout or a closed
 /// connection, leaving every other variant untouched.
 fn normalize_http_error(err : HttpError) -> HttpError {
@@ -38,6 +41,7 @@ fn normalize_http_error(err : HttpError) -> HttpError {
   }
 }
 
+///|
 /// HTTP method
 #derive(Eq, Debug)
 pub enum HttpMethod {
@@ -55,6 +59,7 @@ pub enum HttpMethod {
   Custom(String)
 }
 
+///|
 pub fn HttpMethod::parse(value : String) -> Result[HttpMethod, HttpError] {
   match value.to_upper() {
     "GET" => Ok(GET)
@@ -70,6 +75,7 @@ pub fn HttpMethod::parse(value : String) -> Result[HttpMethod, HttpError] {
   }
 }
 
+///|
 /// Build a method from an RFC 9110 token. The nine methods with dedicated
 /// variants are recognized case-insensitively for convenience (matching
 /// `HttpMethod::parse`); every other valid token becomes `Custom` and keeps
@@ -90,6 +96,7 @@ pub fn HttpMethod::custom(value : String) -> Result[HttpMethod, HttpError] {
   }
 }
 
+///|
 pub fn HttpMethod::to_string(verb : HttpMethod) -> String {
   match verb {
     GET => "GET"
@@ -105,6 +112,7 @@ pub fn HttpMethod::to_string(verb : HttpMethod) -> String {
   }
 }
 
+///|
 /// `Custom` is public, so callers can build it directly. An exactly uppercase
 /// standard method is indistinguishable from its dedicated variant on the
 /// wire; treat it as that variant for framing and method semantics while
@@ -128,6 +136,7 @@ fn canonical_http_method(verb : HttpMethod) -> HttpMethod {
   }
 }
 
+///|
 /// HTTP header
 #derive(Eq, Debug)
 pub struct Header {
@@ -135,29 +144,37 @@ pub struct Header {
   value : String
 }
 
+///|
 pub fn Header::new(name : String, value : String) -> Header {
-  Header::{ name, value }
+  Header::{ name, value, }
 }
 
+///|
 /// HTTP headers collection
 #derive(Eq, Debug)
 pub struct Headers {
   headers : List[Header]
 }
 
+///|
 pub fn Headers::new() -> Headers {
-  Headers::{ headers: @list.List([]) }
+  Headers::{ headers: @list.List([]), }
 }
 
+///|
 pub fn Headers::add(self : Headers, name : String, value : String) -> Headers {
-  Headers::{ headers: self.headers.prepend(Header::new(name, value)) }
+  Headers::{ headers: self.headers.prepend(Header::new(name, value)), }
 }
 
-pub fn Headers::get(self : Headers, name : String) -> Option[String] {
+///|
+pub fn Headers::get(self : Headers, name : String) -> String? {
   let lower_name = name.to_lower()
-  self.headers.find(fn(h) { h.name.to_lower() == lower_name }).map(fn(h) { h.value })
+  self.headers
+  .find(fn(h) { h.name.to_lower() == lower_name })
+  .map(fn(h) { h.value })
 }
 
+///|
 /// All values for a header in insertion order.
 pub fn Headers::get_all(self : Headers, name : String) -> List[String] {
   let lower_name = name.to_lower()
@@ -170,20 +187,26 @@ pub fn Headers::get_all(self : Headers, name : String) -> List[String] {
   values
 }
 
+///|
 pub fn Headers::contains(self : Headers, name : String) -> Bool {
   self.get(name) is Some(_)
 }
 
+///|
 /// Replace every existing value for a header with a single value.
 pub fn Headers::set(self : Headers, name : String, value : String) -> Headers {
   self.remove(name).add(name, value)
 }
 
+///|
 pub fn Headers::remove(self : Headers, name : String) -> Headers {
   let lower_name = name.to_lower()
-  Headers::{ headers: self.headers.filter(fn(h) { h.name.to_lower() != lower_name }) }
+  Headers::{
+    headers: self.headers.filter(fn(h) { h.name.to_lower() != lower_name }),
+  }
 }
 
+///|
 /// Iterate the headers in insertion order, matching `get_all`.
 pub fn Headers::iter(self : Headers) -> Iter[Header] {
   // `add` prepends, so the stored list is reverse insertion order; flip it
@@ -195,16 +218,18 @@ pub fn Headers::iter(self : Headers) -> Iter[Header] {
   ordered.iter()
 }
 
-pub fn Headers::length(self : Headers) -> Int {
+///|
+pub fn Headers::length(self : Headers) -> Int32 {
   self.headers.length()
 }
 
+///|
 /// URL structure
 #derive(Eq, Debug)
 pub struct Url {
   scheme : String
   host : String
-  port : Int
+  port : Int32
   path : String
   query : String
   fragment : String
@@ -214,19 +239,17 @@ pub struct Url {
   bracketed : Bool
 }
 
-pub fn Url::new(scheme : String, host : String, port : Int) -> Url {
+///|
+pub fn Url::new(scheme : String, host : String, port : Int32) -> Url {
   // Constructors accept the same bracketed IP-literal spelling as parsed
   // URLs. Normalize it to the stored representation so every consumer (SOCKS
   // target encoding, certificate verification, cookie scoping, and pool keys)
   // sees the same authority form as `Url::parse`.
-  let bracketed = host.length() >= 2 && host.has_prefix("[") &&
+  let bracketed = host.length() >= 2 &&
+    host.has_prefix("[") &&
     host.has_suffix("]") &&
     is_ip_literal(host[1:host.length() - 1].to_owned())
-  let host = if bracketed {
-    host[1:host.length() - 1].to_owned()
-  } else {
-    host
-  }
+  let host = if bracketed { host[1:host.length() - 1].to_owned() } else { host }
   let host = if !bracketed && idna_needs_conversion(host) {
     match idna_host_to_ascii(host) {
       Some(host) => host
@@ -235,19 +258,16 @@ pub fn Url::new(scheme : String, host : String, port : Int) -> Url {
   } else {
     host
   }
-  Url::{ scheme, host, port, path: "/", query: "", fragment: "", bracketed }
+  Url::{ scheme, host, port, path: "/", query: "", fragment: "", bracketed, }
 }
 
-fn find_char(str : String, target : Char) -> Int? {
+///|
+fn find_char(str : String, target : Char) -> Int32? {
   let len = str.length()
   let mut i = 0
   while i < len {
     match str.get_char(i) {
-      Some(ch) => {
-        if ch == target {
-          return Some(i)
-        }
-      }
+      Some(ch) => if ch == target { return Some(i) }
       None => ()
     }
     i = i + 1
@@ -255,16 +275,13 @@ fn find_char(str : String, target : Char) -> Int? {
   None
 }
 
-fn find_first_delimiter(str : String) -> Int? {
+///|
+fn find_first_delimiter(str : String) -> Int32? {
   let len = str.length()
   let mut i = 0
   while i < len {
     match str.get_char(i) {
-      Some(ch) => {
-        if ch == '/' || ch == '?' || ch == '#' {
-          return Some(i)
-        }
-      }
+      Some(ch) => if ch == '/' || ch == '?' || ch == '#' { return Some(i) }
       None => ()
     }
     i = i + 1
@@ -272,6 +289,7 @@ fn find_first_delimiter(str : String) -> Int? {
   None
 }
 
+///|
 fn valid_encoded_url_chars(value : String) -> Bool {
   let mut index = 0
   while index < value.length() {
@@ -284,8 +302,16 @@ fn valid_encoded_url_chars(value : String) -> Bool {
         continue
       }
     }
-    if ch <= ' ' || ch == '\u{7f}' || ch == '\\' || ch == '"' || ch == '<' ||
-      ch == '>' || ch == '^' || ch == '\u{60}' || ch == '{' || ch == '|' ||
+    if ch <= ' ' ||
+      ch == '\u{7f}' ||
+      ch == '\\' ||
+      ch == '"' ||
+      ch == '<' ||
+      ch == '>' ||
+      ch == '^' ||
+      ch == '\u{60}' ||
+      ch == '{' ||
+      ch == '|' ||
       ch == '}' {
       return false
     }
@@ -312,6 +338,7 @@ fn valid_encoded_url_chars(value : String) -> Bool {
   true
 }
 
+///|
 fn valid_url_component_chars(value : String) -> Bool {
   if !valid_encoded_url_chars(value) {
     return false
@@ -324,6 +351,7 @@ fn valid_url_component_chars(value : String) -> Bool {
   true
 }
 
+///|
 /// Paths use their own component validator because `?` and `#` start the
 /// query and fragment; they cannot be part of a path even if the URL was built
 /// programmatically with `Url::with_path`.
@@ -339,6 +367,7 @@ fn valid_url_path_chars(value : String) -> Bool {
   true
 }
 
+///|
 /// The query may contain `?`, but `#` still starts the fragment.
 fn valid_url_query_chars(value : String) -> Bool {
   if !valid_url_component_chars(value) {
@@ -352,6 +381,7 @@ fn valid_url_query_chars(value : String) -> Bool {
   true
 }
 
+///|
 fn valid_url_fragment_chars(value : String) -> Bool {
   if !valid_url_component_chars(value) {
     return false
@@ -364,6 +394,7 @@ fn valid_url_fragment_chars(value : String) -> Bool {
   true
 }
 
+///|
 fn valid_userinfo_chars(value : String) -> Bool {
   let mut index = 0
   while index < value.length() {
@@ -397,6 +428,7 @@ fn valid_userinfo_chars(value : String) -> Bool {
   true
 }
 
+///|
 fn valid_url_host_chars(host : String) -> Bool {
   let mut index = 0
   while index < host.length() {
@@ -409,10 +441,24 @@ fn valid_url_host_chars(host : String) -> Bool {
     if ch > '\u{7f}' {
       return false
     }
-    if ch <= ' ' || ch == '\u{7f}' || ch == '/' || ch == '?' || ch == '#' ||
-      ch == '@' || ch == '[' || ch == ']' || ch == '\\' || ch == '"' ||
-      ch == '<' || ch == '>' || ch == '^' || ch == '\u{60}' || ch == '{' ||
-      ch == '|' || ch == '}' || ch == ',' {
+    if ch <= ' ' ||
+      ch == '\u{7f}' ||
+      ch == '/' ||
+      ch == '?' ||
+      ch == '#' ||
+      ch == '@' ||
+      ch == '[' ||
+      ch == ']' ||
+      ch == '\\' ||
+      ch == '"' ||
+      ch == '<' ||
+      ch == '>' ||
+      ch == '^' ||
+      ch == '\u{60}' ||
+      ch == '{' ||
+      ch == '|' ||
+      ch == '}' ||
+      ch == ',' {
       return false
     }
     if ch == '%' {
@@ -438,6 +484,7 @@ fn valid_url_host_chars(host : String) -> Bool {
   true
 }
 
+///|
 /// Decode percent escapes for unreserved bytes in a DNS reg-name. Escapes
 /// for reserved delimiters are left encoded, so they cannot change the URL
 /// structure after validation.
@@ -464,6 +511,7 @@ fn decode_host_unreserved(host : String) -> String {
   @utf8.decode_lossy(output.to_bytes()[:])
 }
 
+///|
 /// Decode percent-encoded UTF-8 bytes in a host name so IDNA can process
 /// percent-encoded internationalized names. Invalid UTF-8 sequences are
 /// rejected rather than replaced, because a replacement character would
@@ -481,8 +529,12 @@ fn decode_host_utf8_escapes(host : String) -> String? {
         if value >= 128 {
           let encoded = Buffer(size_hint=4)
           while index + 2 < data.length() && data[index] == b'%' {
-            let next_high = hex_char_value(Char::from_int(data[index + 1].to_int()))
-            let next_low = hex_char_value(Char::from_int(data[index + 2].to_int()))
+            let next_high = hex_char_value(
+              Char::from_int(data[index + 1].to_int()),
+            )
+            let next_low = hex_char_value(
+              Char::from_int(data[index + 2].to_int()),
+            )
             if next_high < 0 || next_low < 0 {
               break
             }
@@ -509,6 +561,7 @@ fn decode_host_utf8_escapes(host : String) -> String? {
   Some(@utf8.decode_lossy(output.to_bytes()[:]))
 }
 
+///|
 fn normalize_url_host(host : String) -> String? {
   let host = decode_host_unreserved(host)
   let host = match decode_host_utf8_escapes(host) {
@@ -524,6 +577,7 @@ fn normalize_url_host(host : String) -> String? {
   }
 }
 
+///|
 pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
   if url_str.length() == 0 {
     return Err(InvalidUrl("Empty URL"))
@@ -581,7 +635,7 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
   }
 
   let mut host = host_port
-  let mut port_str : Option[String] = None
+  let mut port_str : String? = None
   let mut bracketed = false
   if host_port.has_prefix("[") {
     bracketed = true
@@ -618,7 +672,8 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
     (!bracketed && !valid_url_host_chars(host) && !idna_needs_conversion(host)) {
     return Err(InvalidUrl("Invalid host"))
   }
-  if !bracketed && (host.contains(":") || host.contains("[") || host.contains("]")) {
+  if !bracketed &&
+    (host.contains(":") || host.contains("[") || host.contains("]")) {
     return Err(InvalidUrl("Invalid host"))
   }
   let host = if bracketed {
@@ -632,7 +687,7 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
 
   let default_port = if scheme == "https" { 443 } else { 80 }
   let port = match port_str {
-    Some(port_text) => {
+    Some(port_text) =>
       // RFC 3986 §3.2.3 defines port as *DIGIT, so an empty port is valid and
       // means the scheme's default.
       if port_text.length() == 0 {
@@ -641,9 +696,7 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
         if !is_decimal_digits(port_text) {
           return Err(InvalidUrl("Invalid port number"))
         }
-        let parsed = try {
-          @string.parse_int(port_text[:])
-        } catch {
+        let parsed = @string.parse_int(port_text[:]) catch {
           _ => return Err(InvalidUrl("Invalid port number"))
         }
         if parsed < 1 || parsed > 65535 {
@@ -651,7 +704,6 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
         }
         parsed
       }
-    }
     None => default_port
   }
 
@@ -679,14 +731,16 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
     }
   }
 
-  if !valid_url_path_chars(path) || !valid_url_query_chars(query) ||
+  if !valid_url_path_chars(path) ||
+    !valid_url_query_chars(query) ||
     !valid_url_fragment_chars(fragment) {
     return Err(InvalidUrl("Invalid URL characters"))
   }
 
-  Ok(Url::{ scheme, host, port, path, query, fragment, bracketed })
+  Ok(Url::{ scheme, host, port, path, query, fragment, bracketed, })
 }
 
+///|
 fn url_authority_host(host : String, bracketed : Bool) -> String {
   if host.has_prefix("[") && host.has_suffix("]") {
     host
@@ -697,6 +751,7 @@ fn url_authority_host(host : String, bracketed : Bool) -> String {
   }
 }
 
+///|
 /// Host and optional non-default port, bracketing IP literals.
 pub fn Url::authority(self : Url) -> String {
   let scheme = self.scheme.to_lower()
@@ -715,6 +770,7 @@ pub fn Url::authority(self : Url) -> String {
   }
 }
 
+///|
 /// Authority-form target used by `CONNECT`: `host:port`, always including the
 /// port and bracketing IP literals. Unlike `authority`, a default port is not
 /// omitted because it names the tunnel endpoint.
@@ -722,15 +778,18 @@ pub fn Url::connect_authority(self : Url) -> String {
   url_authority_host(self.host, self.bracketed) + ":" + self.port.to_string()
 }
 
+///|
 /// Scheme, authority, path, and query without the fragment.
 pub fn Url::origin(self : Url) -> String {
   self.scheme.to_lower() + "://" + self.authority()
 }
 
+///|
 pub fn Url::is_secure(self : Url) -> Bool {
   self.scheme.to_lower() == "https"
 }
 
+///|
 /// Origin-form request target: an absolute path plus an optional query.
 fn Url::origin_form_target(self : Url) -> String {
   let path = if self.path.length() == 0 {
@@ -747,6 +806,7 @@ fn Url::origin_form_target(self : Url) -> String {
   }
 }
 
+///|
 /// Request target: origin-form, or the special `*` asterisk-form used by
 /// `OPTIONS *`. The asterisk-form is not a URL path, so `to_string` still
 /// serializes the represented path as `/*`.
@@ -757,25 +817,25 @@ pub fn Url::request_target(self : Url) -> String {
   self.origin_form_target()
 }
 
+///|
 /// Remove dot segments from a path and preserve its query/fragment suffix.
 fn normalize_url_path(target : String) -> String {
   let mut path_end = target.length()
   match target.find("?") {
-    Some(index) => if index < path_end {
-      path_end = index
-    }
+    Some(index) => if index < path_end { path_end = index }
     None => ()
   }
   match target.find("#") {
-    Some(index) => if index < path_end {
-      path_end = index
-    }
+    Some(index) => if index < path_end { path_end = index }
     None => ()
   }
   let path = target[0:path_end].to_owned()
   let suffix = target[path_end:].to_owned()
-  let trailing = path.has_suffix("/") || path.has_suffix("/.") ||
-    path.has_suffix("/..") || path == "." || path == ".."
+  let trailing = path.has_suffix("/") ||
+    path.has_suffix("/.") ||
+    path.has_suffix("/..") ||
+    path == "." ||
+    path == ".."
   let segments = path.split("/").collect()
   let total = segments.length()
   let normalized : Array[String] = []
@@ -786,12 +846,8 @@ fn normalize_url_path(target : String) -> String {
     index = index + 1
     match segment {
       "." => ()
-      ".." => if normalized.length() > 0 {
-        normalized.unsafe_pop_back()
-      }
-      "" => if !is_first && !is_last {
-        normalized.push("")
-      }
+      ".." => if normalized.length() > 0 { normalized.unsafe_pop_back() }
+      "" => if !is_first && !is_last { normalized.push("") }
       _ => normalized.push(segment.to_owned())
     }
   }
@@ -807,6 +863,8 @@ fn normalize_url_path(target : String) -> String {
 }
 
 // RFC 3986 §3.1: scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ) ":".
+
+///|
 fn url_has_scheme(value : String) -> Bool {
   match value.get_char(0) {
     Some(ch) =>
@@ -822,8 +880,12 @@ fn url_has_scheme(value : String) -> Bool {
         if ch == ':' {
           return true
         }
-        let valid = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-          (ch >= '0' && ch <= '9') || ch == '+' || ch == '-' || ch == '.'
+        let valid = (ch >= 'a' && ch <= 'z') ||
+          (ch >= 'A' && ch <= 'Z') ||
+          (ch >= '0' && ch <= '9') ||
+          ch == '+' ||
+          ch == '-' ||
+          ch == '.'
         if !valid {
           return false
         }
@@ -835,6 +897,7 @@ fn url_has_scheme(value : String) -> Bool {
   false
 }
 
+///|
 /// Resolve a URI reference against this URL, following RFC 3986 §5. For
 /// example, joining `"../next?q=1"` with `http://example.com/a/b` yields
 /// `http://example.com/next?q=1`. Only `http` and `https` results are
@@ -887,7 +950,8 @@ pub fn Url::join(self : Url, reference : String) -> Result[Url, HttpError] {
   // Dot segments are removed only from a non-empty reference path or from a
   // merged path. Keeping the base text also preserves the special
   // asterisk-form target as `*` instead of serializing it as `/*`.
-  let path = if reference.length() == 0 || reference.has_prefix("#") ||
+  let path = if reference.length() == 0 ||
+    reference.has_prefix("#") ||
     reference.has_prefix("?") {
     self.path
   } else {
@@ -896,18 +960,22 @@ pub fn Url::join(self : Url, reference : String) -> Result[Url, HttpError] {
   Ok(parsed.with_path(path))
 }
 
+///|
 pub fn Url::with_path(self : Url, path : String) -> Url {
-  Url::{ ..self, path }
+  Url::{ ..self, path, }
 }
 
+///|
 pub fn Url::with_query(self : Url, query : String) -> Url {
-  Url::{ ..self, query }
+  Url::{ ..self, query, }
 }
 
+///|
 pub fn Url::with_fragment(self : Url, fragment : String) -> Url {
-  Url::{ ..self, fragment }
+  Url::{ ..self, fragment, }
 }
 
+///|
 pub fn Url::to_string(self : Url) -> String {
   let base = self.origin() + self.origin_form_target()
   if self.fragment.length() > 0 {
@@ -917,21 +985,23 @@ pub fn Url::to_string(self : Url) -> String {
   }
 }
 
+///|
 /// HTTP Request
 #derive(Eq, Debug)
 pub struct Request {
   verb : HttpMethod
   url : Url
   headers : Headers
-  body : Option[Bytes]
+  body : Bytes?
   // Trailer fields sent after a chunked (HTTP/1.1) or DATA (HTTP/2) body.
   // Trailer names are also advertised through a `Trailer` header unless the
   // caller supplied one explicitly.
   trailers : Headers
-  timeout_ms : Int
+  timeout_ms : Int32
   timeout_explicit : Bool
 }
 
+///|
 pub fn Request::new(verb : HttpMethod, url : Url) -> Request {
   Request::{
     verb,
@@ -944,6 +1014,7 @@ pub fn Request::new(verb : HttpMethod, url : Url) -> Request {
   }
 }
 
+///|
 /// Extract the raw (still percent-encoded) userinfo from a URL string.
 fn raw_url_userinfo(value : String) -> String? {
   let scheme_end = match value.find("://") {
@@ -962,6 +1033,7 @@ fn raw_url_userinfo(value : String) -> String? {
   }
 }
 
+///|
 fn bytes_contain_byte(data : Bytes, target : Byte) -> Bool {
   for byte in data {
     if byte == target {
@@ -971,6 +1043,7 @@ fn bytes_contain_byte(data : Bytes, target : Byte) -> Bool {
   false
 }
 
+///|
 fn basic_authorization(username : Bytes, password : Bytes) -> String {
   let credentials = Buffer(size_hint=username.length() + password.length() + 1)
   credentials.write_bytes(username)
@@ -979,6 +1052,7 @@ fn basic_authorization(username : Bytes, password : Bytes) -> String {
   "Basic " + @base64.encode(credentials.to_bytes())
 }
 
+///|
 fn Request::with_basic_auth_bytes(
   self : Request,
   username : Bytes,
@@ -986,10 +1060,14 @@ fn Request::with_basic_auth_bytes(
 ) -> Request {
   Request::{
     ..self,
-    headers: self.headers.set("Authorization", basic_authorization(username, password)),
+    headers: self.headers.set(
+      "Authorization",
+      basic_authorization(username, password),
+    ),
   }
 }
 
+///|
 /// Build a request from a URL string. Credentials in the URL's userinfo
 /// component (`http://user:password@host/`) are sent as HTTP Basic
 /// authentication, matching the behavior users expect from URLs of that form.
@@ -1008,10 +1086,8 @@ pub fn Request::from_url(
     Some(userinfo) =>
       if userinfo.length() > 0 {
         let (user, password) = match userinfo.find(":") {
-          Some(index) => (
-            userinfo[0:index].to_owned(),
-            userinfo[index + 1:].to_owned(),
-          )
+          Some(index) =>
+            (userinfo[0:index].to_owned(), userinfo[index + 1:].to_owned())
           None => (userinfo, "")
         }
         let username = percent_decode_bytes(user)
@@ -1032,24 +1108,33 @@ pub fn Request::from_url(
   Ok(request)
 }
 
+///|
 pub fn Request::with_method(self : Request, verb : HttpMethod) -> Request {
-  Request::{ ..self, verb: verb }
+  Request::{ ..self, verb, }
 }
 
+///|
 /// Replace the request target while keeping method, headers, and body.
 pub fn Request::with_url(self : Request, url : Url) -> Request {
-  Request::{ ..self, url }
+  Request::{ ..self, url, }
 }
 
+///|
 /// Set an RFC 6750 bearer-token `Authorization` header.
 pub fn Request::with_bearer_auth(self : Request, token : String) -> Request {
   self.set_header("Authorization", "Bearer " + token)
 }
 
-pub fn Request::with_header(self : Request, name : String, value : String) -> Request {
-  Request::{ ..self, headers: self.headers.add(name, value) }
+///|
+pub fn Request::with_header(
+  self : Request,
+  name : String,
+  value : String,
+) -> Request {
+  Request::{ ..self, headers: self.headers.add(name, value), }
 }
 
+///|
 /// Offer a protocol upgrade on this request (for example `websocket`). The
 /// `Connection: Upgrade` nomination is added or merged without discarding
 /// other connection options. On HTTP/1.1 a matching `101 Switching Protocols`
@@ -1071,21 +1156,25 @@ pub fn Request::with_upgrade(self : Request, protocol : String) -> Request {
       connection + ", Upgrade"
     }
   }
-  self
-    .set_header("Connection", connection)
-    .set_header("Upgrade", protocol)
+  self.set_header("Connection", connection).set_header("Upgrade", protocol)
 }
 
+///|
 fn is_form_safe_byte(byte : Byte) -> Bool {
-  (byte >= b'a' && byte <= b'z') || (byte >= b'A' && byte <= b'Z') ||
-  (byte >= b'0' && byte <= b'9') || byte == b'*' || byte == b'-' ||
-  byte == b'.' || byte == b'_'
+  (byte >= b'a' && byte <= b'z') ||
+  (byte >= b'A' && byte <= b'Z') ||
+  (byte >= b'0' && byte <= b'9') ||
+  byte == b'*' ||
+  byte == b'-' ||
+  byte == b'.' ||
+  byte == b'_'
 }
 
+///|
 fn form_encode_component(value : String) -> String {
   let hex : Array[Byte] = [
-    b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'A', b'B',
-    b'C', b'D', b'E', b'F',
+    b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'A', b'B', b'C',
+    b'D', b'E', b'F',
   ]
   let output = Buffer(size_hint=value.length())
   for byte in @utf8.encode(value) {
@@ -1103,10 +1192,14 @@ fn form_encode_component(value : String) -> String {
   @utf8.decode_lossy(output.to_bytes()[:])
 }
 
+///|
 fn query_decode_component(value : String) -> String {
-  @utf8.decode_lossy(percent_decode_bytes(value.replace_all(old="+", new=" "))[:])
+  @utf8.decode_lossy(
+    percent_decode_bytes(value.replace_all(old="+", new=" "))[:],
+  )
 }
 
+///|
 fn url_query_pair_name(pair : String) -> String {
   match pair.find("=") {
     Some(index) => pair[0:index].to_owned()
@@ -1114,6 +1207,7 @@ fn url_query_pair_name(pair : String) -> String {
   }
 }
 
+///|
 fn url_query_pair_value(pair : String) -> String {
   match pair.find("=") {
     Some(index) => pair[index + 1:].to_owned()
@@ -1121,6 +1215,7 @@ fn url_query_pair_value(pair : String) -> String {
   }
 }
 
+///|
 fn url_query_pairs(query : String) -> Array[String] {
   let pairs : Array[String] = []
   if query.length() == 0 {
@@ -1134,20 +1229,24 @@ fn url_query_pairs(query : String) -> Array[String] {
   pairs
 }
 
+///|
 /// Decode the URL query as ordered application/x-www-form-urlencoded
 /// parameters. Percent escapes are decoded as UTF-8 and `+` means a space.
 /// Pairs without `=` have an empty value, and empty pairs are ignored.
 pub fn Url::query_params(self : Url) -> Array[(String, String)] {
   let params : Array[(String, String)] = []
   for pair in url_query_pairs(self.query) {
-    params.push((
-      query_decode_component(url_query_pair_name(pair)),
-      query_decode_component(url_query_pair_value(pair)),
-    ))
+    params.push(
+      (
+        query_decode_component(url_query_pair_name(pair)),
+        query_decode_component(url_query_pair_value(pair)),
+      ),
+    )
   }
   params
 }
 
+///|
 /// Return the first decoded value for `name`, or `None`.
 pub fn Url::query_param(self : Url, name : String) -> String? {
   for pair in url_query_pairs(self.query) {
@@ -1158,6 +1257,7 @@ pub fn Url::query_param(self : Url, name : String) -> String? {
   None
 }
 
+///|
 /// Return every decoded value for `name`, preserving query order.
 pub fn Url::query_param_all(self : Url, name : String) -> Array[String] {
   let values : Array[String] = []
@@ -1169,6 +1269,7 @@ pub fn Url::query_param_all(self : Url, name : String) -> Array[String] {
   values
 }
 
+///|
 /// Replace the query with encoded parameters, preserving path and fragment.
 pub fn Url::with_query_params(
   self : Url,
@@ -1184,6 +1285,7 @@ pub fn Url::with_query_params(
   self.with_query(encoded.join("&"))
 }
 
+///|
 /// Set `name` to `value`, replacing any existing occurrences. Other query
 /// parameters keep their original spelling and order.
 pub fn Url::with_query_param(self : Url, name : String, value : String) -> Url {
@@ -1206,6 +1308,7 @@ pub fn Url::with_query_param(self : Url, name : String, value : String) -> Url {
   self.with_query(updated.join("&"))
 }
 
+///|
 /// Remove every occurrence of `name` from the query.
 pub fn Url::without_query_param(self : Url, name : String) -> Url {
   let updated : Array[String] = []
@@ -1224,8 +1327,12 @@ pub fn Url::without_query_param(self : Url, name : String) -> Url {
   }
 }
 
+///|
 /// Encode fields as an application/x-www-form-urlencoded request body.
-pub fn Request::with_form(self : Request, fields : Array[(String, String)]) -> Request {
+pub fn Request::with_form(
+  self : Request,
+  fields : Array[(String, String)],
+) -> Request {
   let body = Buffer(size_hint=256)
   let mut first = true
   for field in fields {
@@ -1239,10 +1346,11 @@ pub fn Request::with_form(self : Request, fields : Array[(String, String)]) -> R
     body.write_bytes(@utf8.encode(form_encode_component(value)))
   }
   self
-    .set_header("Content-Type", "application/x-www-form-urlencoded")
-    .with_body(body.to_bytes())
+  .set_header("Content-Type", "application/x-www-form-urlencoded")
+  .with_body(body.to_bytes())
 }
 
+///|
 /// A file part in a multipart/form-data request body.
 #derive(Eq, Debug)
 pub struct MultipartFile {
@@ -1252,19 +1360,22 @@ pub struct MultipartFile {
   data : Bytes
 }
 
+///|
 pub fn MultipartFile::new(
   field_name : String,
   file_name : String,
   content_type : String,
   data : Bytes,
 ) -> MultipartFile {
-  MultipartFile::{ field_name, file_name, content_type, data }
+  MultipartFile::{ field_name, file_name, content_type, data, }
 }
 
+///|
 fn multipart_is_control(byte : Byte) -> Bool {
   byte < b' ' || byte == b'\x7f'
 }
 
+///|
 fn multipart_param(value : String) -> String {
   let output = Buffer(size_hint=value.length())
   for byte in @utf8.encode(value) {
@@ -1280,6 +1391,7 @@ fn multipart_param(value : String) -> String {
   @utf8.decode_lossy(output.to_bytes()[:])
 }
 
+///|
 fn multipart_header_value(value : String) -> String {
   let output = Buffer(size_hint=value.length())
   for byte in @utf8.encode(value) {
@@ -1292,6 +1404,7 @@ fn multipart_header_value(value : String) -> String {
   @utf8.decode_lossy(output.to_bytes()[:])
 }
 
+///|
 fn multipart_contains_bytes(haystack : Bytes, needle : Bytes) -> Bool {
   if needle.length() == 0 {
     return true
@@ -1313,10 +1426,12 @@ fn multipart_contains_bytes(haystack : Bytes, needle : Bytes) -> Bool {
   false
 }
 
+///|
 fn multipart_contains_text(value : String, needle : Bytes) -> Bool {
   multipart_contains_bytes(@utf8.encode(value), needle)
 }
 
+///|
 fn multipart_boundary_collides(
   fields : Array[(String, String)],
   files : Array[MultipartFile],
@@ -1325,7 +1440,8 @@ fn multipart_boundary_collides(
   let needle = @utf8.encode(boundary)
   for field in fields {
     let (name, value) = field
-    if multipart_contains_text(name, needle) || multipart_contains_text(value, needle) {
+    if multipart_contains_text(name, needle) ||
+      multipart_contains_text(value, needle) {
       return true
     }
   }
@@ -1340,6 +1456,7 @@ fn multipart_boundary_collides(
   false
 }
 
+///|
 fn multipart_generate_boundary(
   fields : Array[(String, String)],
   files : Array[MultipartFile],
@@ -1354,6 +1471,7 @@ fn multipart_generate_boundary(
   boundary
 }
 
+///|
 fn multipart_body(
   fields : Array[(String, String)],
   files : Array[MultipartFile],
@@ -1364,8 +1482,11 @@ fn multipart_body(
     let (name, value) = field
     body.write_bytes(
       @utf8.encode(
-        "--" + boundary + "\r\nContent-Disposition: form-data; name=\"" +
-        multipart_param(name) + "\"\r\n\r\n",
+        "--" +
+        boundary +
+        "\r\nContent-Disposition: form-data; name=\"" +
+        multipart_param(name) +
+        "\"\r\n\r\n",
       ),
     )
     body.write_bytes(@utf8.encode(value))
@@ -1374,10 +1495,15 @@ fn multipart_body(
   for file in files {
     body.write_bytes(
       @utf8.encode(
-        "--" + boundary + "\r\nContent-Disposition: form-data; name=\"" +
-        multipart_param(file.field_name) + "\"; filename=\"" +
-        multipart_param(file.file_name) + "\"\r\nContent-Type: " +
-        multipart_header_value(file.content_type) + "\r\n\r\n",
+        "--" +
+        boundary +
+        "\r\nContent-Disposition: form-data; name=\"" +
+        multipart_param(file.field_name) +
+        "\"; filename=\"" +
+        multipart_param(file.file_name) +
+        "\"\r\nContent-Type: " +
+        multipart_header_value(file.content_type) +
+        "\r\n\r\n",
       ),
     )
     body.write_bytes(file.data)
@@ -1387,6 +1513,7 @@ fn multipart_body(
   body.to_bytes()
 }
 
+///|
 /// Encode text fields and files as a multipart/form-data request body. The
 /// boundary is generated automatically and cannot collide with any part.
 pub fn Request::with_multipart(
@@ -1396,26 +1523,39 @@ pub fn Request::with_multipart(
 ) -> Request {
   let boundary = multipart_generate_boundary(fields, files)
   self
-    .set_header("Content-Type", "multipart/form-data; boundary=" + boundary)
-    .with_body(multipart_body(fields, files, boundary))
+  .set_header("Content-Type", "multipart/form-data; boundary=" + boundary)
+  .with_body(multipart_body(fields, files, boundary))
 }
 
-pub fn Request::with_basic_auth(self : Request, username : String, password : String) -> Request {
+///|
+pub fn Request::with_basic_auth(
+  self : Request,
+  username : String,
+  password : String,
+) -> Request {
   self.with_basic_auth_bytes(@utf8.encode(username), @utf8.encode(password))
 }
 
-pub fn Request::set_header(self : Request, name : String, value : String) -> Request {
-  Request::{ ..self, headers: self.headers.set(name, value) }
+///|
+pub fn Request::set_header(
+  self : Request,
+  name : String,
+  value : String,
+) -> Request {
+  Request::{ ..self, headers: self.headers.set(name, value), }
 }
 
+///|
 pub fn Request::without_header(self : Request, name : String) -> Request {
-  Request::{ ..self, headers: self.headers.remove(name) }
+  Request::{ ..self, headers: self.headers.remove(name), }
 }
 
+///|
 pub fn Request::with_body(self : Request, body : Bytes) -> Request {
-  Request::{ ..self, body: Some(body) }
+  Request::{ ..self, body: Some(body), }
 }
 
+///|
 /// Ask the peer to accept the request body before it is sent. On HTTP/1.1 the
 /// body is withheld until an interim `100 Continue` arrives; a final response
 /// such as `417 Expectation Failed` means the body is never written.
@@ -1423,50 +1563,66 @@ pub fn Request::with_expect_continue(self : Request) -> Request {
   self.with_header("Expect", "100-continue")
 }
 
+///|
 /// Append a trailer field. Request trailers require chunked framing on
 /// HTTP/1.1; HTTP/2 sends them in a trailing HEADERS frame.
-pub fn Request::with_trailer(self : Request, name : String, value : String) -> Request {
-  Request::{ ..self, trailers: self.trailers.add(name, value) }
+pub fn Request::with_trailer(
+  self : Request,
+  name : String,
+  value : String,
+) -> Request {
+  Request::{ ..self, trailers: self.trailers.add(name, value), }
 }
 
+///|
 /// Replace all request trailer fields.
 pub fn Request::with_trailers(self : Request, trailers : Headers) -> Request {
-  Request::{ ..self, trailers }
+  Request::{ ..self, trailers, }
 }
 
-pub fn Request::get_trailer(self : Request, name : String) -> Option[String] {
+///|
+pub fn Request::get_trailer(self : Request, name : String) -> String? {
   self.trailers.get(name)
 }
 
+///|
 pub fn Request::get_trailer_all(self : Request, name : String) -> List[String] {
   self.trailers.get_all(name)
 }
 
-pub fn Request::with_timeout(self : Request, timeout_ms : Int) -> Request {
+///|
+pub fn Request::with_timeout(self : Request, timeout_ms : Int32) -> Request {
   Request::{
     ..self,
-    timeout_ms: if timeout_ms < 0 { 0 } else { timeout_ms },
+    timeout_ms: if timeout_ms < 0 {
+      0
+    } else {
+      timeout_ms
+    },
     timeout_explicit: true,
   }
 }
 
-pub fn Request::get_header(self : Request, name : String) -> Option[String] {
+///|
+pub fn Request::get_header(self : Request, name : String) -> String? {
   self.headers.get(name)
 }
 
+///|
 pub fn Request::get_header_all(self : Request, name : String) -> List[String] {
   self.headers.get_all(name)
 }
 
+///|
 /// HTTP Response
 pub struct Response {
   version : String
-  status : Int
+  status : Int32
   headers : Headers
   body : &Stream // Stream for reading response body
-  max_body_bytes : Int
+  max_body_bytes : Int32
   priv auto_decompress : Bool
-  priv early_hints : Array[(Int, Headers)]
+  priv early_hints : Array[(Int32, Headers)]
   priv trailers : @ref.Ref[Headers]
   // The URL of the final request after any redirects. Direct codec callers
   // leave this unset; `UnifiedClient` records the effective target so callers
@@ -1474,7 +1630,12 @@ pub struct Response {
   priv request_url : Url?
 }
 
-pub fn Response::new(status : Int, headers : Headers, body : &Stream) -> Response {
+///|
+pub fn Response::new(
+  status : Int32,
+  headers : Headers,
+  body : &Stream,
+) -> Response {
   Response::{
     version: "HTTP/1.1",
     status,
@@ -1488,9 +1649,10 @@ pub fn Response::new(status : Int, headers : Headers, body : &Stream) -> Respons
   }
 }
 
+///|
 pub fn Response::new_with_version(
   version : String,
-  status : Int,
+  status : Int32,
   headers : Headers,
   body : &Stream,
 ) -> Response {
@@ -1507,23 +1669,30 @@ pub fn Response::new_with_version(
   }
 }
 
+///|
 fn Response::with_trailers(
   self : Response,
   trailers : @ref.Ref[Headers],
 ) -> Response {
-  Response::{ ..self, trailers }
+  Response::{ ..self, trailers, }
 }
 
+///|
 fn Response::with_max_body_bytes(
   self : Response,
-  max_body_bytes : Int,
+  max_body_bytes : Int32,
 ) -> Response {
   Response::{
     ..self,
-    max_body_bytes: if max_body_bytes < 0 { 0 } else { max_body_bytes },
+    max_body_bytes: if max_body_bytes < 0 {
+      0
+    } else {
+      max_body_bytes
+    },
   }
 }
 
+///|
 /// Make `Response::read_body` and `Response::copy_body_to` decode any
 /// `Content-Encoding` that Feather understands (`gzip`, `deflate`). The
 /// default is off so callers can still read the exact bytes from the wire.
@@ -1531,14 +1700,16 @@ pub fn Response::with_auto_decompress(
   self : Response,
   enabled : Bool,
 ) -> Response {
-  Response::{ ..self, auto_decompress: enabled }
+  Response::{ ..self, auto_decompress: enabled, }
 }
 
+///|
 /// Whether body decoding is enabled for `read_body` and `copy_body_to`.
 pub fn Response::auto_decompress(self : Response) -> Bool {
   self.auto_decompress
 }
 
+///|
 /// The URL of the request that produced this response after following any
 /// redirects. Returns `None` for responses built directly by a codec, where
 /// the caller already knows the target.
@@ -1546,41 +1717,47 @@ pub fn Response::request_url(self : Response) -> Url? {
   self.request_url
 }
 
+///|
 fn Response::with_request_url(self : Response, url : Url) -> Response {
-  Response::{ ..self, request_url: Some(url) }
+  Response::{ ..self, request_url: Some(url), }
 }
 
+///|
 /// Informational (1xx) responses received before the final response, in wire
 /// order. Each entry contains the status code and the interim headers, so
 /// callers can act on `103 Early Hints` preload links. The final 101 response
 /// is not included.
-pub fn Response::early_hints(self : Response) -> Array[(Int, Headers)] {
+pub fn Response::early_hints(self : Response) -> Array[(Int32, Headers)] {
   self.early_hints.copy()
 }
 
+///|
 fn Response::with_early_hints(
   self : Response,
-  early_hints : Array[(Int, Headers)],
+  early_hints : Array[(Int32, Headers)],
 ) -> Response {
-  Response::{ ..self, early_hints }
+  Response::{ ..self, early_hints, }
 }
 
+///|
 /// The stream that yields the response body. For HTTP/1.1 this is a streaming
 /// reader over the live connection; other protocols may buffer it first.
 pub fn Response::body_stream(self : Response) -> &Stream {
   self.body
 }
 
+///|
 /// Headers from the chunked trailer section. They are populated once the
 /// response body has been read to completion.
 pub fn Response::trailers(self : Response) -> Headers {
   self.trailers.val
 }
 
+///|
 /// Read the complete response body with an explicit size limit.
 pub fn Response::read_body_with_limit(
   self : Response,
-  max_bytes : Int,
+  max_bytes : Int32,
 ) -> Result[Bytes, HttpError] {
   let limit = if max_bytes < 0 { 0 } else { max_bytes }
   // An explicit larger limit may exceed the cap the response stream was
@@ -1617,6 +1794,7 @@ pub fn Response::read_body_with_limit(
   Ok(output.to_bytes())
 }
 
+///|
 /// Stream the response body into `sink` without buffering the complete body
 /// in memory. Transfer framing and any non-chunked transfer codings are
 /// decoded; a `Content-Encoding` such as gzip remains applied for the caller
@@ -1629,7 +1807,7 @@ pub fn Response::read_body_with_limit(
 pub fn Response::copy_body_to(
   self : Response,
   sink : &Stream,
-) -> Result[Int, HttpError] {
+) -> Result[Int32, HttpError] {
   // A response may wrap a stream that was created with a smaller cap (for
   // example a streaming HTTP/1.1 body). Authorize this response's own limit
   // before the first read, matching `read_body_with_limit`.
@@ -1688,13 +1866,14 @@ pub fn Response::copy_body_to(
     // Both limits are the response cap: the encoded input is bounded by the
     // same value as the decoded output, so a transfer-coding bomb cannot grow
     // beyond the caller's configured limit.
-    let decoded = match decode_transfer_encodings(
-      transfer_codings,
-      raw,
-      self.max_body_bytes,
-      self.max_body_bytes,
-      false,
-    ) {
+    let decoded = match
+      decode_transfer_encodings(
+        transfer_codings,
+        raw,
+        self.max_body_bytes,
+        self.max_body_bytes,
+        false,
+      ) {
       Ok(body) => body
       Err(err) => {
         let _ = self.body.close()
@@ -1774,6 +1953,7 @@ pub fn Response::copy_body_to(
   }
 }
 
+///|
 /// Read and discard the complete response body without buffering it, enforcing
 /// the response's size limit. A pooled connection whose body is fully drained
 /// can be reused; call this when only the status and headers are needed.
@@ -1810,6 +1990,7 @@ pub fn Response::drain_body(self : Response) -> Result[Unit, HttpError] {
   }
 }
 
+///|
 /// Close the response body, discarding any unread bytes. Use this when the
 /// caller is done with a response and does not need to read the rest of its
 /// body; a pooled connection is then closed instead of being reused with
@@ -1818,6 +1999,7 @@ pub fn Response::close(self : Response) -> Unit {
   let _ = self.body.close()
 }
 
+///|
 /// Read the complete response body, enforcing the response's size limit.
 /// When `auto_decompress` is enabled, known `Content-Encoding` values are
 /// removed first; otherwise the exact body bytes are returned.
@@ -1829,6 +2011,7 @@ pub fn Response::read_body(self : Response) -> Result[Bytes, HttpError] {
   }
 }
 
+///|
 /// Read the complete response body and transparently decode any
 /// `Content-Encoding` that Feather understands (`gzip`, `deflate`).
 /// Other encodings return an error; a missing/`identity` encoding is a no-op.
@@ -1836,10 +2019,11 @@ pub fn Response::read_body_decoded(self : Response) -> Result[Bytes, HttpError] 
   self.read_body_decoded_with_limit(self.max_body_bytes)
 }
 
+///|
 /// Like `read_body_decoded`, but bounds the decoded output by `max_bytes`.
 pub fn Response::read_body_decoded_with_limit(
   self : Response,
-  max_bytes : Int,
+  max_bytes : Int32,
 ) -> Result[Bytes, HttpError] {
   let limit = if max_bytes < 0 { 0 } else { max_bytes }
   // Repeated Content-Encoding header lines are equivalent to a single
@@ -1898,7 +2082,8 @@ pub fn Response::read_body_decoded_with_limit(
   if opaque_transfer {
     for token in combined.split(",") {
       let token = token.trim().to_owned()
-      if token.length() > 0 && token.to_lower() != "identity" &&
+      if token.length() > 0 &&
+        token.to_lower() != "identity" &&
         !content_coding_supported(token) {
         let _ = self.body.close()
         return Err(ProtocolError("unsupported Content-Encoding: " + token))
@@ -1930,7 +2115,8 @@ pub fn Response::read_body_decoded_with_limit(
     // still an unsupported response rather than silently accepted content.
     for token in combined.split(",") {
       let token = token.trim().to_owned()
-      if token.length() > 0 && token.to_lower() != "identity" &&
+      if token.length() > 0 &&
+        token.to_lower() != "identity" &&
         !content_coding_supported(token) {
         return Err(ProtocolError("unsupported Content-Encoding: " + token))
       }
@@ -1938,8 +2124,10 @@ pub fn Response::read_body_decoded_with_limit(
     if has_transfer {
       for coding in transfer_codings {
         let token = coding.trim().to_owned()
-        if token.length() > 0 && token.to_lower() != "identity" &&
-          token != "chunked" && !content_coding_supported(token) {
+        if token.length() > 0 &&
+          token.to_lower() != "identity" &&
+          token != "chunked" &&
+          !content_coding_supported(token) {
           return Err(ProtocolError("unsupported Transfer-Encoding: " + token))
         }
       }
@@ -1948,24 +2136,17 @@ pub fn Response::read_body_decoded_with_limit(
   }
   let mut decoded = raw
   if has_transfer {
-    decoded = match decode_transfer_encodings(
-      transfer_codings,
-      decoded,
-      limit,
-      intermediate_limit,
-      has_encoding,
-    ) {
+    decoded = match
+      decode_transfer_encodings(
+        transfer_codings, decoded, limit, intermediate_limit, has_encoding,
+      ) {
       Ok(body) => body
       Err(err) => return Err(err)
     }
   }
   if has_encoding {
-    decoded = match decode_encodings(
-      combined,
-      decoded,
-      limit,
-      intermediate_limit,
-    ) {
+    decoded = match
+      decode_encodings(combined, decoded, limit, intermediate_limit) {
       Ok(body) => body
       Err(err) => return Err(err)
     }
@@ -1976,6 +2157,7 @@ pub fn Response::read_body_decoded_with_limit(
   Ok(decoded)
 }
 
+///|
 /// Whether the non-chunked transfer codings have to be decoded by the body
 /// reader. When `chunked` is the final coding, the response stream has already
 /// removed that framing, so the preceding codings are unambiguously available.
@@ -2001,6 +2183,7 @@ fn transfer_codings_are_opaque(codings : Array[String]) -> Bool {
   chunked_index >= 0 && chunked_index != codings.length() - 1
 }
 
+///|
 fn transfer_codings_need_decode(codings : Array[String]) -> Bool {
   let mut chunked_index = -1
   let mut index = 0
@@ -2024,6 +2207,7 @@ fn transfer_codings_need_decode(codings : Array[String]) -> Bool {
   false
 }
 
+///|
 /// The first transfer coding this client cannot decode, if any. Opaque
 /// close-delimited payloads are not decoded, but declaring a coding the client
 /// does not understand is still an error rather than silently returning bytes
@@ -2032,7 +2216,9 @@ fn first_unsupported_transfer_coding(codings : Array[String]) -> String? {
   for coding in codings {
     let token = coding.trim().to_owned()
     let lower = token.to_lower()
-    if lower.length() > 0 && lower != "identity" && lower != "chunked" &&
+    if lower.length() > 0 &&
+      lower != "identity" &&
+      lower != "chunked" &&
       !content_coding_supported(lower) {
       return Some(token)
     }
@@ -2040,10 +2226,11 @@ fn first_unsupported_transfer_coding(codings : Array[String]) -> String? {
   None
 }
 
+///|
 fn decode_transfer_coding(
   coding : String,
   data : Bytes,
-  max_bytes : Int,
+  max_bytes : Int32,
 ) -> Result[Bytes, HttpError] {
   let limit = if max_bytes < 0 { 0 } else { max_bytes }
   match coding.trim().to_lower() {
@@ -2059,6 +2246,7 @@ fn decode_transfer_coding(
   }
 }
 
+///|
 /// Undo the transfer codings in reverse order. `chunked` is framing and has
 /// already been consumed by the response stream. When Content-Encoding follows,
 /// every transfer stage only produces intermediate bytes, so only the final
@@ -2066,8 +2254,8 @@ fn decode_transfer_coding(
 fn decode_transfer_encodings(
   codings : Array[String],
   data : Bytes,
-  max_bytes : Int,
-  intermediate_max_bytes : Int,
+  max_bytes : Int32,
+  intermediate_max_bytes : Int32,
   has_content_encoding : Bool,
 ) -> Result[Bytes, HttpError] {
   if !transfer_codings_need_decode(codings) {
@@ -2084,8 +2272,7 @@ fn decode_transfer_encodings(
     let mut scan = 0
     while scan < filtered.length() {
       let token = filtered[scan].trim().to_owned()
-      if token.length() > 0 && token.to_lower() != "identity" &&
-        final_index < 0 {
+      if token.length() > 0 && token.to_lower() != "identity" && final_index < 0 {
         final_index = scan
       }
       scan = scan + 1
@@ -2111,6 +2298,7 @@ fn decode_transfer_encodings(
   Ok(current)
 }
 
+///|
 /// Apply a (possibly comma-separated) `Content-Encoding` header. Encodings are
 /// listed in the order they were applied, so they are undone in reverse. The
 /// final decode is bounded by `max_bytes`; intermediate decodes may use the
@@ -2118,8 +2306,8 @@ fn decode_transfer_encodings(
 fn decode_encodings(
   header : String,
   data : Bytes,
-  max_bytes : Int,
-  intermediate_max_bytes : Int,
+  max_bytes : Int32,
+  intermediate_max_bytes : Int32,
 ) -> Result[Bytes, HttpError] {
   let encodings = header.split(",").to_array()
   // The first encoding listed was applied last, so it is decoded last and
@@ -2154,6 +2342,7 @@ fn decode_encodings(
   Ok(current)
 }
 
+///|
 /// Decode the complete response body as text, decompressing any recognised
 /// `Content-Encoding` first. The `charset` parameter of `Content-Type` is
 /// honoured for UTF-8, US-ASCII, ISO-8859-1, Windows-1252 and UTF-16; unknown
@@ -2163,12 +2352,13 @@ pub fn Response::text(self : Response) -> Result[String, HttpError] {
   self.text_with_limit(self.max_body_bytes)
 }
 
+///|
 /// Like `text`, but bounds the decoded body by `max_bytes`. This is useful for
 /// untrusted responses whose compressed payload may expand substantially
 /// beyond the response's default limit.
 pub fn Response::text_with_limit(
   self : Response,
-  max_bytes : Int,
+  max_bytes : Int32,
 ) -> Result[String, HttpError] {
   match self.read_body_decoded_with_limit(max_bytes) {
     Ok(body) => Ok(decode_text_body(body, response_charset(self.headers)))
@@ -2176,44 +2366,56 @@ pub fn Response::text_with_limit(
   }
 }
 
+///|
 /// The `charset` parameter of the response `Content-Type`, if present.
 pub fn Response::charset(self : Response) -> String? {
   response_charset(self.headers)
 }
 
-pub fn Response::get_header(self : Response, name : String) -> Option[String] {
+///|
+pub fn Response::get_header(self : Response, name : String) -> String? {
   self.headers.get(name)
 }
 
+///|
 pub fn Response::get_header_all(self : Response, name : String) -> List[String] {
   self.headers.get_all(name)
 }
 
+///|
 pub fn Response::is_success(self : Response) -> Bool {
   self.status >= 200 && self.status < 300
 }
 
+///|
 pub fn Response::is_redirection(self : Response) -> Bool {
   // All 3xx statuses are redirections; only a subset is followable by the
   // client (see the redirect handling in `UnifiedClient`).
   self.status >= 300 && self.status < 400
 }
 
+///|
 pub fn Response::is_client_error(self : Response) -> Bool {
   self.status >= 400 && self.status < 500
 }
 
+///|
 pub fn Response::is_server_error(self : Response) -> Bool {
   self.status >= 500 && self.status < 600
 }
 
+///|
 /// HTTP Client interface
 pub trait HttpClient {
   fn request(Self, Request) -> Result[Response, HttpError]
 }
 
+///|
 /// Convenience functions for common HTTP methods
-pub fn &HttpClient::get(self : &HttpClient, url : String) -> Result[Response, HttpError] {
+pub fn &HttpClient::get(
+  self : &HttpClient,
+  url : String,
+) -> Result[Response, HttpError] {
   let req = match Request::from_url(GET, url) {
     Ok(req) => req
     Err(err) => return Err(err)
@@ -2221,7 +2423,12 @@ pub fn &HttpClient::get(self : &HttpClient, url : String) -> Result[Response, Ht
   self.request(req)
 }
 
-pub fn &HttpClient::post(self : &HttpClient, url : String, body : Bytes) -> Result[Response, HttpError] {
+///|
+pub fn &HttpClient::post(
+  self : &HttpClient,
+  url : String,
+  body : Bytes,
+) -> Result[Response, HttpError] {
   let req = match Request::from_url(POST, url) {
     Ok(req) => req
     Err(err) => return Err(err)
@@ -2229,6 +2436,7 @@ pub fn &HttpClient::post(self : &HttpClient, url : String, body : Bytes) -> Resu
   self.request(req.with_body(body))
 }
 
+///|
 pub fn &HttpClient::post_form(
   self : &HttpClient,
   url : String,
@@ -2241,6 +2449,7 @@ pub fn &HttpClient::post_form(
   self.request(request.with_form(fields))
 }
 
+///|
 pub fn &HttpClient::post_multipart(
   self : &HttpClient,
   url : String,
@@ -2254,7 +2463,12 @@ pub fn &HttpClient::post_multipart(
   self.request(request.with_multipart(fields, files))
 }
 
-pub fn &HttpClient::put(self : &HttpClient, url : String, body : Bytes) -> Result[Response, HttpError] {
+///|
+pub fn &HttpClient::put(
+  self : &HttpClient,
+  url : String,
+  body : Bytes,
+) -> Result[Response, HttpError] {
   let req = match Request::from_url(PUT, url) {
     Ok(req) => req
     Err(err) => return Err(err)
@@ -2262,7 +2476,11 @@ pub fn &HttpClient::put(self : &HttpClient, url : String, body : Bytes) -> Resul
   self.request(req.with_body(body))
 }
 
-pub fn &HttpClient::delete(self : &HttpClient, url : String) -> Result[Response, HttpError] {
+///|
+pub fn &HttpClient::delete(
+  self : &HttpClient,
+  url : String,
+) -> Result[Response, HttpError] {
   let req = match Request::from_url(DELETE, url) {
     Ok(req) => req
     Err(err) => return Err(err)
@@ -2270,7 +2488,11 @@ pub fn &HttpClient::delete(self : &HttpClient, url : String) -> Result[Response,
   self.request(req)
 }
 
-pub fn &HttpClient::head(self : &HttpClient, url : String) -> Result[Response, HttpError] {
+///|
+pub fn &HttpClient::head(
+  self : &HttpClient,
+  url : String,
+) -> Result[Response, HttpError] {
   let request = match Request::from_url(HEAD, url) {
     Ok(request) => request
     Err(err) => return Err(err)
@@ -2278,7 +2500,11 @@ pub fn &HttpClient::head(self : &HttpClient, url : String) -> Result[Response, H
   self.request(request)
 }
 
-pub fn &HttpClient::options(self : &HttpClient, url : String) -> Result[Response, HttpError] {
+///|
+pub fn &HttpClient::options(
+  self : &HttpClient,
+  url : String,
+) -> Result[Response, HttpError] {
   let request = match Request::from_url(OPTIONS, url) {
     Ok(request) => request
     Err(err) => return Err(err)
@@ -2286,7 +2512,12 @@ pub fn &HttpClient::options(self : &HttpClient, url : String) -> Result[Response
   self.request(request)
 }
 
-pub fn &HttpClient::patch(self : &HttpClient, url : String, body : Bytes) -> Result[Response, HttpError] {
+///|
+pub fn &HttpClient::patch(
+  self : &HttpClient,
+  url : String,
+  body : Bytes,
+) -> Result[Response, HttpError] {
   let request = match Request::from_url(PATCH, url) {
     Ok(request) => request
     Err(err) => return Err(err)
@@ -2294,7 +2525,11 @@ pub fn &HttpClient::patch(self : &HttpClient, url : String, body : Bytes) -> Res
   self.request(request.with_body(body))
 }
 
-pub fn &HttpClient::trace(self : &HttpClient, url : String) -> Result[Response, HttpError] {
+///|
+pub fn &HttpClient::trace(
+  self : &HttpClient,
+  url : String,
+) -> Result[Response, HttpError] {
   let request = match Request::from_url(TRACE, url) {
     Ok(request) => request
     Err(err) => return Err(err)
@@ -2302,6 +2537,7 @@ pub fn &HttpClient::trace(self : &HttpClient, url : String) -> Result[Response, 
   self.request(request)
 }
 
+///|
 /// Open a CONNECT tunnel. A successful response exposes the tunnelled bytes as
 /// the response body stream.
 pub fn &HttpClient::connect(

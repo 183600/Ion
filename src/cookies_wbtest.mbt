@@ -123,15 +123,9 @@ test "non-secure origins cannot overwrite Secure cookies" {
   let plain = cookie_test_url("http://example.com/")
   jar.store_at(secure, "token=secret; Secure; Path=/", 1000)
   jar.store_at(plain, "token=attacker; Path=/", 1000)
-  assert_eq(
-    jar.cookie_header_at(secure, 1000),
-    Some("token=secret"),
-  )
+  assert_eq(jar.cookie_header_at(secure, 1000), Some("token=secret"))
   jar.store_at(plain, "token=; Max-Age=0; Path=/", 1000)
-  assert_eq(
-    jar.cookie_header_at(secure, 1000),
-    Some("token=secret"),
-  )
+  assert_eq(jar.cookie_header_at(secure, 1000), Some("token=secret"))
   assert_eq(jar.length(), 1)
 }
 
@@ -162,10 +156,7 @@ test "expired Secure cookies can be replaced from non-secure origins" {
   let plain = cookie_test_url("http://example.com/")
   jar.store_at(secure, "token=old; Secure; Max-Age=1; Path=/", 1000)
   jar.store_at(plain, "token=new; Path=/", 2000)
-  assert_eq(
-    jar.cookie_header_at(secure, 2000),
-    Some("token=new"),
-  )
+  assert_eq(jar.cookie_header_at(secure, 2000), Some("token=new"))
   assert_eq(jar.length(), 1)
 }
 
@@ -214,8 +205,7 @@ test "Max-Age values beyond Int32 are honored" {
   let jar = CookieJar::new()
   jar.store_at(url, "m=1; Max-Age=999999999999999999999999; Path=/", 1000)
   match jar.cookies().head() {
-    Some(cookie) =>
-      assert_eq(cookie.expires_at_ms, Some(0xFFFFFFFFFFFFFFFFUL))
+    Some(cookie) => assert_eq(cookie.expires_at_ms, Some(0xFFFFFFFFFFFFFFFFUL))
     None => fail("huge Max-Age should keep the cookie")
   }
 
@@ -308,21 +298,25 @@ test "UnifiedClient replays stored cookies on later requests" {
   assert_eq(client.cookie_jar().length(), 1)
 }
 
+///|
 test "UnifiedClient preserves explicit cookies across same-origin redirects" {
   let raw = "HTTP/1.1 302 Found\r\nLocation: /next\r\nSet-Cookie: sid=jar; Path=/\r\nContent-Length: 0\r\n\r\n" +
     "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
   let stream = regression_mock_stream(raw, 1, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let client = UnifiedClient::{
     connector,
     options: ClientOptions::new(),
     redirect_count: 0,
   }.with_cookies()
-  let response = client.request(
-    Request::new(GET, cookie_test_url("http://example.com/start"))
-      .with_header("Cookie", "manual=1"),
-  ).unwrap()
+  let response = client
+    .request(
+      Request::new(GET, cookie_test_url("http://example.com/start")).with_header(
+        "Cookie", "manual=1",
+      ),
+    )
+    .unwrap()
   assert_eq(response.read_body().unwrap(), b"ok")
   let wire = @utf8.decode(stream.output.to_bytes()[:])
   let next_index = wire.find("GET /next HTTP/1.1").unwrap()
@@ -331,11 +325,12 @@ test "UnifiedClient preserves explicit cookies across same-origin redirects" {
   assert_false(second_request.contains("Cookie: sid=jar"))
 }
 
+///|
 test "jar cookies are not replayed across redirect origins" {
   let raw = "HTTP/1.1 302 Found\r\nLocation: http://other.example/next\r\nSet-Cookie: sid=secret; Path=/\r\nContent-Length: 0\r\n\r\n" +
     "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
   let stream = regression_mock_stream(raw, 1, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let client = UnifiedClient::{
     connector,
@@ -351,11 +346,12 @@ test "jar cookies are not replayed across redirect origins" {
   assert_false(second_request.contains("Cookie:"))
 }
 
+///|
 test "redirect responses can set cookies for the next hop" {
   let raw = "HTTP/1.1 302 Found\r\nLocation: /next\r\nSet-Cookie: sid=jar; Path=/\r\nContent-Length: 0\r\n\r\n" +
     "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
   let stream = regression_mock_stream(raw, 1, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let client = UnifiedClient::{
     connector,
@@ -370,6 +366,7 @@ test "redirect responses can set cookies for the next hop" {
   assert_true(second_request.contains("Cookie: sid=jar"))
 }
 
+///|
 test "updating a cookie preserves its creation order" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
@@ -382,22 +379,19 @@ test "updating a cookie preserves its creation order" {
   )
 }
 
+///|
 test "RFC 850 expiry dates are applied" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
   jar.store_at(
-    url,
-    "old=1; Expires=Saturday, 06-Nov-27 08:49:37 GMT; Path=/",
-    0,
+    url, "old=1; Expires=Saturday, 06-Nov-27 08:49:37 GMT; Path=/", 0,
   )
   let expires_at : UInt64 = 1825490977000L.to_uint64()
-  assert_eq(
-    jar.cookie_header_at(url, expires_at - 1),
-    Some("old=1"),
-  )
+  assert_eq(jar.cookie_header_at(url, expires_at - 1), Some("old=1"))
   assert_eq(jar.cookie_header_at(url, expires_at), None)
 }
 
+///|
 test "RFC 850 expiry dates without GMT are applied" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
@@ -407,6 +401,7 @@ test "RFC 850 expiry dates without GMT are applied" {
   assert_eq(jar.cookie_header_at(url, expires_at), None)
 }
 
+///|
 test "single-digit year tokens do not satisfy the year production" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
@@ -417,6 +412,7 @@ test "single-digit year tokens do not satisfy the year production" {
   assert_eq(jar.cookie_header_at(url, after_2030), Some("y=1"))
 }
 
+///|
 test "leading-zero expiry years are normalized by value" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
@@ -436,25 +432,26 @@ test "leading-zero expiry years are normalized by value" {
   assert_eq(jar.cookie_header_at(url, expires_at), None)
 }
 
+///|
 test "expiry years longer than four digits are ignored" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
   jar.store_at(url, "y=1; Expires=Wed, 01 Jan 02026 00:00:00 GMT; Path=/", 0)
   match jar.cookies().head() {
     Some(cookie) => assert_eq(cookie.expires_at_ms, None)
-    None => fail("cookie with an invalid expiry year should remain a session cookie")
+    None =>
+      fail("cookie with an invalid expiry year should remain a session cookie")
   }
 }
 
+///|
 test "an out-of-range four-digit expiry year invalidates the date" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
   // "1000" matches the year production but is outside 1601..9999, so the
   // parser must not skip it and accept the later "2026" token.
   jar.store_at(
-    url,
-    "x=1; Expires=Wed, 21 Oct 1000 2026 07:28:00 GMT; Path=/",
-    0,
+    url, "x=1; Expires=Wed, 21 Oct 1000 2026 07:28:00 GMT; Path=/", 0,
   )
   match jar.cookies().head() {
     Some(cookie) => assert_eq(cookie.expires_at_ms, None)
@@ -462,61 +459,55 @@ test "an out-of-range four-digit expiry year invalidates the date" {
   }
 }
 
+///|
 test "cookie expiry dates accept RFC date delimiters and token order" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
   let expiry : UInt64 = 1792567680000L.to_uint64()
-  for value in [
-    "a=1; Expires=Wed,\t21-Oct-2026\t07:28:00\tGMT; Path=/",
-    "b=2; Expires=07:28:00,2026-Oct-21; Path=/",
-    "c=3; Expires=2026/October/21 07:28:00 GMT; Path=/",
-  ] {
+  for
+    value in [
+      "a=1; Expires=Wed,\t21-Oct-2026\t07:28:00\tGMT; Path=/", "b=2; Expires=07:28:00,2026-Oct-21; Path=/",
+      "c=3; Expires=2026/October/21 07:28:00 GMT; Path=/",
+    ] {
     jar.store_at(url, value, 0)
   }
-  assert_eq(
-    jar.cookie_header_at(url, expiry - 1),
-    Some("a=1; b=2; c=3"),
-  )
+  assert_eq(jar.cookie_header_at(url, expiry - 1), Some("a=1; b=2; c=3"))
   assert_eq(jar.cookie_header_at(url, expiry), None)
 }
 
+///|
 test "cookie expiry dates ignore unknown tokens" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
   jar.store_at(
-    url,
-    "extra=1; Expires=Wed, 21 Oct 2026 07:28:00 junk; Path=/",
-    0,
+    url, "extra=1; Expires=Wed, 21 Oct 2026 07:28:00 junk; Path=/", 0,
   )
   let after_2030 : UInt64 = 2000000000000L.to_uint64()
   assert_eq(jar.cookie_header_at(url, after_2030), None)
 }
 
+///|
 test "cookie expiry ignores weekday tokens anywhere in the date" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
-  jar.store_at(
-    url,
-    "mid=1; Expires=09 Mon Jun 2021 10:00:00 GMT; Path=/",
-    0,
-  )
+  jar.store_at(url, "mid=1; Expires=09 Mon Jun 2021 10:00:00 GMT; Path=/", 0)
   let after_2030 : UInt64 = 2000000000000L.to_uint64()
   assert_eq(jar.cookie_header_at(url, after_2030), None)
 }
 
+///|
 test "cookie expiry accepts RFC date token suffixes" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
   let expiry : UInt64 = 1789975680000L.to_uint64()
   jar.store_at(
-    url,
-    "suffix=1; Expires=Wed, 21st Sept 2026 07:28:00GMT; Path=/",
-    0,
+    url, "suffix=1; Expires=Wed, 21st Sept 2026 07:28:00GMT; Path=/", 0,
   )
   assert_eq(jar.cookie_header_at(url, expiry - 1), Some("suffix=1"))
   assert_eq(jar.cookie_header_at(url, expiry), None)
 }
 
+///|
 test "pre-epoch expiry dates delete cookies" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
@@ -524,16 +515,15 @@ test "pre-epoch expiry dates delete cookies" {
   assert_eq(jar.cookie_header_at(url, 0), None)
 }
 
+///|
 test "cookie values must use RFC 6265 cookie-octets" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
-  for value in [
-    "bad=space value",
-    "bad=comma,value",
-    "bad=quote\"value",
-    "bad=back\\slash",
-    "bad=caf\u{e9}",
-  ] {
+  for
+    value in [
+      "bad=space value", "bad=comma,value", "bad=quote\"value", "bad=back\\slash",
+      "bad=caf\u{e9}",
+    ] {
     jar.store_at(url, value, 1000)
   }
   assert_eq(jar.length(), 0)
@@ -546,6 +536,7 @@ test "cookie values must use RFC 6265 cookie-octets" {
   )
 }
 
+///|
 test "an empty Domain attribute leaves the cookie host-only" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
@@ -557,6 +548,7 @@ test "an empty Domain attribute leaves the cookie host-only" {
   )
 }
 
+///|
 test "an empty Domain attribute does not discard an earlier valid Domain" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
@@ -575,13 +567,12 @@ test "an empty Domain attribute does not discard an earlier valid Domain" {
   )
 }
 
+///|
 test "the last Domain attribute decides the cookie scope" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
   jar.store_at(
-    url,
-    "bad=1; Domain=bad.example; Domain=example.com; Path=/",
-    1000,
+    url, "bad=1; Domain=bad.example; Domain=example.com; Path=/", 1000,
   )
   assert_eq(jar.length(), 1)
   assert_eq(
@@ -590,13 +581,12 @@ test "the last Domain attribute decides the cookie scope" {
   )
   let invalid_last = CookieJar::new()
   invalid_last.store_at(
-    url,
-    "drop=1; Domain=example.com; Domain=bad.example; Path=/",
-    1000,
+    url, "drop=1; Domain=example.com; Domain=bad.example; Path=/", 1000,
   )
   assert_eq(invalid_last.length(), 0)
 }
 
+///|
 test "the last Path attribute decides the cookie path" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/a/b")
@@ -609,6 +599,7 @@ test "the last Path attribute decides the cookie path" {
   )
 }
 
+///|
 test "a single-label Domain attribute cannot target a public suffix" {
   let jar = CookieJar::new()
   jar.store_at(
@@ -637,6 +628,7 @@ test "a single-label Domain attribute cannot target a public suffix" {
   )
 }
 
+///|
 test "a trailing-dot Domain attribute invalidates the cookie" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://www.example.com./")
@@ -645,13 +637,10 @@ test "a trailing-dot Domain attribute invalidates the cookie" {
   assert_eq(jar.cookie_header_at(url, 1000), None)
 }
 
+///|
 test "cookie hosts ignore a trailing root dot" {
   let jar = CookieJar::new()
-  jar.store_at(
-    cookie_test_url("http://Example.COM./"),
-    "root=1; Path=/",
-    1000,
-  )
+  jar.store_at(cookie_test_url("http://Example.COM./"), "root=1; Path=/", 1000)
   assert_eq(
     jar.cookie_header_at(cookie_test_url("http://example.com/"), 1000),
     Some("root=1"),
@@ -675,6 +664,7 @@ test "cookie hosts ignore a trailing root dot" {
   )
 }
 
+///|
 test "an IPv4 Domain attribute cannot match a suffix" {
   let jar = CookieJar::new()
   let origin = cookie_test_url("http://127.0.0.1/")
@@ -685,6 +675,7 @@ test "an IPv4 Domain attribute cannot match a suffix" {
   assert_eq(jar.cookie_header_at(origin, 1000), Some("same=1"))
 }
 
+///|
 test "impossible expiry dates are ignored" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
@@ -696,14 +687,13 @@ test "impossible expiry dates are ignored" {
   assert_eq(jar.cookie_header_at(url, after_2030), Some("bad=1; also=1"))
 }
 
+///|
 test "expiry dates ignore extra tokens" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
   let after_2030 : UInt64 = 2000000000000L.to_uint64()
   jar.store_at(
-    url,
-    "extra=1; Expires=Wed, 21 Oct 2026 07:28:00 GMT extra; Path=/",
-    0,
+    url, "extra=1; Expires=Wed, 21 Oct 2026 07:28:00 GMT extra; Path=/", 0,
   )
   assert_eq(jar.cookie_header_at(url, after_2030), None)
 }
@@ -735,8 +725,12 @@ test "cookie snapshots keep creation order and are stable" {
 test "cookie expiry accepts full month names" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
-  jar.store_at(url, "long=1; Expires=Wed, 21 October 2030 07:28:00 GMT; Path=/", 0)
-  jar.store_at(url, "rfc850=1; Expires=Wednesday, 21-October-30 07:28:00 GMT; Path=/", 0)
+  jar.store_at(
+    url, "long=1; Expires=Wed, 21 October 2030 07:28:00 GMT; Path=/", 0,
+  )
+  jar.store_at(
+    url, "rfc850=1; Expires=Wednesday, 21-October-30 07:28:00 GMT; Path=/", 0,
+  )
   assert_eq(jar.cookie_header_at(url, 0), Some("long=1; rfc850=1"))
   let year_2100 : UInt64 = 4102444800000L.to_uint64()
   assert_eq(jar.cookie_header_at(url, year_2100), None)
@@ -770,6 +764,7 @@ test "cookie jar treats IP Domain attributes as host-only" {
   )
 }
 
+///|
 test "DNS hosts that look like IPvFuture use domain matching" {
   let jar = CookieJar::new()
   jar.store_at(
@@ -853,7 +848,8 @@ test "bracketed and unbracketed IPv6 spellings share cookie identity" {
 }
 
 ///|
-test "cookie domain suffixes never match IP address hosts" {  let jar = CookieJar::new()
+test "cookie domain suffixes never match IP address hosts" {
+  let jar = CookieJar::new()
   jar.store_at(
     cookie_test_url("http://0.0.1/"),
     "leak=1; Domain=0.0.1; Path=/",
@@ -867,10 +863,7 @@ test "cookie domain suffixes never match IP address hosts" {  let jar = CookieJa
     jar.cookie_header_at(cookie_test_url("http://127.0.0.1/"), 1000),
     None,
   )
-  assert_eq(
-    jar.cookie_header_at(cookie_test_url("http://[::1]/"), 1000),
-    None,
-  )
+  assert_eq(jar.cookie_header_at(cookie_test_url("http://[::1]/"), 1000), None)
 }
 
 ///|
@@ -879,9 +872,7 @@ test "cookie expiry accepts RFC month suffixes" {
   let url = cookie_test_url("http://example.com/")
   let after_2030 : UInt64 = 2000000000000L.to_uint64()
   jar.store_at(
-    url,
-    "junk=1; Expires=Wed, 21 Octopus 2030 07:28:00 GMT; Path=/",
-    0,
+    url, "junk=1; Expires=Wed, 21 Octopus 2030 07:28:00 GMT; Path=/", 0,
   )
   assert_eq(jar.cookie_header_at(url, after_2030), None)
 }
@@ -899,10 +890,7 @@ test "cookie jar enforces __Secure- prefix" {
   jar.store_at(secure, "__SECURE-id=4; Path=/", 1000)
   assert_eq(jar.length(), 0)
   jar.store_at(secure, "__Secure-id=2; Secure; Path=/", 1000)
-  assert_eq(
-    jar.cookie_header_at(secure, 1000),
-    Some("__Secure-id=2"),
-  )
+  assert_eq(jar.cookie_header_at(secure, 1000), Some("__Secure-id=2"))
   assert_eq(jar.cookie_header_at(plain, 1000), None)
 }
 
@@ -917,11 +905,7 @@ test "cookie jar enforces __Host- prefix" {
     Some("__Host-id=1"),
   )
   // A Domain attribute makes the cookie domain-scoped.
-  jar.store_at(
-    secure,
-    "__Host-id=2; Secure; Path=/; Domain=example.com",
-    1000,
-  )
+  jar.store_at(secure, "__Host-id=2; Secure; Path=/; Domain=example.com", 1000)
   assert_eq(jar.length(), 1)
   // A path other than "/" is not allowed.
   jar.store_at(secure, "__Host-id=3; Secure; Path=/account", 1000)
@@ -964,25 +948,20 @@ test "cookie jar accessors expose the live jar" {
   assert_eq(client.cookie_jar().cookie_header(url), Some("sid=live"))
 }
 
+///|
 test "host-only and domain cookies with the same name coexist" {
   let jar = CookieJar::new()
   let url = cookie_test_url("http://example.com/")
   jar.store_at(url, "a=host; Path=/", 1000)
   jar.store_at(url, "a=domain; Domain=example.com; Path=/", 1000)
   assert_eq(jar.length(), 2)
-  assert_eq(
-    jar.cookie_header_at(url, 1000),
-    Some("a=host; a=domain"),
-  )
+  assert_eq(jar.cookie_header_at(url, 1000), Some("a=host; a=domain"))
   assert_eq(
     jar.cookie_header_at(cookie_test_url("http://sub.example.com/"), 1000),
     Some("a=domain"),
   )
   jar.store_at(url, "a=host2; Path=/", 1000)
-  assert_eq(
-    jar.cookie_header_at(url, 1000),
-    Some("a=host2; a=domain"),
-  )
+  assert_eq(jar.cookie_header_at(url, 1000), Some("a=host2; a=domain"))
 }
 
 ///|
@@ -1095,7 +1074,9 @@ test "attribute values longer than 1024 octets are ignored" {
   // A long Max-Age is ignored, leaving the Expires attribute in effect.
   jar.store_at(
     url,
-    "a=1; Expires=Wed, 21 Oct 2026 07:28:00 GMT; Max-Age=" + long_value + "; Path=/",
+    "a=1; Expires=Wed, 21 Oct 2026 07:28:00 GMT; Max-Age=" +
+    long_value +
+    "; Path=/",
     0,
   )
   let expiry : UInt64 = 1792567680000L.to_uint64()
@@ -1157,11 +1138,10 @@ test "domain cookies do not leak to a trailing-dot IP literal" {
 test "an out-of-range time token invalidates the Expires date" {
   // 07:60:00 matches the RFC 6265 time production, so the invalid minute
   // makes the whole cookie-date fail; it must not be re-read as day 07.
-  for expires in [
-    "07:60:00 2030 Oct 21 08:49:37 GMT",
-    "25:00:00 2030 Oct 21 08:49:37 GMT",
-    "07:28:60 2030 Oct 21 08:49:37 GMT",
-  ] {
+  for
+    expires in [
+      "07:60:00 2030 Oct 21 08:49:37 GMT", "25:00:00 2030 Oct 21 08:49:37 GMT", "07:28:60 2030 Oct 21 08:49:37 GMT",
+    ] {
     let jar = CookieJar::new()
     let url = cookie_test_url("https://example.com/")
     jar.store_at(url, "x=1; Expires=" + expires + "; Path=/", 0)
@@ -1183,6 +1163,7 @@ test "default cookie path is / for a non-absolute uri-path" {
   )
 }
 
+///|
 test "numeric dotted hosts never receive domain-suffix cookies" {
   let jar = CookieJar::new()
   let origin = cookie_test_url("http://010.0.0.1/")
@@ -1202,14 +1183,11 @@ test "numeric dotted hosts never receive domain-suffix cookies" {
   assert_eq(jar.cookie_header_at(malformed, 1000), Some("same=1"))
 }
 
+///|
 test "later time-shaped tokens do not invalidate an already parsed date" {
   let jar = CookieJar::new()
   let url = cookie_test_url("https://example.com/")
-  jar.store_at(
-    url,
-    "x=1; Expires=Oct 21 2030 08:49:37 07:60:00 GMT; Path=/",
-    0,
-  )
+  jar.store_at(url, "x=1; Expires=Oct 21 2030 08:49:37 07:60:00 GMT; Path=/", 0)
   let expiry : UInt64 = 1918802977000L.to_uint64()
   assert_eq(jar.cookie_header_at(url, expiry - 1), Some("x=1"))
   assert_eq(jar.cookie_header_at(url, expiry), None)
@@ -1226,7 +1204,7 @@ test "http1 combines split cookie fields into one header" {
   assert_true(H1Codec::new(stream).encode_request(request) is Ok(_))
   let wire = @utf8.decode(stream.output.to_bytes()[:])
   assert_true(wire.contains("Cookie: a=1; b=2\r\n"))
-  assert_false(wire.contains("Cookie: a=1\r\nCookie: b=2") )
+  assert_false(wire.contains("Cookie: a=1\r\nCookie: b=2"))
   assert_eq(wire.split("Cookie:").length(), 2)
 }
 
@@ -1237,11 +1215,7 @@ test "a later malformed time token can still supply the day of month" {
   // The first token sets the clock. Once found-time is set, the second
   // time-shaped token is no longer eligible for the time production and must
   // be reconsidered as a day-of-month, matching RFC 6265 §5.1.1.
-  jar.store_at(
-    url,
-    "x=1; Expires=08:49:37 25:00:00 Oct 2030; Path=/",
-    0,
-  )
+  jar.store_at(url, "x=1; Expires=08:49:37 25:00:00 Oct 2030; Path=/", 0)
   let expiry : UInt64 = 1919148577000L.to_uint64()
   assert_eq(jar.cookie_header_at(url, expiry - 1), Some("x=1"))
   assert_eq(jar.cookie_header_at(url, expiry), None)

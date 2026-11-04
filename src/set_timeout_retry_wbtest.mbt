@@ -1,17 +1,18 @@
+///|
 /// A pooled connection can fail while the client applies the request timeout,
 /// before any request bytes are written. Retrying is safe even for methods
 /// that are not idempotent because the request never reached the peer.
-
 struct TimeoutFailStream {
   input : Bytes
-  mut offset : Int
+  mut offset : Int32
   output : Buffer
-  fail_at : Int
-  mut timeout_calls : Int
+  fail_at : Int32
+  mut timeout_calls : Int32
   mut is_open : Bool
 }
 
-fn timeout_fail_stream(input : String, fail_at : Int) -> TimeoutFailStream {
+///|
+fn timeout_fail_stream(input : String, fail_at : Int32) -> TimeoutFailStream {
   TimeoutFailStream::{
     input: @utf8.encode(input),
     offset: 0,
@@ -22,10 +23,11 @@ fn timeout_fail_stream(input : String, fail_at : Int) -> TimeoutFailStream {
   }
 }
 
+///|
 pub impl Stream for TimeoutFailStream with fn read(
   self : TimeoutFailStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -33,15 +35,18 @@ pub impl Stream for TimeoutFailStream with fn read(
   if available <= 0 {
     return Ok(0)
   }
-  buf.write_bytes(self.input.exact_view(start=self.offset, end=self.input.length()))
+  buf.write_bytes(
+    self.input.exact_view(start=self.offset, end=self.input.length()),
+  )
   self.offset = self.input.length()
   Ok(available)
 }
 
+///|
 pub impl Stream for TimeoutFailStream with fn write(
   self : TimeoutFailStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -49,25 +54,30 @@ pub impl Stream for TimeoutFailStream with fn write(
   Ok(buf.length())
 }
 
-pub impl Stream for TimeoutFailStream with fn flush(
-  self : TimeoutFailStream,
-) -> Result[Unit, NetError] {
+///|
+pub impl Stream for TimeoutFailStream with fn flush(self : TimeoutFailStream) -> Result[
+  Unit,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   Ok(())
 }
 
-pub impl Stream for TimeoutFailStream with fn close(
-  self : TimeoutFailStream,
-) -> Result[Unit, NetError] {
+///|
+pub impl Stream for TimeoutFailStream with fn close(self : TimeoutFailStream) -> Result[
+  Unit,
+  NetError,
+] {
   self.is_open = false
   Ok(())
 }
 
+///|
 pub impl Stream for TimeoutFailStream with fn set_timeout(
   self : TimeoutFailStream,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Unit, NetError] {
   let _ = timeout_ms
   if !self.is_open {
@@ -80,6 +90,7 @@ pub impl Stream for TimeoutFailStream with fn set_timeout(
   Ok(())
 }
 
+///|
 pub impl Stream for TimeoutFailStream with fn peer_addr(
   self : TimeoutFailStream,
 ) -> Result[String, NetError] {
@@ -89,6 +100,7 @@ pub impl Stream for TimeoutFailStream with fn peer_addr(
   Ok("mock:0")
 }
 
+///|
 pub impl Stream for TimeoutFailStream with fn local_addr(
   self : TimeoutFailStream,
 ) -> Result[String, NetError] {
@@ -98,17 +110,16 @@ pub impl Stream for TimeoutFailStream with fn local_addr(
   Ok("mock:0")
 }
 
+///|
 test "non-idempotent request retries when applying the timeout fails before sending" {
   let stale = timeout_fail_stream(
-    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
-    3,
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok", 3,
   )
   let fresh = timeout_fail_stream(
-    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
-    99,
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok", 99,
   )
   let streams : Array[&Stream] = [stale, fresh]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let client = UnifiedClient::{
     connector,

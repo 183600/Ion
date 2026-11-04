@@ -11,8 +11,8 @@ test "live Go HTTP/2 streaming response preserves DATA order and trailers" {
     let client = UnifiedClient::new()
       .with_tls_config(
         TlsConfig::new("localhost")
-          .with_alpn(@list.List(["h2", "http/1.1"]))
-          .with_verify_mode(SkipVerification),
+        .with_alpn(@list.List(["h2", "http/1.1"]))
+        .with_verify_mode(SkipVerification),
       )
       .with_http2_streaming(true)
       .with_timeout(5000)
@@ -41,8 +41,8 @@ test "live Go HTTP/2 buffered response has no trailers" {
     let client = UnifiedClient::new()
       .with_tls_config(
         TlsConfig::new("localhost")
-          .with_alpn(@list.List(["h2", "http/1.1"]))
-          .with_verify_mode(SkipVerification),
+        .with_alpn(@list.List(["h2", "http/1.1"]))
+        .with_verify_mode(SkipVerification),
       )
       .with_timeout(5000)
     let response = client.get("https://localhost:18443/plain").unwrap()

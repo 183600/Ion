@@ -1,7 +1,8 @@
+///|
 /// Backwards-compatible name for the standard library list type.
 pub type List[A] = @list.List[A]
 
-
+///|
 fn is_decimal_digits(value : String) -> Bool {
   if value.length() == 0 {
     return false
@@ -14,18 +15,22 @@ fn is_decimal_digits(value : String) -> Bool {
   true
 }
 
+///|
 fn is_hex_digits(value : String) -> Bool {
   if value.length() == 0 {
     return false
   }
   for ch in value {
-    if (ch < '0' || ch > '9') && (ch < 'a' || ch > 'f') && (ch < 'A' || ch > 'F') {
+    if (ch < '0' || ch > '9') &&
+      (ch < 'a' || ch > 'f') &&
+      (ch < 'A' || ch > 'F') {
       return false
     }
   }
   true
 }
 
+///|
 fn is_unreserved_char(ch : Char) -> Bool {
   (ch >= 'a' && ch <= 'z') ||
   (ch >= 'A' && ch <= 'Z') ||
@@ -36,6 +41,7 @@ fn is_unreserved_char(ch : Char) -> Bool {
   ch == '~'
 }
 
+///|
 fn is_sub_delim_char(ch : Char) -> Bool {
   ch == '!' ||
   ch == '$' ||
@@ -50,11 +56,15 @@ fn is_sub_delim_char(ch : Char) -> Bool {
   ch == '='
 }
 
+///|
 fn is_hex_char(ch : Char) -> Bool {
-  (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')
+  (ch >= '0' && ch <= '9') ||
+  (ch >= 'a' && ch <= 'f') ||
+  (ch >= 'A' && ch <= 'F')
 }
 
-fn hex_char_value(ch : Char) -> Int {
+///|
+fn hex_char_value(ch : Char) -> Int32 {
   if ch >= '0' && ch <= '9' {
     return ch.to_int() - '0'.to_int()
   }
@@ -67,6 +77,7 @@ fn hex_char_value(ch : Char) -> Int {
   -1
 }
 
+///|
 /// Decode `%HH` escapes, leaving malformed escapes untouched. Callers validate
 /// the input first, so this only has to handle well-formed escapes.
 fn percent_decode_bytes(value : String) -> Bytes {
@@ -90,6 +101,7 @@ fn percent_decode_bytes(value : String) -> Bytes {
   output.to_bytes()
 }
 
+///|
 /// Whether a host is made only of digits and dots. Such a host is intended as
 /// an IPv4 literal even when it is malformed (for example a leading-zero octet
 /// or an out-of-range octet), so it must never be treated as a DNS suffix.
@@ -108,6 +120,7 @@ fn is_numeric_dotted_host(value : String) -> Bool {
   saw_digit && saw_dot
 }
 
+///|
 fn is_ipv4_literal(value : String) -> Bool {
   let parts = value.split(".").collect()
   if parts.length() != 4 {
@@ -132,6 +145,7 @@ fn is_ipv4_literal(value : String) -> Bool {
   true
 }
 
+///|
 fn is_zone_id(value : String) -> Bool {
   if value.length() == 0 {
     return false
@@ -169,7 +183,8 @@ fn is_zone_id(value : String) -> Bool {
   true
 }
 
-fn ipv6_group_count(value : String, allow_ipv4_tail : Bool) -> Int {
+///|
+fn ipv6_group_count(value : String, allow_ipv4_tail : Bool) -> Int32 {
   if value.length() == 0 {
     return 0
   }
@@ -197,6 +212,7 @@ fn ipv6_group_count(value : String, allow_ipv4_tail : Bool) -> Int {
   groups
 }
 
+///|
 fn is_ipv6_literal(value : String) -> Bool {
   match value.find("::") {
     Some(index) => {
@@ -212,6 +228,7 @@ fn is_ipv6_literal(value : String) -> Bool {
   }
 }
 
+///|
 fn is_ipvfuture_literal(value : String) -> Bool {
   if value.length() < 3 {
     return false
@@ -241,6 +258,7 @@ fn is_ipvfuture_literal(value : String) -> Bool {
   true
 }
 
+///|
 fn is_ipv6_literal_with_zone(value : String) -> Bool {
   let mut address = value
   match value.find("%") {
@@ -249,11 +267,7 @@ fn is_ipv6_literal_with_zone(value : String) -> Bool {
         return false
       }
       let zone = value[index + 1:].to_owned()
-      let zone = if zone.has_prefix("25") {
-        zone[2:].to_owned()
-      } else {
-        zone
-      }
+      let zone = if zone.has_prefix("25") { zone[2:].to_owned() } else { zone }
       if !is_zone_id(zone) {
         return false
       }
@@ -264,17 +278,19 @@ fn is_ipv6_literal_with_zone(value : String) -> Bool {
   is_ipv6_literal(address)
 }
 
+///|
 fn is_ip_literal(value : String) -> Bool {
   is_ipvfuture_literal(value) || is_ipv6_literal_with_zone(value)
 }
 
+///|
 /// Fold a host to lowercase without changing the case of an IPv6 zone
 /// identifier. Zone identifiers name local interfaces on Unix, where names
 /// are case-sensitive; the address portion remains case-insensitive.
 fn lowercase_host_preserving_zone(host : String) -> String {
   if host.has_prefix("[") {
     match host.find("]") {
-      Some(close) => {
+      Some(close) =>
         if close > 1 {
           let inner = host[1:close].to_owned()
           if is_ipv6_literal_with_zone(inner) {
@@ -289,7 +305,6 @@ fn lowercase_host_preserving_zone(host : String) -> String {
             }
           }
         }
-      }
       None => ()
     }
     return host.to_lower()

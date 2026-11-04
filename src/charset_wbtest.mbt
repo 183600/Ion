@@ -1,6 +1,6 @@
+///|
 /// Response text decoding honours the Content-Type charset parameter.
-
-fn charset_test_bytes(values : Array[Int]) -> Bytes {
+fn charset_test_bytes(values : Array[Int32]) -> Bytes {
   let output = Buffer(size_hint=values.length())
   for value in values {
     output.write_byte(value.to_byte())
@@ -8,6 +8,7 @@ fn charset_test_bytes(values : Array[Int]) -> Bytes {
   output.to_bytes()
 }
 
+///|
 fn charset_text_response(content_type : String, body : Bytes) -> Response {
   let stream = RegressionMockStream::{
     input: body,
@@ -22,6 +23,7 @@ fn charset_text_response(content_type : String, body : Bytes) -> Response {
   Response::new(200, headers, stream)
 }
 
+///|
 test "text defaults to UTF-8 when no charset is declared" {
   let body = @utf8.encode("h\u{e9}llo")
   let response = charset_text_response("text/plain", body)
@@ -29,6 +31,7 @@ test "text defaults to UTF-8 when no charset is declared" {
   assert_eq(response.text().unwrap(), "h\u{e9}llo")
 }
 
+///|
 test "text decodes ISO-8859-1 bodies" {
   let response = charset_text_response(
     "text/plain; charset=ISO-8859-1",
@@ -38,6 +41,7 @@ test "text decodes ISO-8859-1 bodies" {
   assert_eq(response.text().unwrap(), "h\u{e9}llo")
 }
 
+///|
 test "text decodes quoted charset parameters" {
   let response = charset_text_response(
     "text/plain; charset=\"windows-1252\"",
@@ -51,6 +55,7 @@ test "text decodes quoted charset parameters" {
   assert_eq(quoted_utf8.text().unwrap(), "ok")
 }
 
+///|
 test "text decodes Windows-1252 punctuation" {
   let response = charset_text_response(
     "text/plain; charset=cp1252",
@@ -59,6 +64,7 @@ test "text decodes Windows-1252 punctuation" {
   assert_eq(response.text().unwrap(), "\u{201c}Hi\u{201d}")
 }
 
+///|
 test "text maps non-ASCII bytes in US-ASCII bodies to replacement characters" {
   let response = charset_text_response(
     "text/plain; charset=us-ascii",
@@ -67,6 +73,7 @@ test "text maps non-ASCII bytes in US-ASCII bodies to replacement characters" {
   assert_eq(response.text().unwrap(), "A\u{fffd}B")
 }
 
+///|
 test "text decodes UTF-16 with a byte-order mark" {
   let little = charset_text_response(
     "text/plain; charset=utf-16",
@@ -80,6 +87,7 @@ test "text decodes UTF-16 with a byte-order mark" {
   assert_eq(big.text().unwrap(), "hi")
 }
 
+///|
 test "text decodes explicit UTF-16 endianness and surrogates" {
   let little = charset_text_response(
     "text/plain; charset=utf-16le",
@@ -93,6 +101,7 @@ test "text decodes explicit UTF-16 endianness and surrogates" {
   assert_eq(big.text().unwrap(), "hi")
 }
 
+///|
 test "text falls back to UTF-8 for unknown charsets" {
   let response = charset_text_response(
     "text/plain; charset=made-up",
@@ -101,6 +110,7 @@ test "text falls back to UTF-8 for unknown charsets" {
   assert_eq(response.text().unwrap(), "h\u{e9}")
 }
 
+///|
 test "charset parsing ignores other parameters and empty values" {
   let response = charset_text_response(
     "text/plain; boundary=x; charset=utf-8; format=flowed",
@@ -109,22 +119,19 @@ test "charset parsing ignores other parameters and empty values" {
   assert_eq(response.charset(), Some("utf-8"))
   let empty = charset_text_response("text/plain; charset=", @utf8.encode("ok"))
   assert_eq(empty.charset(), None)
-  let no_header = Response::new(
-    200,
-    Headers::new(),
-    RegressionMockStream::{
-      input: b"ok",
-      offset: 0,
-      output: @buffer.new(size_hint=16),
-      max_read: 0,
-      max_write: 0,
-      is_open: true,
-      last_timeout: 0,
-    },
-  )
+  let no_header = Response::new(200, Headers::new(), RegressionMockStream::{
+    input: b"ok",
+    offset: 0,
+    output: @buffer.new(size_hint=16),
+    max_read: 0,
+    max_write: 0,
+    is_open: true,
+    last_timeout: 0,
+  })
   assert_eq(no_header.charset(), None)
 }
 
+///|
 test "charset parameter ignores charset text inside quoted parameters" {
   let response = charset_text_response(
     "text/plain; boundary=\"x;charset=utf-8\"; charset=iso-8859-1",
@@ -134,6 +141,7 @@ test "charset parameter ignores charset text inside quoted parameters" {
   assert_eq(response.text().unwrap(), "h\u{e9}llo")
 }
 
+///|
 test "quoted charset values honor quoted-pair escapes" {
   let response = charset_text_response(
     "text/plain; charset=\"iso\\-8859-1\"",
@@ -143,6 +151,7 @@ test "quoted charset values honor quoted-pair escapes" {
   assert_eq(response.text().unwrap(), "h\u{e9}llo")
 }
 
+///|
 test "astral text in an earlier quoted parameter does not hide charset" {
   let response = charset_text_response(
     "text/plain; boundary=\"\u{1f642};charset=utf-8\"; charset=iso-8859-1",
@@ -152,6 +161,7 @@ test "astral text in an earlier quoted parameter does not hide charset" {
   assert_eq(response.text().unwrap(), "h\u{e9}llo")
 }
 
+///|
 test "explicit UTF-16 endianness is not overridden by an opposite BOM" {
   // RFC 2781 §4.1: text labelled UTF-16BE is always big-endian. FF FE is
   // therefore U+FFFE (an error), not an LE BOM that swaps the remaining text.
@@ -168,6 +178,7 @@ test "explicit UTF-16 endianness is not overridden by an opposite BOM" {
   assert_eq(big_bom.text().unwrap(), "hi")
 }
 
+///|
 test "text strips a UTF-8 byte-order mark" {
   let body = charset_test_bytes([0xEF, 0xBB, 0xBF, 0x68, 0x69])
   let implicit = charset_text_response("text/plain", body)
@@ -176,6 +187,7 @@ test "text strips a UTF-8 byte-order mark" {
   assert_eq(explicit.text().unwrap(), "hi")
 }
 
+///|
 test "text sniffs UTF-16 byte-order marks without a declared charset" {
   let little = charset_text_response(
     "text/plain",

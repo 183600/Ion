@@ -1,7 +1,9 @@
+///|
 struct RecordingTlsProvider {
   configs : Array[TlsConfig]
 }
 
+///|
 pub impl TlsProvider for RecordingTlsProvider with fn new_client(
   self : RecordingTlsProvider,
   config : TlsConfig,
@@ -11,10 +13,11 @@ pub impl TlsProvider for RecordingTlsProvider with fn new_client(
     Err(err) => return Err(err)
   }
   self.configs.push(config)
-  let ctx = MockTlsClientCtx::{ config, is_connected: false }
+  let ctx = MockTlsClientCtx::{ config, is_connected: false, }
   Ok(ctx)
 }
 
+///|
 test "Proxy::new_https accepts HTTPS proxies" {
   let proxy = Proxy::new_https("https://user:secret@proxy.example:8443").unwrap()
   assert_true(proxy.is_secure())
@@ -29,6 +32,7 @@ test "Proxy::new_https accepts HTTPS proxies" {
   assert_true(Proxy::new_https("https://proxy.example/path") is Err(_))
 }
 
+///|
 test "an HTTPS proxy keeps bracketed IPvFuture literals as literals" {
   let connector = Connector::new(TcpDialer::new(), MockTlsProvider::new("test"))
   let proxy = Proxy::new_https("https://[v1.proxy]:8443").unwrap()
@@ -37,6 +41,7 @@ test "an HTTPS proxy keeps bracketed IPvFuture literals as literals" {
   assert_true(config.validate() is Ok(_))
 }
 
+///|
 test "with_proxy_url selects HTTPS for an https proxy URL" {
   let client = UnifiedClient::new()
   assert_true(client.with_proxy_url("https://proxy.example:8443") is Ok(_))
@@ -44,11 +49,12 @@ test "with_proxy_url selects HTTPS for an https proxy URL" {
   assert_true(client.with_proxy_url("https://proxy.example/path") is Err(_))
 }
 
+///|
 test "plain HTTP through an HTTPS proxy uses TLS and absolute-form" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
   let stream = regression_mock_stream(raw, 4096, 4096)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = RecordingTlsProvider::{ configs: [] }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = RecordingTlsProvider::{ configs: [], }
   let client = UnifiedClient::with_transport(
     dialer,
     provider,
@@ -63,11 +69,12 @@ test "plain HTTP through an HTTPS proxy uses TLS and absolute-form" {
   assert_eq(provider.configs[0].alpn, @list.List(["http/1.1"]))
 }
 
+///|
 test "HTTPS through an HTTPS proxy wraps both hops in TLS" {
   let raw = "HTTP/1.1 200 Connection Established\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
   let stream = regression_mock_stream(raw, 4096, 4096)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = RecordingTlsProvider::{ configs: [] }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = RecordingTlsProvider::{ configs: [], }
   let client = UnifiedClient::with_transport(
     dialer,
     provider,
@@ -83,19 +90,20 @@ test "HTTPS through an HTTPS proxy wraps both hops in TLS" {
   assert_eq(provider.configs[1].server_name, "secure.example")
 }
 
+///|
 test "HTTPS proxy connections do not inherit origin credentials or ALPN" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
   let stream = regression_mock_stream(raw, 4096, 4096)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = RecordingTlsProvider::{ configs: [] }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = RecordingTlsProvider::{ configs: [], }
   let origin_config = TlsConfig::new("ignored.example")
     .with_alpn(@list.List(["h2", "http/1.1"]))
     .with_client_auth(ClientCert::new(b"cert", b"key"))
   let client = UnifiedClient::with_transport(
-    dialer,
-    provider,
-    ClientOptions::new().with_follow_redirects(false),
-  )
+      dialer,
+      provider,
+      ClientOptions::new().with_follow_redirects(false),
+    )
     .with_tls_config(origin_config)
     .with_proxy(Proxy::new_https("https://proxy.example:8443").unwrap())
   let _ = client.get("http://example.com/").unwrap()
@@ -105,21 +113,26 @@ test "HTTPS proxy connections do not inherit origin credentials or ALPN" {
   assert_true(provider.configs[0].client_auth is None)
 }
 
+///|
 test "proxy connection keys distinguish TLS and plaintext proxies" {
-  let plain = Connector::new(TcpDialer::new(), MockTlsProvider::new("test"))
-    .with_proxy(Proxy::new("http://proxy.example:8443").unwrap())
-  let secure = Connector::new(TcpDialer::new(), MockTlsProvider::new("test"))
-    .with_proxy(Proxy::new_https("https://proxy.example:8443").unwrap())
+  let plain = Connector::new(TcpDialer::new(), MockTlsProvider::new("test")).with_proxy(
+    Proxy::new("http://proxy.example:8443").unwrap(),
+  )
+  let secure = Connector::new(TcpDialer::new(), MockTlsProvider::new("test")).with_proxy(
+    Proxy::new_https("https://proxy.example:8443").unwrap(),
+  )
   let url = Url::parse("http://example.com/").unwrap()
   assert_true(plain.connection_key(url) != secure.connection_key(url))
 }
 
 ///|
 test "proxy connection keys distinguish bracketed literals from DNS names" {
-  let dns = Connector::new(TcpDialer::new(), MockTlsProvider::new("test"))
-    .with_proxy(Proxy::new("http://v1.foo:3128").unwrap())
-  let literal = Connector::new(TcpDialer::new(), MockTlsProvider::new("test"))
-    .with_proxy(Proxy::new("http://[v1.foo]:3128").unwrap())
+  let dns = Connector::new(TcpDialer::new(), MockTlsProvider::new("test")).with_proxy(
+    Proxy::new("http://v1.foo:3128").unwrap(),
+  )
+  let literal = Connector::new(TcpDialer::new(), MockTlsProvider::new("test")).with_proxy(
+    Proxy::new("http://[v1.foo]:3128").unwrap(),
+  )
   let url = Url::parse("http://example.com/").unwrap()
   assert_true(dns.connection_key(url) != literal.connection_key(url))
 }

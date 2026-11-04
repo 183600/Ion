@@ -1,3 +1,4 @@
+///|
 /// A server-push stream id is even, and push is disabled, so no such stream can
 /// ever exist. A buffered WINDOW_UPDATE for one is malformed even when its
 /// increment is zero or when the id is older than the next client stream.

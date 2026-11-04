@@ -1,3 +1,4 @@
+///|
 test "HttpMethod to_string" {
   assert_eq(GET.to_string(), "GET")
   assert_eq(POST.to_string(), "POST")
@@ -8,33 +9,38 @@ test "HttpMethod to_string" {
   assert_eq(PATCH.to_string(), "PATCH")
 }
 
+///|
 test "Header creation" {
   let header = Header::new("Content-Type", "application/json")
   assert_eq(header.name, "Content-Type")
   assert_eq(header.value, "application/json")
 }
 
+///|
 test "Headers operations" {
   let headers = Headers::new()
   let headers_with_content = headers.add("Content-Type", "application/json")
-  let headers_with_both = headers_with_content.add("User-Agent", "Feather/0.1.0")
-  
+  let headers_with_both = headers_with_content.add(
+    "User-Agent", "Feather/0.1.0",
+  )
+
   let content_type = headers_with_both.get("Content-Type")
   assert_true(content_type.is_some())
   assert_eq(content_type.unwrap(), "application/json")
-  
+
   let user_agent = headers_with_both.get("User-Agent")
   assert_true(user_agent.is_some())
   assert_eq(user_agent.unwrap(), "Feather/0.1.0")
-  
+
   let missing = headers_with_both.get("Missing")
   assert_true(missing.is_none())
 }
 
+///|
 test "Url parse http" {
   let url_str = "http://example.com:8080/path?query=1"
   let result = Url::parse(url_str)
-  
+
   assert_true(result is Ok(_))
   let url = result.unwrap()
   assert_eq(url.scheme, "http")
@@ -43,10 +49,11 @@ test "Url parse http" {
   assert_eq(url.path, "/path")
 }
 
+///|
 test "Url parse https default port" {
   let url_str = "https://example.com"
   let result = Url::parse(url_str)
-  
+
   assert_true(result is Ok(_))
   let url = result.unwrap()
   assert_eq(url.scheme, "https")
@@ -55,18 +62,20 @@ test "Url parse https default port" {
   assert_eq(url.path, "/")
 }
 
+///|
 test "Url parse invalid" {
   let result = Url::parse("")
   assert_true(result is Err(_))
-  
+
   let result2 = Url::parse("ftp://example.com")
   assert_true(result2 is Err(_))
 }
 
+///|
 test "Request creation" {
   let url = Url::new("https", "example.com", 443)
   let request = Request::new(GET, url)
-  
+
   assert_eq(request.verb, GET)
   assert_eq(request.url.scheme, "https")
   assert_eq(request.timeout_ms, 30000)
@@ -74,6 +83,7 @@ test "Request creation" {
   assert_true(request.body.is_none())
 }
 
+///|
 test "Request with header and body" {
   let url = Url::new("https", "example.com", 443)
   let body = @utf8.encode("test data")
@@ -81,34 +91,33 @@ test "Request with header and body" {
     .with_header("Content-Type", "application/json")
     .with_body(body)
     .with_timeout(5000)
-  
+
   assert_eq(request.verb, POST)
   assert_eq(request.timeout_ms, 5000)
   assert_true(request.timeout_explicit)
   assert_true(request.body.is_some())
-  
+
   let content_type = request.get_header("Content-Type")
   assert_true(content_type.is_some())
   assert_eq(content_type.unwrap(), "application/json")
 }
 
+///|
 test "Response creation" {
   let url = Url::new("https", "example.com", 443)
   let stream = TcpStream::new(url.host, url.port)
   let open_result = stream.open()
   assert_true(open_result is Ok(_))
-  
+
   let headers = Headers::new()
   let response = Response::new(200, headers, stream)
-  
+
   assert_eq(response.status, 200)
 }
 
+///|
 test "Headers iter yields insertion order" {
-  let headers = Headers::new()
-    .add("A", "1")
-    .add("B", "2")
-    .add("a", "3")
+  let headers = Headers::new().add("A", "1").add("B", "2").add("a", "3")
   let seen : Array[String] = []
   for header in headers.iter() {
     seen.push(header.name + "=" + header.value)
@@ -117,6 +126,7 @@ test "Headers iter yields insertion order" {
   assert_eq(headers.get_all("A"), @list.List(["1", "3"]))
 }
 
+///|
 test "URL decodes unreserved percent escapes in host names" {
   let url = Url::parse("http://exa%6dple.com/path").unwrap()
   assert_eq(url.host, "example.com")

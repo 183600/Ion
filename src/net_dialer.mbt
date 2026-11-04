@@ -1,14 +1,15 @@
+///|
 /// Dialer interface for establishing connections
 pub trait Dialer {
   // Dial a TCP connection to host:port
-  fn dial_tcp(Self, String, Int) -> Result[&Stream, NetError]
+  fn dial_tcp(Self, String, Int32) -> Result[&Stream, NetError]
 
   // Optional: Resolve hostname to IP addresses
   fn resolve(Self, String) -> Result[List[String], NetError]
 
   // Optional: Apply the connector's current dial timeout. Dialers that do not
   // support it keep their construction-time timeout.
-  fn set_timeout(Self, Int) -> Unit = _
+  fn set_timeout(Self, Int32) -> Unit = _
 
   // Optional: whether this dialer can establish real connections. Targets
   // without a socket transport use this to select a host-provided fallback
@@ -16,14 +17,17 @@ pub trait Dialer {
   fn is_available(Self) -> Bool = _
 }
 
+///|
 impl Dialer with fn set_timeout(_self, _timeout_ms) {
   ()
 }
 
+///|
 impl Dialer with fn is_available(_self) {
   true
 }
 
+///|
 fn valid_tcp_host(host : String) -> Bool {
   if host.length() == 0 {
     return false
@@ -40,15 +44,18 @@ fn valid_tcp_host(host : String) -> Bool {
   valid_url_host_chars(host)
 }
 
-fn valid_tcp_port(port : Int) -> Bool {
+///|
+fn valid_tcp_port(port : Int32) -> Bool {
   port >= 1 && port <= 65535
 }
 
+///|
 #cfg(target="native")
 fn decode_zone_percent(zone : String) -> String {
   @utf8.decode_lossy(percent_decode_bytes(zone)[:])
 }
 
+///|
 #cfg(target="native")
 fn decode_ipv6_zone(value : String) -> String {
   match value.find("%") {
@@ -66,6 +73,7 @@ fn decode_ipv6_zone(value : String) -> String {
   value
 }
 
+///|
 #cfg(target="native")
 fn tcp_dial_host(host : String) -> String {
   let inner = if host.has_prefix("[") && host.has_suffix("]") {
@@ -79,28 +87,40 @@ fn tcp_dial_host(host : String) -> String {
   host
 }
 
+///|
 /// Placeholder TCP dialer kept for API compatibility and tests. It validates
 /// hosts and returns `TcpStream` values that perform no socket I/O. Real
 /// connections come from `NativeTcpDialer` (`default_dialer()` on native
 /// targets).
 #derive(Eq, Debug)
 pub struct TcpDialer {
-  mut timeout_ms : Int
+  mut timeout_ms : Int32
 }
 
+///|
 pub fn TcpDialer::new() -> TcpDialer {
-  TcpDialer::{ timeout_ms: 30000 }
+  TcpDialer::{ timeout_ms: 30000, }
 }
 
-pub fn TcpDialer::with_timeout(timeout_ms : Int) -> TcpDialer {
-  TcpDialer::{ timeout_ms: if timeout_ms < 0 { 0 } else { timeout_ms } }
+///|
+pub fn TcpDialer::with_timeout(timeout_ms : Int32) -> TcpDialer {
+  TcpDialer::{ timeout_ms: if timeout_ms < 0 { 0 } else { timeout_ms }, }
 }
 
-pub impl Dialer for TcpDialer with fn set_timeout(self : TcpDialer, timeout_ms : Int) {
+///|
+pub impl Dialer for TcpDialer with fn set_timeout(
+  self : TcpDialer,
+  timeout_ms : Int32,
+) {
   self.timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
 }
 
-pub impl Dialer for TcpDialer with fn dial_tcp(self : TcpDialer, host : String, port : Int) -> Result[&Stream, NetError] {
+///|
+pub impl Dialer for TcpDialer with fn dial_tcp(
+  self : TcpDialer,
+  host : String,
+  port : Int32,
+) -> Result[&Stream, NetError] {
   // Placeholder dialer: validation only, no socket is opened.
   let _ = self
   if !valid_tcp_host(host) {
@@ -116,7 +136,11 @@ pub impl Dialer for TcpDialer with fn dial_tcp(self : TcpDialer, host : String, 
   }
 }
 
-pub impl Dialer for TcpDialer with fn resolve(self : TcpDialer, host : String) -> Result[List[String], NetError] {
+///|
+pub impl Dialer for TcpDialer with fn resolve(self : TcpDialer, host : String) -> Result[
+  List[String],
+  NetError,
+] {
   // Placeholder dialer: no DNS lookup is performed, the host is echoed back.
   let _ = self
   if !valid_tcp_host(host) {
@@ -125,12 +149,14 @@ pub impl Dialer for TcpDialer with fn resolve(self : TcpDialer, host : String) -
   Ok(@list.List([host]))
 }
 
+///|
 /// Global dialer instance for convenience.
 #cfg(target="native")
 pub fn default_dialer() -> NativeTcpDialer {
   NativeTcpDialer::new()
 }
 
+///|
 /// Global dialer instance for targets without a socket transport. It fails
 /// explicitly instead of returning the placeholder `TcpDialer`, which would
 /// only fail later as a confusing HTTP protocol error.
@@ -139,10 +165,11 @@ pub fn default_dialer() -> UnavailableTcpDialer {
   UnavailableTcpDialer::with_timeout(30000)
 }
 
+///|
 #cfg(not(target="native"))
-const TCP_TRANSPORT_UNAVAILABLE : String =
-  "TCP transport unavailable on this target; build with --target native"
+const TCP_TRANSPORT_UNAVAILABLE : String = "TCP transport unavailable on this target; build with --target native"
 
+///|
 /// Dialer for targets without a socket transport (js, wasm, wasm-gc). It fails
 /// immediately with an explicit transport error instead of dialing the
 /// placeholder stream, whose empty reads surface as misleading HTTP protocol
@@ -150,22 +177,33 @@ const TCP_TRANSPORT_UNAVAILABLE : String =
 #cfg(not(target="native"))
 #derive(Eq, Debug)
 pub struct UnavailableTcpDialer {
-  mut timeout_ms : Int
+  mut timeout_ms : Int32
 }
 
+///|
 #cfg(not(target="native"))
-fn UnavailableTcpDialer::with_timeout(timeout_ms : Int) -> UnavailableTcpDialer {
-  UnavailableTcpDialer::{ timeout_ms: if timeout_ms < 0 { 0 } else { timeout_ms } }
+fn UnavailableTcpDialer::with_timeout(
+  timeout_ms : Int32,
+) -> UnavailableTcpDialer {
+  UnavailableTcpDialer::{
+    timeout_ms: if timeout_ms < 0 {
+      0
+    } else {
+      timeout_ms
+    },
+  }
 }
 
+///|
 #cfg(not(target="native"))
 impl Dialer for UnavailableTcpDialer with fn set_timeout(
   self : UnavailableTcpDialer,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) {
   self.timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
 }
 
+///|
 #cfg(not(target="native"))
 impl Dialer for UnavailableTcpDialer with fn is_available(
   self : UnavailableTcpDialer,
@@ -174,11 +212,12 @@ impl Dialer for UnavailableTcpDialer with fn is_available(
   false
 }
 
+///|
 #cfg(not(target="native"))
 impl Dialer for UnavailableTcpDialer with fn dial_tcp(
   self : UnavailableTcpDialer,
   host : String,
-  port : Int,
+  port : Int32,
 ) -> Result[&Stream, NetError] {
   let _ = self
   if !valid_tcp_host(host) {
@@ -190,6 +229,7 @@ impl Dialer for UnavailableTcpDialer with fn dial_tcp(
   Err(NetError::ConnectionFailed(TCP_TRANSPORT_UNAVAILABLE))
 }
 
+///|
 #cfg(not(target="native"))
 impl Dialer for UnavailableTcpDialer with fn resolve(
   self : UnavailableTcpDialer,

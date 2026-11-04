@@ -1,16 +1,19 @@
+///|
 #cfg(target="native")
 struct IdleTlsUnderlying {}
 
+///|
 #cfg(target="native")
 pub impl Stream for IdleTlsUnderlying with fn read(
   self : IdleTlsUnderlying,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   let _ = self
   let _ = buf
   Ok(0)
 }
 
+///|
 #cfg(target="native")
 pub impl Stream for IdleTlsUnderlying with fn read_ready(
   self : IdleTlsUnderlying,
@@ -19,41 +22,48 @@ pub impl Stream for IdleTlsUnderlying with fn read_ready(
   false
 }
 
+///|
 #cfg(target="native")
 pub impl Stream for IdleTlsUnderlying with fn write(
   self : IdleTlsUnderlying,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   let _ = self
   Ok(buf.length())
 }
 
+///|
 #cfg(target="native")
-pub impl Stream for IdleTlsUnderlying with fn flush(
-  self : IdleTlsUnderlying,
-) -> Result[Unit, NetError] {
+pub impl Stream for IdleTlsUnderlying with fn flush(self : IdleTlsUnderlying) -> Result[
+  Unit,
+  NetError,
+] {
   let _ = self
   Ok(())
 }
 
+///|
 #cfg(target="native")
-pub impl Stream for IdleTlsUnderlying with fn close(
-  self : IdleTlsUnderlying,
-) -> Result[Unit, NetError] {
+pub impl Stream for IdleTlsUnderlying with fn close(self : IdleTlsUnderlying) -> Result[
+  Unit,
+  NetError,
+] {
   let _ = self
   Ok(())
 }
 
+///|
 #cfg(target="native")
 pub impl Stream for IdleTlsUnderlying with fn set_timeout(
   self : IdleTlsUnderlying,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Unit, NetError] {
   let _ = self
   let _ = timeout_ms
   Ok(())
 }
 
+///|
 #cfg(target="native")
 pub impl Stream for IdleTlsUnderlying with fn peer_addr(
   self : IdleTlsUnderlying,
@@ -62,6 +72,7 @@ pub impl Stream for IdleTlsUnderlying with fn peer_addr(
   Ok("mock:0")
 }
 
+///|
 #cfg(target="native")
 pub impl Stream for IdleTlsUnderlying with fn local_addr(
   self : IdleTlsUnderlying,
@@ -70,6 +81,7 @@ pub impl Stream for IdleTlsUnderlying with fn local_addr(
   Ok("mock:0")
 }
 
+///|
 #cfg(target="native")
 fn partial_record_tls() -> NativeTlsHandle {
   feather_tls_new(
@@ -87,12 +99,14 @@ fn partial_record_tls() -> NativeTlsHandle {
   )
 }
 
+///|
 #cfg(target="native")
 fn tls_stream_over_idle(tls : NativeTlsHandle) -> NativeTlsStream {
-  let underlying : &Stream = IdleTlsUnderlying::{  }
-  NativeTlsStream::{ tls, underlying, key_log: None, is_open: true }
+  let underlying : &Stream = IdleTlsUnderlying::{ }
+  NativeTlsStream::{ tls, underlying, key_log: None, is_open: true, }
 }
 
+///|
 /// A partial TLS record in the OpenSSL read BIO is still unread transport
 /// state. It must make the connection non-reusable even though it does not
 /// decode to application data yet.
@@ -111,6 +125,7 @@ test "native TLS reports a partial buffered record as unsafe to pool" {
   assert_true(stream.has_buffered_input())
 }
 
+///|
 #cfg(target="native")
 test "native TLS reports an empty read BIO as safe to pool" {
   let tls = partial_record_tls()

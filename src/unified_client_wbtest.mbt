@@ -1,3 +1,4 @@
+///|
 test "ClientOptions creation" {
   let options = ClientOptions::new()
   assert_eq(options.user_agent, "Feather/0.1.0")
@@ -6,35 +7,39 @@ test "ClientOptions creation" {
   assert_eq(options.max_redirects, 10)
 }
 
+///|
 test "ClientOptions customization" {
   let options = ClientOptions::new()
     .with_user_agent("CustomAgent/1.0")
     .with_timeout(5000)
     .with_follow_redirects(false)
     .with_max_redirects(5)
-  
+
   assert_eq(options.user_agent, "CustomAgent/1.0")
   assert_eq(options.timeout_ms, 5000)
   assert_eq(options.follow_redirects, false)
   assert_eq(options.max_redirects, 5)
 }
 
+///|
 test "UnifiedClient creation" {
   let client = UnifiedClient::new()
   assert_eq(client.options.user_agent, "Feather/0.1.0")
   assert_eq(client.redirect_count, 0)
 }
 
+///|
 test "UnifiedClient with options" {
   let options = ClientOptions::new()
     .with_user_agent("TestAgent/1.0")
     .with_follow_redirects(false)
-  
+
   let client = UnifiedClient::with_options(options)
   assert_eq(client.options.user_agent, "TestAgent/1.0")
   assert_eq(client.options.follow_redirects, false)
 }
 
+///|
 test "is_redirect function" {
   assert_eq(is_redirect(301), true)
   assert_eq(is_redirect(302), true)
@@ -46,6 +51,7 @@ test "is_redirect function" {
   assert_eq(is_redirect(500), false)
 }
 
+///|
 test "Connector creation" {
   let dialer = TcpDialer::new()
   let tls_provider = MockTlsProvider::new("test")
@@ -55,28 +61,33 @@ test "Connector creation" {
   assert_true(true) // If we got here, it worked
 }
 
+///|
 test "Connector close_all" {
   let dialer = TcpDialer::new()
   let tls_provider = MockTlsProvider::new("test")
   let connector = Connector::new(dialer, tls_provider)
-  
+
   let result = connector.close_all()
   assert_true(result is Ok(_))
 }
 
 // Note: These are basic tests. In a real implementation, we would need mock servers
 // to test the actual HTTP request/response flow without making real network calls.
+
+///|
 test "UnifiedClient closes pooled connections" {
   let client = UnifiedClient::new()
   assert_true(client.close_all() is Ok(_))
 }
 
+///|
 test "free get/post helpers validate URLs before dialing" {
   assert_true(get("not a url") is Err(InvalidUrl(_)))
   assert_true(get("ftp://example.com/") is Err(InvalidUrl(_)))
   assert_true(post("not a url", b"body") is Err(InvalidUrl(_)))
 }
 
+///|
 test "ClientOptions exposes a configurable response body limit" {
   let options = ClientOptions::new()
   assert_eq(options.max_response_body_bytes, 67108864)
@@ -86,32 +97,39 @@ test "ClientOptions exposes a configurable response body limit" {
   assert_eq(clamped.max_response_body_bytes, 0)
 }
 
+///|
 test "response body limit rejects oversized bodies before reading them" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 200\r\n\r\n" + "a".repeat(200)
   let stream = regression_mock_stream(raw, 1, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let options = ClientOptions::new()
     .with_follow_redirects(false)
     .with_max_response_body_bytes(64)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
-  let response = client.request(Request::new(GET, Url::parse("http://example.com/").unwrap())).unwrap()
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
+  let response = client
+    .request(Request::new(GET, Url::parse("http://example.com/").unwrap()))
+    .unwrap()
   assert_true(response.read_body() is Err(_))
 }
 
+///|
 test "response body limit allows bodies within the configured bound" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"
   let stream = regression_mock_stream(raw, 1, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let options = ClientOptions::new()
     .with_follow_redirects(false)
     .with_max_response_body_bytes(5)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
-  let response = client.request(Request::new(GET, Url::parse("http://example.com/").unwrap())).unwrap()
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
+  let response = client
+    .request(Request::new(GET, Url::parse("http://example.com/").unwrap()))
+    .unwrap()
   assert_eq(response.read_body().unwrap(), b"hello")
 }
 
+///|
 test "UnifiedClient exposes pool tuning on the connector" {
   let client = UnifiedClient::new()
   let tuned = client
@@ -127,10 +145,10 @@ test "UnifiedClient exposes pool tuning on the connector" {
 test "one-shot helpers buffer the body before closing the client" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"
   let stream = regression_mock_stream(raw, 0, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let options = ClientOptions::new().with_follow_redirects(false)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let response = client.get("http://example.com/").unwrap()
   let buffered = buffer_one_shot_response(client, Ok(response)).unwrap()
   assert_eq(buffered.text().unwrap(), "hello")
@@ -142,10 +160,10 @@ test "one-shot helpers preserve chunked trailers" {
   let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" +
     "5\r\nhello\r\n0\r\nX-Checksum: abc\r\n\r\n"
   let stream = regression_mock_stream(raw, 0, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let options = ClientOptions::new().with_follow_redirects(false)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let response = client.get("http://example.com/").unwrap()
   let buffered = buffer_one_shot_response(client, Ok(response)).unwrap()
   assert_eq(buffered.text().unwrap(), "hello")

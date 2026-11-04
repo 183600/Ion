@@ -1,14 +1,20 @@
+///|
 struct RegressionMockStream {
   input : Bytes
-  mut offset : Int
+  mut offset : Int32
   output : Buffer
-  max_read : Int
-  max_write : Int
+  max_read : Int32
+  max_write : Int32
   mut is_open : Bool
-  mut last_timeout : Int
+  mut last_timeout : Int32
 }
 
-fn regression_mock_stream(input : String, max_read : Int, max_write : Int) -> RegressionMockStream {
+///|
+fn regression_mock_stream(
+  input : String,
+  max_read : Int32,
+  max_write : Int32,
+) -> RegressionMockStream {
   RegressionMockStream::{
     input: @utf8.encode(input),
     offset: 0,
@@ -20,7 +26,11 @@ fn regression_mock_stream(input : String, max_read : Int, max_write : Int) -> Re
   }
 }
 
-pub impl Stream for RegressionMockStream with fn read(self : RegressionMockStream, buf : Buffer) -> Result[Int, NetError] {
+///|
+pub impl Stream for RegressionMockStream with fn read(
+  self : RegressionMockStream,
+  buf : Buffer,
+) -> Result[Int32, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -39,7 +49,11 @@ pub impl Stream for RegressionMockStream with fn read(self : RegressionMockStrea
   Ok(limit)
 }
 
-pub impl Stream for RegressionMockStream with fn write(self : RegressionMockStream, buf : Buffer) -> Result[Int, NetError] {
+///|
+pub impl Stream for RegressionMockStream with fn write(
+  self : RegressionMockStream,
+  buf : Buffer,
+) -> Result[Int32, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -57,19 +71,29 @@ pub impl Stream for RegressionMockStream with fn write(self : RegressionMockStre
   Ok(limit)
 }
 
-pub impl Stream for RegressionMockStream with fn flush(self : RegressionMockStream) -> Result[Unit, NetError] {
+///|
+pub impl Stream for RegressionMockStream with fn flush(
+  self : RegressionMockStream,
+) -> Result[Unit, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   Ok(())
 }
 
-pub impl Stream for RegressionMockStream with fn close(self : RegressionMockStream) -> Result[Unit, NetError] {
+///|
+pub impl Stream for RegressionMockStream with fn close(
+  self : RegressionMockStream,
+) -> Result[Unit, NetError] {
   self.is_open = false
   Ok(())
 }
 
-pub impl Stream for RegressionMockStream with fn set_timeout(self : RegressionMockStream, timeout_ms : Int) -> Result[Unit, NetError] {
+///|
+pub impl Stream for RegressionMockStream with fn set_timeout(
+  self : RegressionMockStream,
+  timeout_ms : Int32,
+) -> Result[Unit, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -77,14 +101,20 @@ pub impl Stream for RegressionMockStream with fn set_timeout(self : RegressionMo
   Ok(())
 }
 
-pub impl Stream for RegressionMockStream with fn peer_addr(self : RegressionMockStream) -> Result[String, NetError] {
+///|
+pub impl Stream for RegressionMockStream with fn peer_addr(
+  self : RegressionMockStream,
+) -> Result[String, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   Ok("mock:0")
 }
 
-pub impl Stream for RegressionMockStream with fn local_addr(_ : RegressionMockStream) -> Result[String, NetError] {
+///|
+pub impl Stream for RegressionMockStream with fn local_addr(
+  _ : RegressionMockStream,
+) -> Result[String, NetError] {
   Ok("mock:0")
 }
 
@@ -127,26 +157,19 @@ test "URL supports bracketed IPv6 literals" {
   assert_eq(url.host, "::1")
   assert_eq(url.port, 8080)
   assert_eq(url.to_string(), "http://[::1]:8080/path")
-  for raw in [
-    "http://[::]/",
-    "http://[2001:db8::1]/",
-    "http://[::ffff:192.0.2.1]/",
-    "http://[fe80::1%25eth0]/",
-    "http://[v1.foo]/",
-  ] {
+  for
+    raw in [
+      "http://[::]/", "http://[2001:db8::1]/", "http://[::ffff:192.0.2.1]/", "http://[fe80::1%25eth0]/",
+      "http://[v1.foo]/",
+    ] {
     assert_true(Url::parse(raw) is Ok(_))
   }
-  for raw in [
-    "http://[foo]/",
-    "http://[[::1]]/",
-    "http://[:::]/",
-    "http://[1:2:3:4:5:6:7]/",
-    "http://[1:2:3:4:5:6:7:8:9]/",
-    "http://[::ffff:192.0.2.999]/",
-    "http://[1:::2]/",
-    "http://[::1%25]/",
-    "http://[::1%]/",
-  ] {
+  for
+    raw in [
+      "http://[foo]/", "http://[[::1]]/", "http://[:::]/", "http://[1:2:3:4:5:6:7]/",
+      "http://[1:2:3:4:5:6:7:8:9]/", "http://[::ffff:192.0.2.999]/", "http://[1:::2]/",
+      "http://[::1%25]/", "http://[::1%]/",
+    ] {
     assert_true(Url::parse(raw) is Err(_))
   }
 }
@@ -213,7 +236,9 @@ test "request encoding keeps query, host port, and partial writes" {
   let url = Url::parse("http://example.com:8080/path?x=1").unwrap()
   let req = Request::new(GET, url)
   assert_true(codec.encode_request(req) is Ok(_))
-  let expected = @utf8.encode("GET /path?x=1 HTTP/1.1\r\nHost: example.com:8080\r\nUser-Agent: Feather/0.1.0\r\n\r\n")
+  let expected = @utf8.encode(
+    "GET /path?x=1 HTTP/1.1\r\nHost: example.com:8080\r\nUser-Agent: Feather/0.1.0\r\n\r\n",
+  )
   assert_eq(stream.output.to_bytes(), expected)
 }
 
@@ -226,7 +251,9 @@ test "request encoding does not duplicate Content-Length" {
     .with_header("Content-Length", "5")
     .with_body(@utf8.encode("hello"))
   assert_true(codec.encode_request(req) is Ok(_))
-  let expected = @utf8.encode("POST / HTTP/1.1\r\nHost: example.com\r\nUser-Agent: Feather/0.1.0\r\nContent-Length: 5\r\n\r\nhello")
+  let expected = @utf8.encode(
+    "POST / HTTP/1.1\r\nHost: example.com\r\nUser-Agent: Feather/0.1.0\r\nContent-Length: 5\r\n\r\nhello",
+  )
   assert_eq(stream.output.to_bytes(), expected)
 }
 
@@ -237,7 +264,9 @@ test "non-ASCII header values round-trip through UTF-8" {
   let url = Url::parse("http://example.com/").unwrap()
   let request = Request::new(GET, url).with_header("X-Name", "café")
   assert_true(encode_codec.encode_request(request) is Ok(_))
-  assert_true(@utf8.decode(encode_stream.output.to_bytes()[:]).contains("X-Name: café"))
+  assert_true(
+    @utf8.decode(encode_stream.output.to_bytes()[:]).contains("X-Name: café"),
+  )
 
   let raw = "HTTP/1.1 200 OK\r\nX-Name: café\r\nContent-Length: 0\r\n\r\n"
   let decode_stream = regression_mock_stream(raw, 0, 0)
@@ -268,7 +297,9 @@ test "request encoding rejects header injection" {
   let stream = regression_mock_stream("", 0, 0)
   let codec = H1Codec::new(stream)
   let url = Url::parse("http://example.com/").unwrap()
-  let request = Request::new(GET, url).with_header("X-Test", "ok\r\nInjected: yes")
+  let request = Request::new(GET, url).with_header(
+    "X-Test", "ok\r\nInjected: yes",
+  )
   assert_true(codec.encode_request(request) is Err(InvalidHeader(_)))
   assert_eq(stream.output.to_bytes(), b"")
 }
@@ -409,14 +440,15 @@ test "response bodies are read in bounded chunks" {
 ///|
 test "fixed-length body finishing at the read boundary returns to the pool" {
   let body = "a".repeat(8192)
-  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 8192\r\n\r\n" + body +
+  let raw = "HTTP/1.1 200 OK\r\nContent-Length: 8192\r\n\r\n" +
+    body +
     "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"
   let stream = regression_mock_stream(raw, 1, 0)
   let streams : Array[&Stream] = [stream]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let options = ClientOptions::new().with_follow_redirects(false)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let url = Url::parse("http://example.com/").unwrap()
 
   let first = client.request(Request::new(GET, url)).unwrap()
@@ -432,19 +464,16 @@ test "fixed-length body finishing at the read boundary returns to the pool" {
 test "prefetched response bytes prevent unsafe connection reuse" {
   let first_stream = regression_mock_stream(
     "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nokHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi",
-    0,
-    0,
+    0, 0,
   )
   let second_stream = regression_mock_stream(
-    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi",
-    0,
-    0,
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi", 0, 0,
   )
   let streams : Array[&Stream] = [first_stream, second_stream]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let options = ClientOptions::new().with_follow_redirects(false)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let url = Url::parse("http://example.com/").unwrap()
 
   let first = client.request(Request::new(GET, url)).unwrap()
@@ -478,6 +507,7 @@ test "response status line rejects control characters in the reason" {
   assert_eq(tabbed_codec.decode_response().unwrap().status, 200)
 }
 
+///|
 test "truncated response headers are rejected" {
   let raw = "HTTP/1.1 204 No Content\r\n"
   let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
@@ -499,8 +529,7 @@ test "EOF-framed responses close the connection" {
 ///|
 test "response rejects invalid header names and values" {
   let malformed = [
-    "HTTP/1.1 200 OK\r\nBad Header: x\r\n\r\n",
-    "HTTP/1.1 200 OK\r\nX-Test: a\rb\r\n\r\n",
+    "HTTP/1.1 200 OK\r\nBad Header: x\r\n\r\n", "HTTP/1.1 200 OK\r\nX-Test: a\rb\r\n\r\n",
   ]
   for raw in malformed {
     let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
@@ -511,7 +540,9 @@ test "response rejects invalid header names and values" {
 ///|
 test "response header values reject bare carriage returns at their edges" {
   for value in ["a\r", "\ra"] {
-    let raw = "HTTP/1.1 200 OK\r\nX-Test: " + value + "\r\nContent-Length: 0\r\n\r\n"
+    let raw = "HTTP/1.1 200 OK\r\nX-Test: " +
+      value +
+      "\r\nContent-Length: 0\r\n\r\n"
     let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
     assert_true(codec.decode_response() is Err(_))
   }
@@ -520,7 +551,9 @@ test "response header values reject bare carriage returns at their edges" {
 ///|
 test "chunk sizes reject leading and trailing whitespace" {
   for value in [" 5", "5 ", "\t5", "5\t"] {
-    let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" + value + "\r\nhello\r\n0\r\n\r\n"
+    let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" +
+      value +
+      "\r\nhello\r\n0\r\n\r\n"
     let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
     let response = codec.decode_response().unwrap()
     assert_true(response.body.read(@buffer.new(size_hint=8)) is Err(_))
@@ -532,30 +565,25 @@ test "chunk sizes reject leading and trailing whitespace" {
 
 ///|
 test "chunk extensions must follow HTTP chunk extension syntax" {
-  for value in [
-    "5;",
-    "5;;foo",
-    "5;foo=",
-    "5;foo=\"unterminated",
-    "5;foo=\"bad\\\"",
-    "5;foo=bar baz",
-    "5;foo=\u{1}",
-    "5;foo=bar;\u{7f}",
-    "5;foo=\"a\\\u{1}b\"",
-  ] {
-    let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" + value + "\r\nhello\r\n0\r\n\r\n"
+  for
+    value in [
+      "5;", "5;;foo", "5;foo=", "5;foo=\"unterminated", "5;foo=\"bad\\\"", "5;foo=bar baz",
+      "5;foo=\u{1}", "5;foo=bar;\u{7f}", "5;foo=\"a\\\u{1}b\"",
+    ] {
+    let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" +
+      value +
+      "\r\nhello\r\n0\r\n\r\n"
     let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
     let response = codec.decode_response().unwrap()
     assert_true(response.body.read(@buffer.new(size_hint=8)) is Err(_))
   }
-  for value in [
-    "5;foo",
-    "5;foo=bar",
-    "5; foo = \"bar; baz\" ; flag",
-    "5;foo=\"a\\\"b\"",
-    "5;foo=bar ; baz",
-  ] {
-    let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" + value + "\r\nhello\r\n0\r\n\r\n"
+  for
+    value in [
+      "5;foo", "5;foo=bar", "5; foo = \"bar; baz\" ; flag", "5;foo=\"a\\\"b\"", "5;foo=bar ; baz",
+    ] {
+    let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" +
+      value +
+      "\r\nhello\r\n0\r\n\r\n"
     let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
     assert_eq(codec.decode_response().unwrap().text().unwrap(), "hello")
   }
@@ -564,8 +592,8 @@ test "chunk extensions must follow HTTP chunk extension syntax" {
 ///|
 test "non-chunked Transfer-Encoding ignores Content-Length" {
   let gzip_hello_world = Bytes::from_array([
-    31, 139, 8, 0, 0, 0, 0, 0, 2, 3, 203, 72, 205, 201, 201, 87, 40, 207, 47,
-    202, 73, 1, 0, 133, 17, 74, 13, 11, 0, 0, 0,
+    31, 139, 8, 0, 0, 0, 0, 0, 2, 3, 203, 72, 205, 201, 201, 87, 40, 207, 47, 202,
+    73, 1, 0, 133, 17, 74, 13, 11, 0, 0, 0,
   ])
   let input = Buffer(size_hint=128)
   input.write_bytes(
@@ -584,10 +612,9 @@ test "non-chunked Transfer-Encoding ignores Content-Length" {
     last_timeout: 0,
   }
   let completions : Array[Bool] = []
-  let codec = H1Codec::new_with_completion(
-    stream,
-    fn(reusable) { completions.push(reusable) },
-  )
+  let codec = H1Codec::new_with_completion(stream, fn(reusable) {
+    completions.push(reusable)
+  })
   let response = codec.decode_response().unwrap()
   assert_eq(response.text().unwrap(), "hello world")
   assert_eq(completions, [false])
@@ -597,8 +624,8 @@ test "non-chunked Transfer-Encoding ignores Content-Length" {
 ///|
 test "non-chunked Transfer-Encoding with zero Content-Length is not completed early" {
   let gzip_deferred = Bytes::from_array([
-    31, 139, 8, 0, 0, 0, 0, 0, 2, 3, 75, 73, 77, 75, 45, 42, 74, 77, 1, 0, 154,
-    232, 100, 163, 8, 0, 0, 0,
+    31, 139, 8, 0, 0, 0, 0, 0, 2, 3, 75, 73, 77, 75, 45, 42, 74, 77, 1, 0, 154, 232,
+    100, 163, 8, 0, 0, 0,
   ])
   let input = Buffer(size_hint=128)
   input.write_bytes(
@@ -617,10 +644,9 @@ test "non-chunked Transfer-Encoding with zero Content-Length is not completed ea
     last_timeout: 0,
   }
   let completions : Array[Bool] = []
-  let codec = H1Codec::new_with_completion(
-    stream,
-    fn(reusable) { completions.push(reusable) },
-  )
+  let codec = H1Codec::new_with_completion(stream, fn(reusable) {
+    completions.push(reusable)
+  })
   let response = codec.decode_response().unwrap()
   assert_eq(completions, [])
   assert_eq(response.text().unwrap(), "deferred")
@@ -630,10 +656,11 @@ test "non-chunked Transfer-Encoding with zero Content-Length is not completed ea
 
 ///|
 test "chunked responses ignore Content-Length" {
-  for raw in [
-    "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: invalid\r\n\r\n5\r\nhello\r\n0\r\n\r\n",
-    "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 1\r\nContent-Length: 2\r\n\r\n5\r\nhello\r\n0\r\n\r\n",
-  ] {
+  for
+    raw in [
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: invalid\r\n\r\n5\r\nhello\r\n0\r\n\r\n",
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 1\r\nContent-Length: 2\r\n\r\n5\r\nhello\r\n0\r\n\r\n",
+    ] {
     let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
     let response = codec.decode_response().unwrap()
     assert_eq(response.text().unwrap(), "hello")
@@ -700,7 +727,9 @@ test "huge declared body lengths fail without allocating the whole size" {
 ///|
 test "chunk sizes must be plain hexadecimal digits" {
   for value in ["+5", "5_0", "0x5"] {
-    let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" + value + "\r\nhello\r\n0\r\n\r\n"
+    let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n" +
+      value +
+      "\r\nhello\r\n0\r\n\r\n"
     let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
     let response = codec.decode_response().unwrap()
     assert_true(response.body.read(@buffer.new(size_hint=8)) is Err(_))
@@ -766,32 +795,51 @@ test "HEAD response has no body" {
   let response = codec.decode_response(head=true).unwrap()
   let buf = @buffer.new(size_hint=8)
   assert_eq(response.body.read(buf).unwrap(), 0)
-  assert_eq(stream.offset, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n".length())
+  assert_eq(
+    stream.offset,
+    "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n".length(),
+  )
 }
 
+///|
 struct RegressionMockDialer {
   stream : &Stream
-  mut count : Int
+  mut count : Int32
 }
 
-pub impl Dialer for RegressionMockDialer with fn dial_tcp(self : RegressionMockDialer, host : String, port : Int) -> Result[&Stream, NetError] {
+///|
+pub impl Dialer for RegressionMockDialer with fn dial_tcp(
+  self : RegressionMockDialer,
+  host : String,
+  port : Int32,
+) -> Result[&Stream, NetError] {
   let _ = host
   let _ = port
   self.count = self.count + 1
   Ok(self.stream)
 }
 
-pub impl Dialer for RegressionMockDialer with fn resolve(self : RegressionMockDialer, host : String) -> Result[List[String], NetError] {
+///|
+pub impl Dialer for RegressionMockDialer with fn resolve(
+  self : RegressionMockDialer,
+  host : String,
+) -> Result[List[String], NetError] {
   let _ = self
   Ok(@list.List([host]))
 }
 
+///|
 struct RegressionQueueDialer {
   streams : Array[&Stream]
-  mut index : Int
+  mut index : Int32
 }
 
-pub impl Dialer for RegressionQueueDialer with fn dial_tcp(self : RegressionQueueDialer, host : String, port : Int) -> Result[&Stream, NetError] {
+///|
+pub impl Dialer for RegressionQueueDialer with fn dial_tcp(
+  self : RegressionQueueDialer,
+  host : String,
+  port : Int32,
+) -> Result[&Stream, NetError] {
   let _ = host
   let _ = port
   if self.index >= self.streams.length() {
@@ -802,38 +850,54 @@ pub impl Dialer for RegressionQueueDialer with fn dial_tcp(self : RegressionQueu
   Ok(stream)
 }
 
-pub impl Dialer for RegressionQueueDialer with fn resolve(self : RegressionQueueDialer, host : String) -> Result[List[String], NetError] {
+///|
+pub impl Dialer for RegressionQueueDialer with fn resolve(
+  self : RegressionQueueDialer,
+  host : String,
+) -> Result[List[String], NetError] {
   let _ = self
   Ok(@list.List([host]))
 }
 
+///|
 struct RegressionProxyDialer {
   stream : &Stream
   mut host : String
-  mut port : Int
+  mut port : Int32
 }
 
-pub impl Dialer for RegressionProxyDialer with fn dial_tcp(self : RegressionProxyDialer, host : String, port : Int) -> Result[&Stream, NetError] {
+///|
+pub impl Dialer for RegressionProxyDialer with fn dial_tcp(
+  self : RegressionProxyDialer,
+  host : String,
+  port : Int32,
+) -> Result[&Stream, NetError] {
   self.host = host
   self.port = port
   Ok(self.stream)
 }
 
-pub impl Dialer for RegressionProxyDialer with fn resolve(self : RegressionProxyDialer, host : String) -> Result[List[String], NetError] {
+///|
+pub impl Dialer for RegressionProxyDialer with fn resolve(
+  self : RegressionProxyDialer,
+  host : String,
+) -> Result[List[String], NetError] {
   let _ = self
   Ok(@list.List([host]))
 }
 
+///|
 struct TimeoutRecordingDialer {
   stream : &Stream
-  mut timeout_ms : Int
-  mut dials : Int
+  mut timeout_ms : Int32
+  mut dials : Int32
 }
 
+///|
 pub impl Dialer for TimeoutRecordingDialer with fn dial_tcp(
   self : TimeoutRecordingDialer,
   host : String,
-  port : Int,
+  port : Int32,
 ) -> Result[&Stream, NetError] {
   let _ = host
   let _ = port
@@ -841,6 +905,7 @@ pub impl Dialer for TimeoutRecordingDialer with fn dial_tcp(
   Ok(self.stream)
 }
 
+///|
 pub impl Dialer for TimeoutRecordingDialer with fn resolve(
   self : TimeoutRecordingDialer,
   host : String,
@@ -849,9 +914,10 @@ pub impl Dialer for TimeoutRecordingDialer with fn resolve(
   Ok(@list.List([host]))
 }
 
+///|
 pub impl Dialer for TimeoutRecordingDialer with fn set_timeout(
   self : TimeoutRecordingDialer,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) {
   self.timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
 }
@@ -860,10 +926,10 @@ pub impl Dialer for TimeoutRecordingDialer with fn set_timeout(
 test "HEAD response body is not consumed" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhelloNEXT"
   let stream = regression_mock_stream(raw, 0, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let options = ClientOptions::new().with_follow_redirects(false)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let url = Url::parse("http://example.com/head").unwrap()
   let response = client.request(Request::new(HEAD, url)).unwrap()
   assert_eq(response.status, 200)
@@ -875,9 +941,13 @@ test "HEAD response body is not consumed" {
 test "same-origin redirect changes POST to GET and drops body" {
   let raw = "HTTP/1.1 302 Found\r\nLocation: /next\r\nContent-Length: 0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
   let stream = regression_mock_stream(raw, 1, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new(),
+    redirect_count: 0,
+  }
   let url = Url::parse("http://example.com/start").unwrap()
   let request = Request::new(POST, url)
     .with_header("Authorization", "Bearer token")
@@ -913,11 +983,17 @@ test "same-origin redirect changes POST to GET and drops body" {
 test "cross-origin redirect strips Authorization" {
   let raw = "HTTP/1.1 302 Found\r\nLocation: http://other.example/next\r\nContent-Length: 0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
   let stream = regression_mock_stream(raw, 1, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new(),
+    redirect_count: 0,
+  }
   let url = Url::parse("http://example.com/start").unwrap()
-  let request = Request::new(GET, url).with_header("Authorization", "Bearer token")
+  let request = Request::new(GET, url).with_header(
+    "Authorization", "Bearer token",
+  )
   let response = client.request(request).unwrap()
   assert_eq(response.status, 200)
   let wire = @utf8.decode(stream.output.to_bytes()[:])
@@ -932,7 +1008,7 @@ test "connector pools connections and close removes them" {
   let first_stream = regression_mock_stream("", 1, 0)
   let second_stream = regression_mock_stream("", 1, 0)
   let streams : Array[&Stream] = [first_stream, second_stream]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let url = Url::parse("http://example.com/").unwrap()
   let first = connector.connect(url).unwrap()
@@ -955,7 +1031,7 @@ test "connector replaces externally closed pooled streams" {
   let first_stream = regression_mock_stream("", 1, 0)
   let second_stream = regression_mock_stream("", 1, 0)
   let streams : Array[&Stream] = [first_stream, second_stream]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let url = Url::parse("http://example.com/").unwrap()
   let first = connector.connect(url).unwrap()
@@ -964,12 +1040,17 @@ test "connector replaces externally closed pooled streams" {
   assert_eq(dialer.index, 2)
 }
 
+///|
 struct RegressionHttpClient {
-  mut calls : Int
+  mut calls : Int32
   response_body : &Stream
 }
 
-pub impl HttpClient for RegressionHttpClient with fn request(self : RegressionHttpClient, req : Request) -> Result[Response, HttpError] {
+///|
+pub impl HttpClient for RegressionHttpClient with fn request(
+  self : RegressionHttpClient,
+  req : Request,
+) -> Result[Response, HttpError] {
   let _ = req
   self.calls = self.calls + 1
   Ok(Response::new(200, Headers::new(), self.response_body))
@@ -978,7 +1059,7 @@ pub impl HttpClient for RegressionHttpClient with fn request(self : RegressionHt
 ///|
 test "HttpClient convenience methods parse URLs" {
   let body = regression_mock_stream("", 0, 0)
-  let client = RegressionHttpClient::{ calls: 0, response_body: body }
+  let client = RegressionHttpClient::{ calls: 0, response_body: body, }
   let trait_client : &HttpClient = client
   let response = trait_client.get("http://example.com/x").unwrap()
   assert_eq(response.status, 200)
@@ -993,10 +1074,10 @@ test "HEAD responses return their connection to the pool" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"
   let stream = regression_mock_stream(raw, 1, 0)
   let streams : Array[&Stream] = [stream]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let options = ClientOptions::new().with_follow_redirects(false)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let url = Url::parse("http://example.com/").unwrap()
 
   let head_response = client.head("http://example.com/").unwrap()
@@ -1012,10 +1093,10 @@ test "client reuses a connection after a fully read response" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nokHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"
   let stream = regression_mock_stream(raw, 1, 0)
   let streams : Array[&Stream] = [stream]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let options = ClientOptions::new().with_follow_redirects(false)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let url = Url::parse("http://example.com/").unwrap()
 
   let first = client.request(Request::new(GET, url)).unwrap()
@@ -1035,10 +1116,10 @@ test "closing a fully read response keeps its pooled connection" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nokHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"
   let stream = regression_mock_stream(raw, 1, 0)
   let streams : Array[&Stream] = [stream]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let options = ClientOptions::new().with_follow_redirects(false)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let url = Url::parse("http://example.com/").unwrap()
 
   let first = client.request(Request::new(GET, url)).unwrap()
@@ -1057,20 +1138,16 @@ test "closing a fully read response keeps its pooled connection" {
 ///|
 test "unread response body is not reused for the next request" {
   let first_stream = regression_mock_stream(
-    "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello",
-    1,
-    0,
+    "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello", 1, 0,
   )
   let second_stream = regression_mock_stream(
-    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
-    1,
-    0,
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok", 1, 0,
   )
   let streams : Array[&Stream] = [first_stream, second_stream]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let options = ClientOptions::new().with_follow_redirects(false)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let url = Url::parse("http://example.com/").unwrap()
 
   let first = client.request(Request::new(GET, url)).unwrap()
@@ -1092,10 +1169,10 @@ test "zero-length responses return to the pool without being read" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
   let stream = regression_mock_stream(raw, 1, 0)
   let streams : Array[&Stream] = [stream]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let options = ClientOptions::new().with_follow_redirects(false)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let url = Url::parse("http://example.com/").unwrap()
 
   let first = client.request(Request::new(GET, url)).unwrap()
@@ -1112,20 +1189,17 @@ test "zero-length responses return to the pool without being read" {
 ///|
 test "closing one response keeps another pooled connection for the same origin" {
   let first_stream = regression_mock_stream(
-    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nA1",
-    1,
-    0,
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nA1", 1, 0,
   )
   let second_stream = regression_mock_stream(
     "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nB1HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nC1",
-    1,
-    0,
+    1, 0,
   )
   let streams : Array[&Stream] = [first_stream, second_stream]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let options = ClientOptions::new().with_follow_redirects(false)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let url = Url::parse("http://example.com/").unwrap()
 
   let first = client.request(Request::new(GET, url)).unwrap()
@@ -1150,24 +1224,19 @@ test "closing one response keeps another pooled connection for the same origin" 
 test "a failed request keeps other pooled connections for the same origin" {
   let first_stream = regression_mock_stream(
     "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nA1HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nA2",
-    1,
-    0,
+    1, 0,
   )
   let second_stream = regression_mock_stream(
-    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nB1BOGUS RESPONSE\r\n\r\n",
-    1,
-    0,
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nB1BOGUS RESPONSE\r\n\r\n", 1, 0,
   )
   let third_stream = regression_mock_stream(
-    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nC1",
-    0,
-    0,
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nC1", 0, 0,
   )
   let streams : Array[&Stream] = [first_stream, second_stream, third_stream]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let options = ClientOptions::new().with_follow_redirects(false)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let url = Url::parse("http://example.com/").unwrap()
 
   let first = client.request(Request::new(GET, url)).unwrap()
@@ -1184,20 +1253,16 @@ test "a failed request keeps other pooled connections for the same origin" {
 ///|
 test "closing an unread response releases its connection" {
   let first_stream = regression_mock_stream(
-    "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello",
-    1,
-    0,
+    "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello", 1, 0,
   )
   let second_stream = regression_mock_stream(
-    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
-    1,
-    0,
+    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok", 1, 0,
   )
   let streams : Array[&Stream] = [first_stream, second_stream]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let options = ClientOptions::new().with_follow_redirects(false)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let url = Url::parse("http://example.com/").unwrap()
 
   let first = client.request(Request::new(GET, url)).unwrap()
@@ -1215,10 +1280,12 @@ test "closing an unread response releases its connection" {
 test "client options supply the default request timeout" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
   let stream = regression_mock_stream(raw, 0, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-  let options = ClientOptions::new().with_timeout(1234).with_follow_redirects(false)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let options = ClientOptions::new()
+    .with_timeout(1234)
+    .with_follow_redirects(false)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let url = Url::parse("http://example.com/").unwrap()
   let _ = client.request(Request::new(GET, url)).unwrap()
   assert_eq(stream.last_timeout, 1234)
@@ -1228,10 +1295,12 @@ test "client options supply the default request timeout" {
 test "an explicit request timeout wins over the client default" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
   let stream = regression_mock_stream(raw, 0, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-  let options = ClientOptions::new().with_timeout(1234).with_follow_redirects(false)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let options = ClientOptions::new()
+    .with_timeout(1234)
+    .with_follow_redirects(false)
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let url = Url::parse("http://example.com/").unwrap()
   let request = Request::new(GET, url).with_timeout(30000)
   let _ = client.request(request).unwrap()
@@ -1242,10 +1311,10 @@ test "an explicit request timeout wins over the client default" {
 test "redirects preserve an explicit request timeout" {
   let raw = "HTTP/1.1 302 Found\r\nLocation: /next\r\nContent-Length: 0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
   let stream = regression_mock_stream(raw, 1, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let options = ClientOptions::new().with_timeout(1234)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let url = Url::parse("http://example.com/start").unwrap()
   let _ = client.request(Request::new(GET, url).with_timeout(30000)).unwrap()
   assert_eq(stream.last_timeout, 30000)
@@ -1364,12 +1433,18 @@ test "HTTP/1.0 closes by default but honors keep-alive" {
 ///|
 test "response bodies are bounded by the configured limit" {
   let fixed = "HTTP/1.1 200 OK\r\nContent-Length: 9\r\n\r\n123456789"
-  let fixed_codec = H1Codec::new_with_limit(regression_mock_stream(fixed, 0, 0), 8)
+  let fixed_codec = H1Codec::new_with_limit(
+    regression_mock_stream(fixed, 0, 0),
+    8,
+  )
   let fixed_response = fixed_codec.decode_response().unwrap()
   assert_true(fixed_response.read_body() is Err(_))
 
   let chunked = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n5\r\nworld\r\n0\r\n\r\n"
-  let chunked_codec = H1Codec::new_with_limit(regression_mock_stream(chunked, 1, 0), 9)
+  let chunked_codec = H1Codec::new_with_limit(
+    regression_mock_stream(chunked, 1, 0),
+    9,
+  )
   let chunked_response = chunked_codec.decode_response().unwrap()
   assert_true(chunked_response.read_body() is Err(_))
 
@@ -1426,7 +1501,9 @@ test "empty chunked request still terminates the body" {
   let stream = regression_mock_stream("", 0, 0)
   let codec = H1Codec::new(stream)
   let url = Url::parse("http://example.com/upload").unwrap()
-  let request = Request::new(POST, url).with_header("Transfer-Encoding", "chunked")
+  let request = Request::new(POST, url).with_header(
+    "Transfer-Encoding", "chunked",
+  )
   assert_true(codec.encode_request(request) is Ok(_))
   assert_true(
     @utf8.decode(stream.output.to_bytes()[:]).has_suffix("\r\n\r\n0\r\n\r\n"),
@@ -1437,21 +1514,27 @@ test "empty chunked request still terminates the body" {
 test "redirect limit counts followed redirects exactly" {
   let raw = "HTTP/1.1 302 Found\r\nLocation: /one\r\nContent-Length: 0\r\n\r\nHTTP/1.1 302 Found\r\nLocation: /two\r\nContent-Length: 0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
   let stream = regression_mock_stream(raw, 1, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let options = ClientOptions::new().with_max_redirects(1)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let url = Url::parse("http://example.com/start").unwrap()
-  assert_true(client.request(Request::new(GET, url)) is Err(RedirectLimitExceeded))
+  assert_true(
+    client.request(Request::new(GET, url)) is Err(RedirectLimitExceeded),
+  )
 }
 
 ///|
 test "cross-origin redirects strip credentials and cookies" {
   let raw = "HTTP/1.1 302 Found\r\nLocation: http://other.example/next\r\nContent-Length: 0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
   let stream = regression_mock_stream(raw, 1, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new(),
+    redirect_count: 0,
+  }
   let url = Url::parse("http://example.com/start").unwrap()
   let request = Request::new(GET, url)
     .with_header("Cookie", "session=secret")
@@ -1472,47 +1555,52 @@ test "request framing rejects ambiguous lengths" {
   assert_true(
     mismatch.encode_request(
       Request::new(POST, url)
-        .with_header("Content-Length", "3")
-        .with_body(@utf8.encode("hello")),
-    ) is Err(InvalidHeader(_)),
+      .with_header("Content-Length", "3")
+      .with_body(@utf8.encode("hello")),
+    )
+    is Err(InvalidHeader(_)),
   )
 
   let both = H1Codec::new(regression_mock_stream("", 0, 0))
   assert_true(
     both.encode_request(
       Request::new(POST, url)
-        .with_header("Content-Length", "5")
-        .with_header("Transfer-Encoding", "chunked")
-        .with_body(@utf8.encode("hello")),
-    ) is Err(InvalidHeader(_)),
+      .with_header("Content-Length", "5")
+      .with_header("Transfer-Encoding", "chunked")
+      .with_body(@utf8.encode("hello")),
+    )
+    is Err(InvalidHeader(_)),
   )
 
   let duplicate = H1Codec::new(regression_mock_stream("", 0, 0))
   assert_true(
     duplicate.encode_request(
       Request::new(POST, url)
-        .with_header("Content-Length", "5")
-        .with_header("Content-Length", "5")
-        .with_body(@utf8.encode("hello")),
-    ) is Err(InvalidHeader(_)),
+      .with_header("Content-Length", "5")
+      .with_header("Content-Length", "5")
+      .with_body(@utf8.encode("hello")),
+    )
+    is Err(InvalidHeader(_)),
   )
 
   let unsupported = H1Codec::new(regression_mock_stream("", 0, 0))
   assert_true(
     unsupported.encode_request(
       Request::new(POST, url)
-        .with_header("Transfer-Encoding", "gzip")
-        .with_body(@utf8.encode("hello")),
-    ) is Err(InvalidHeader(_)),
+      .with_header("Transfer-Encoding", "gzip")
+      .with_body(@utf8.encode("hello")),
+    )
+    is Err(InvalidHeader(_)),
   )
   for value in ["gzip, chunked", "chunked, chunked"] {
     let codec = H1Codec::new(regression_mock_stream("", 0, 0))
     assert_true(
       codec.encode_request(
         Request::new(POST, url)
-          .with_header("Transfer-Encoding", value)
-          .with_body(@utf8.encode("hello")),
-      ) is Err(InvalidHeader(_)),
+        .with_header("Transfer-Encoding", value)
+        .with_body(@utf8.encode("hello")),
+      )
+      is Err(InvalidHeader(_)),
     )
   }
 }
@@ -1523,24 +1611,24 @@ test "TLS configuration is validated before use" {
   assert_true(TlsConfig::new("").validate() is Err(InvalidConfig(_)))
   assert_true(TlsConfig::new("bad name").validate() is Err(InvalidConfig(_)))
   assert_true(
-    TlsConfig::new("example.com").with_alpn(@list.List(["h2", ""])).validate() is
-    Err(InvalidConfig(_)),
+    TlsConfig::new("example.com").with_alpn(@list.List(["h2", ""])).validate()
+    is Err(InvalidConfig(_)),
   )
   assert_true(
     TlsConfig::new("example.com")
-      .with_client_auth(ClientCert::new(b"", b"key"))
-      .validate() is Err(InvalidConfig(_)),
+    .with_client_auth(ClientCert::new(b"", b"key"))
+    .validate()
+    is Err(InvalidConfig(_)),
   )
   assert_true(
     TlsConfig::new("example.com")
-      .with_client_auth(ClientCert::new(b"cert", b""))
-      .validate() is Err(InvalidConfig(_)),
+    .with_client_auth(ClientCert::new(b"cert", b""))
+    .validate()
+    is Err(InvalidConfig(_)),
   )
   let provider = MockTlsProvider::new("test")
   assert_true(provider.new_client(TlsConfig::new("")) is Err(_))
-  assert_true(
-    provider.new_client(TlsConfig::new("example.com")) is Ok(_),
-  )
+  assert_true(provider.new_client(TlsConfig::new("example.com")) is Ok(_))
 }
 
 ///|
@@ -1558,7 +1646,7 @@ test "a mock TLS context cannot be connected twice" {
 ///|
 test "HttpClient convenience methods cover HEAD, OPTIONS, and PATCH" {
   let body = regression_mock_stream("", 0, 0)
-  let client = RegressionHttpClient::{ calls: 0, response_body: body }
+  let client = RegressionHttpClient::{ calls: 0, response_body: body, }
   let trait_client : &HttpClient = client
   assert_eq(trait_client.head("http://example.com/").unwrap().status, 200)
   assert_eq(trait_client.options("http://example.com/").unwrap().status, 200)
@@ -1573,9 +1661,13 @@ test "HttpClient convenience methods cover HEAD, OPTIONS, and PATCH" {
 test "UnifiedClient convenience methods send the requested verb" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
   let stream = regression_mock_stream(raw, 1, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new(),
+    redirect_count: 0,
+  }
   assert_eq(client.head("http://example.com/a").unwrap().status, 200)
   assert_eq(client.options("http://example.com/a").unwrap().status, 200)
   assert_eq(client.patch("http://example.com/a", b"x").unwrap().status, 200)
@@ -1585,30 +1677,33 @@ test "UnifiedClient convenience methods send the requested verb" {
   assert_true(wire.contains("PATCH /a HTTP/1.1"))
 }
 
+///|
 struct ConfigCapturingTlsProvider {
   mut last_config : TlsConfig?
 }
 
-pub impl TlsProvider for ConfigCapturingTlsProvider with fn new_client(self : ConfigCapturingTlsProvider, config : TlsConfig) -> Result[&TlsClientCtx, TlsError] {
+///|
+pub impl TlsProvider for ConfigCapturingTlsProvider with fn new_client(
+  self : ConfigCapturingTlsProvider,
+  config : TlsConfig,
+) -> Result[&TlsClientCtx, TlsError] {
   self.last_config = Some(config)
   match config.validate() {
     Ok(_) => ()
     Err(err) => return Err(err)
   }
-  Ok(MockTlsClientCtx::{ config, is_connected: false })
+  Ok(MockTlsClientCtx::{ config, is_connected: false, })
 }
 
 ///|
 test "connector rejects invalid schemes, hosts, and ports" {
   let stream = regression_mock_stream("", 0, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   assert_true(
     connector.connect(Url::new("ftp", "example.com", 21)) is Err(InvalidUrl(_)),
   )
-  assert_true(
-    connector.connect(Url::new("http", "", 80)) is Err(InvalidUrl(_)),
-  )
+  assert_true(connector.connect(Url::new("http", "", 80)) is Err(InvalidUrl(_)))
   assert_true(
     connector.connect(Url::new("http", "bad host", 80)) is Err(InvalidUrl(_)),
   )
@@ -1616,7 +1711,8 @@ test "connector rejects invalid schemes, hosts, and ports" {
     connector.connect(Url::new("http", "example.com", 0)) is Err(InvalidUrl(_)),
   )
   assert_true(
-    connector.connect(Url::new("http", "example.com", 65536)) is Err(InvalidUrl(_)),
+    connector.connect(Url::new("http", "example.com", 65536))
+    is Err(InvalidUrl(_)),
   )
   assert_eq(dialer.count, 0)
 }
@@ -1624,7 +1720,7 @@ test "connector rejects invalid schemes, hosts, and ports" {
 ///|
 test "connector pool keys normalize host case" {
   let stream = regression_mock_stream("", 0, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let first = Url::parse("http://Example.COM/path").unwrap()
   let second = Url::parse("http://example.com/other").unwrap()
@@ -1636,8 +1732,8 @@ test "connector pool keys normalize host case" {
 ///|
 test "connector applies shared TLS configuration per host" {
   let stream = regression_mock_stream("", 0, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = ConfigCapturingTlsProvider::{ last_config: None }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = ConfigCapturingTlsProvider::{ last_config: None, }
   let base = TlsConfig::new("ignored.example")
     .with_min_version(Tls1_3)
     .with_alpn(@list.List(["h2", "http/1.1"]))
@@ -1653,12 +1749,10 @@ test "connector applies shared TLS configuration per host" {
 ///|
 test "UnifiedClient exposes transport and TLS configuration" {
   let stream = regression_mock_stream(
-    "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n",
-    1,
-    0,
+    "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n", 1, 0,
   )
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = ConfigCapturingTlsProvider::{ last_config: None }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = ConfigCapturingTlsProvider::{ last_config: None, }
   let client = UnifiedClient::with_transport(
     dialer,
     provider,
@@ -1693,13 +1787,14 @@ test "opening an invalid TcpStream fails cleanly" {
   assert_true(stream.open() is Ok(_))
   assert_eq(stream.is_open, true)
 }
+
 ///|
 test "header names must be valid HTTP tokens" {
-  for raw in [
-    "HTTP/1.1 200 OK\r\nX-Test : value\r\nContent-Length: 0\r\n\r\n",
-    "HTTP/1.1 200 OK\r\nX-T\u{e9}st: value\r\nContent-Length: 0\r\n\r\n",
-    "HTTP/1.1 200 OK\r\nX@Test: value\r\nContent-Length: 0\r\n\r\n",
-  ] {
+  for
+    raw in [
+      "HTTP/1.1 200 OK\r\nX-Test : value\r\nContent-Length: 0\r\n\r\n", "HTTP/1.1 200 OK\r\nX-T\u{e9}st: value\r\nContent-Length: 0\r\n\r\n",
+      "HTTP/1.1 200 OK\r\nX@Test: value\r\nContent-Length: 0\r\n\r\n",
+    ] {
     let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
     assert_true(codec.decode_response() is Err(_))
   }
@@ -1714,96 +1809,77 @@ test "connection tokens are detected across repeated headers" {
   assert_eq(response.text().unwrap(), "ok")
   assert_eq(stream.is_open, false)
 }
+
 ///|
 test "URL rejects malformed percent escapes outside the host" {
-  for raw in [
-    "http://example.com/%",
-    "http://example.com/%zz",
-    "http://example.com/a%2",
-    "http://example.com/?x=%zz",
-    "http://example.com/#%zz",
-    "http://example.com/a\\b",
-  ] {
+  for
+    raw in [
+      "http://example.com/%", "http://example.com/%zz", "http://example.com/a%2",
+      "http://example.com/?x=%zz", "http://example.com/#%zz", "http://example.com/a\\b",
+    ] {
     assert_true(Url::parse(raw) is Err(_))
   }
-  for raw in [
-    "http://example.com/%20",
-    "http://example.com/?x=%2F",
-    "http://example.com/#frag",
-  ] {
+  for
+    raw in [
+      "http://example.com/%20", "http://example.com/?x=%2F", "http://example.com/#frag",
+    ] {
     assert_true(Url::parse(raw) is Ok(_))
   }
 }
 
 ///|
 test "URL rejects unsafe characters outside the host" {
-  for raw in [
-    "http://example.com/a b",
-    "http://example.com/a\"b",
-    "http://example.com/a<b",
-    "http://example.com/a>b",
-    "http://example.com/a^b",
-    "http://example.com/a`b",
-    "http://example.com/a{b",
-    "http://example.com/a|b",
-    "http://example.com/a}b",
-    "http://example.com/?x=\"",
-    "http://example.com/#x<",
-  ] {
+  for
+    raw in [
+      "http://example.com/a b", "http://example.com/a\"b", "http://example.com/a<b",
+      "http://example.com/a>b", "http://example.com/a^b", "http://example.com/a`b",
+      "http://example.com/a{b", "http://example.com/a|b", "http://example.com/a}b",
+      "http://example.com/?x=\"", "http://example.com/#x<",
+    ] {
     assert_true(Url::parse(raw) is Err(_))
   }
-  for raw in [
-    "http://example.com/a%20b",
-    "http://example.com/?x=%7C",
-    "http://example.com/#x%7D",
-  ] {
+  for
+    raw in [
+      "http://example.com/a%20b", "http://example.com/?x=%7C", "http://example.com/#x%7D",
+    ] {
     assert_true(Url::parse(raw) is Ok(_))
   }
 }
 
 ///|
 test "URL rejects brackets and extra hashes outside the authority" {
-  for raw in [
-    "http://example.com/a[b",
-    "http://example.com/a]b",
-    "http://example.com/?x=[1]",
-    "http://example.com/#x[y]",
-    "http://example.com/#a#b",
-  ] {
+  for
+    raw in [
+      "http://example.com/a[b", "http://example.com/a]b", "http://example.com/?x=[1]",
+      "http://example.com/#x[y]", "http://example.com/#a#b",
+    ] {
     assert_true(Url::parse(raw) is Err(_))
   }
-  for raw in [
-    "http://example.com/%5Bx%5D",
-    "http://example.com/?x=%5B1%5D",
-    "http://example.com/#x%5By%5D",
-    "http://[::1]/a",
-  ] {
+  for
+    raw in [
+      "http://example.com/%5Bx%5D", "http://example.com/?x=%5B1%5D", "http://example.com/#x%5By%5D",
+      "http://[::1]/a",
+    ] {
     assert_true(Url::parse(raw) is Ok(_))
   }
 }
 
+///|
 test "URL validates userinfo characters" {
-  for raw in [
-    "http://user%zz@example.com/",
-    "http://user%2@example.com/",
-    "http://user%@example.com/",
-    "http://user%2G@example.com/",
-    "http://us\\er@example.com/",
-    "http://us[er@example.com/",
-    "http://us]er@example.com/",
-    "http://us{er@example.com/",
-    "http://us|er@example.com/",
-    "http://us^er@example.com/",
-  ] {
+  for
+    raw in [
+      "http://user%zz@example.com/", "http://user%2@example.com/", "http://user%@example.com/",
+      "http://user%2G@example.com/", "http://us\\er@example.com/", "http://us[er@example.com/",
+      "http://us]er@example.com/", "http://us{er@example.com/", "http://us|er@example.com/",
+      "http://us^er@example.com/",
+    ] {
     assert_true(Url::parse(raw) is Err(_))
   }
-  for raw in [
-    "http://user:pass@example.com/",
-    "http://user%40name@example.com/",
-    "http://user.name+tag@example.com/",
-    "http://user:@example.com/",
-    "http://@example.com/",
-  ] {
+  for
+    raw in [
+      "http://user:pass@example.com/", "http://user%40name@example.com/", "http://user.name+tag@example.com/",
+      "http://user:@example.com/", "http://@example.com/",
+    ] {
     assert_true(Url::parse(raw) is Ok(_))
   }
 }
@@ -1821,26 +1897,20 @@ test "request encoding rejects malformed targets" {
 
 ///|
 test "URL rejects unsafe host characters" {
-  for raw in [
-    "http://exa\\mple.com/",
-    "http://exa\"mple.com/",
-    "http://exa<mple.com/",
-    "http://exa>mple.com/",
-    "http://exa^mple.com/",
-    "http://exa{mple.com/",
-    "http://exa|mple.com/",
-    "http://exa}mple.com/",
-    "http://exa,mple.com/",
-    "http://exa%zzmple.com/",
-    "http://exa%2mple.com/",
-    "http://exa%mple.com/",
-  ] {
+  for
+    raw in [
+      "http://exa\\mple.com/", "http://exa\"mple.com/", "http://exa<mple.com/", "http://exa>mple.com/",
+      "http://exa^mple.com/", "http://exa{mple.com/", "http://exa|mple.com/", "http://exa}mple.com/",
+      "http://exa,mple.com/", "http://exa%zzmple.com/", "http://exa%2mple.com/",
+      "http://exa%mple.com/",
+    ] {
     assert_true(Url::parse(raw) is Err(_))
   }
   assert_true(Url::parse("http://exa_mple.example/") is Ok(_))
   assert_true(Url::parse("http://exa%20mple.example/") is Ok(_))
   assert_true(Url::parse("http://[2001:db8::1]/") is Ok(_))
 }
+
 ///|
 test "request encoding rejects duplicate or malformed Host headers" {
   let url = Url::parse("http://example.com/").unwrap()
@@ -1848,23 +1918,27 @@ test "request encoding rejects duplicate or malformed Host headers" {
   assert_true(
     duplicate.encode_request(
       Request::new(GET, url)
-        .with_header("Host", "example.com")
-        .with_header("Host", "other.example"),
-    ) is Err(InvalidHeader(_)),
+      .with_header("Host", "example.com")
+      .with_header("Host", "other.example"),
+    )
+    is Err(InvalidHeader(_)),
   )
   let malformed = H1Codec::new(regression_mock_stream("", 0, 0))
   assert_true(
     malformed.encode_request(
       Request::new(GET, url).with_header("Host", "bad host"),
-    ) is Err(InvalidHeader(_)),
+    )
+    is Err(InvalidHeader(_)),
   )
   let valid = H1Codec::new(regression_mock_stream("", 0, 0))
   assert_true(
     valid.encode_request(
       Request::new(GET, url).with_header("Host", "example.com:8080"),
-    ) is Ok(_),
+    )
+    is Ok(_),
   )
 }
+
 ///|
 test "request encoding accepts bracketed IPv6 Host headers" {
   let url = Url::parse("http://[::1]:8080/").unwrap()
@@ -1873,103 +1947,92 @@ test "request encoding accepts bracketed IPv6 Host headers" {
   assert_true(
     codec.encode_request(
       Request::new(GET, url).with_header("Host", "[::1]:8080"),
-    ) is Ok(_),
+    )
+    is Ok(_),
   )
-  assert_true(@utf8.decode(stream.output.to_bytes()[:]).contains("Host: [::1]:8080\r\n"))
+  assert_true(
+    @utf8.decode(stream.output.to_bytes()[:]).contains("Host: [::1]:8080\r\n"),
+  )
   let bare = H1Codec::new(regression_mock_stream("", 0, 0))
   assert_true(
-    bare.encode_request(
-      Request::new(GET, url).with_header("Host", "[::1]"),
-    ) is Ok(_),
+    bare.encode_request(Request::new(GET, url).with_header("Host", "[::1]"))
+    is Ok(_),
   )
-  for host in [
-    "[::]",
-    "[2001:db8::1]",
-    "[::ffff:192.0.2.1]",
-    "[fe80::1%25eth0]",
-    "[v1.foo]",
-  ] {
+  for
+    host in [
+      "[::]", "[2001:db8::1]", "[::ffff:192.0.2.1]", "[fe80::1%25eth0]", "[v1.foo]",
+    ] {
     let codec = H1Codec::new(regression_mock_stream("", 0, 0))
     assert_true(
-      codec.encode_request(
-        Request::new(GET, url).with_header("Host", host),
-      ) is Ok(_),
+      codec.encode_request(Request::new(GET, url).with_header("Host", host))
+      is Ok(_),
     )
   }
   let automatic = regression_mock_stream("", 0, 0)
   let automatic_codec = H1Codec::new(automatic)
   assert_true(automatic_codec.encode_request(Request::new(GET, url)) is Ok(_))
-  assert_true(@utf8.decode(automatic.output.to_bytes()[:]).contains("Host: [::1]:8080\r\n"))
+  assert_true(
+    @utf8.decode(automatic.output.to_bytes()[:]).contains(
+      "Host: [::1]:8080\r\n",
+    ),
+  )
 }
+
 ///|
 test "request encoding rejects malformed Host ports and IPv6 literals" {
   let url = Url::parse("http://example.com/").unwrap()
-  for host in [
-    "::1",
-    "[::1",
-    "::1]:80",
-    "example.com:notaport",
-    "example.com:70000",
-    "[::1]:",
-    ":80",
-    "[foo]",
-    "[[::1]]",
-    "[:::]",
-    "[1:2:3:4:5:6:7]",
-    "[1:2:3:4:5:6:7:8:9]",
-    "[::ffff:192.0.2.999]",
-    "[1:::2]",
-    "[::1%25]",
-    "[::1%]",
-    "exa\"mple.com",
-    "exa<mple.com",
-    "exa>mple.com",
-    "exa^mple.com",
-    "exa`mple.com",
-    "exa{mple.com",
-    "exa|mple.com",
-    "exa}mple.com",
-    "exa%zzmple.com",
-  ] {
+  for
+    host in [
+      "::1", "[::1", "::1]:80", "example.com:notaport", "example.com:70000", "[::1]:",
+      ":80", "[foo]", "[[::1]]", "[:::]", "[1:2:3:4:5:6:7]", "[1:2:3:4:5:6:7:8:9]",
+      "[::ffff:192.0.2.999]", "[1:::2]", "[::1%25]", "[::1%]", "exa\"mple.com", "exa<mple.com",
+      "exa>mple.com", "exa^mple.com", "exa`mple.com", "exa{mple.com", "exa|mple.com",
+      "exa}mple.com", "exa%zzmple.com",
+    ] {
     let codec = H1Codec::new(regression_mock_stream("", 0, 0))
     assert_true(
-      codec.encode_request(
-        Request::new(GET, url).with_header("Host", host),
-      ) is Err(InvalidHeader(_)),
+      codec.encode_request(Request::new(GET, url).with_header("Host", host))
+      is Err(InvalidHeader(_)),
     )
   }
 }
+
 ///|
 test "chunked trailers must be valid header fields" {
   for trailer in ["Bad Trailer: x", "X-Test: a\rb", ": value", "X-Test"] {
     let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n" +
-      trailer + "\r\n\r\n"
+      trailer +
+      "\r\n\r\n"
     let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
     let response = codec.decode_response().unwrap()
     assert_true(response.read_body() is Err(_))
   }
   for trailer in ["X-Test: a\r", "X-Test:\ra"] {
     let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n" +
-      trailer + "\r\n\r\n"
+      trailer +
+      "\r\n\r\n"
     let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
     let response = codec.decode_response().unwrap()
     assert_true(response.read_body() is Err(_))
   }
 }
+
 ///|
 test "connector validates TLS settings before dialing" {
   let stream = regression_mock_stream("", 0, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-    .with_tls_config(TlsConfig::new("base.example").with_alpn(@list.List(["h2", ""])))
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_tls_config(
+    TlsConfig::new("base.example").with_alpn(@list.List(["h2", ""])),
+  )
   let url = Url::parse("https://example.com/").unwrap()
   assert_true(connector.connect(url) is Err(TlsError(InvalidConfig(_))))
   assert_eq(dialer.count, 0)
 }
+
 ///|
 test "connector applies its timeout before TLS handshakes" {
   let stream = regression_mock_stream("", 0, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_timeout(
     1234,
   )
@@ -1977,10 +2040,11 @@ test "connector applies its timeout before TLS handshakes" {
   let _ = connector.connect(url).unwrap()
   assert_eq(stream.last_timeout, 1234)
 }
+
 ///|
 test "connector applies its timeout to HTTP connections" {
   let stream = regression_mock_stream("", 0, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_timeout(
     1234,
   )
@@ -1988,34 +2052,46 @@ test "connector applies its timeout to HTTP connections" {
   let _ = connector.connect(url).unwrap()
   assert_eq(stream.last_timeout, 1234)
 }
+
 ///|
 test "connector applies its timeout before opening the socket" {
   let stream = regression_mock_stream("", 1, 0)
-  let dialer = TimeoutRecordingDialer::{ stream, timeout_ms: 30000, dials: 0 }
-  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-    .with_timeout(4321)
+  let dialer = TimeoutRecordingDialer::{ stream, timeout_ms: 30000, dials: 0, }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_timeout(
+    4321,
+  )
   assert_eq(dialer.timeout_ms, 4321)
   let url = Url::parse("http://example.com/").unwrap()
   let _ = connector.connect(url).unwrap()
   assert_eq(dialer.timeout_ms, 4321)
   assert_eq(dialer.dials, 1)
 }
+
 ///|
 test "redirect origin comparison ignores host case" {
   let raw = "HTTP/1.1 302 Found\r\nLocation: http://EXAMPLE.com/next\r\nContent-Length: 0\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
   let stream = regression_mock_stream(raw, 1, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new(),
+    redirect_count: 0,
+  }
   let url = Url::parse("http://example.com/start").unwrap()
-  let response = client.request(
-    Request::new(GET, url).with_header("Authorization", "Bearer token"),
-  ).unwrap()
+  let response = client
+    .request(
+      Request::new(GET, url).with_header("Authorization", "Bearer token"),
+    )
+    .unwrap()
   assert_eq(response.status, 200)
   let wire = @utf8.decode(stream.output.to_bytes()[:])
   let next_index = wire.find("GET /next HTTP/1.1").unwrap()
-  assert_true(wire.substring(start=next_index).contains("Authorization: Bearer token"))
+  assert_true(
+    wire.substring(start=next_index).contains("Authorization: Bearer token"),
+  )
 }
+
 ///|
 test "HTTP method parsing accepts standard verbs" {
   for verb in ["GET", "post", "Put", "DELETE", "HEAD", "OPTIONS", "PATCH"] {
@@ -2029,10 +2105,7 @@ test "HTTP method parsing accepts standard verbs" {
 ///|
 test "URL builders update individual components" {
   let url = Url::parse("https://example.com/old?x=1#frag").unwrap()
-  let updated = url
-    .with_path("/new")
-    .with_query("y=2")
-    .with_fragment("other")
+  let updated = url.with_path("/new").with_query("y=2").with_fragment("other")
   assert_eq(updated.to_string(), "https://example.com/new?y=2#other")
   let cleared = updated.with_query("").with_fragment("")
   assert_eq(cleared.to_string(), "https://example.com/new")
@@ -2049,111 +2122,188 @@ test "Request with_method changes only the verb" {
   assert_eq(request.get_header("X-Test").unwrap(), "yes")
   assert_eq(request.body.unwrap(), b"body")
 }
-struct NoProgressStream{}
 
-pub impl Stream for NoProgressStream with fn read(_ : NoProgressStream, buf : Buffer) -> Result[Int, NetError] {
+///|
+struct NoProgressStream {}
+
+///|
+pub impl Stream for NoProgressStream with fn read(
+  _ : NoProgressStream,
+  buf : Buffer,
+) -> Result[Int32, NetError] {
   let _ = buf
   Ok(1)
 }
 
-pub impl Stream for NoProgressStream with fn write(_ : NoProgressStream, buf : Buffer) -> Result[Int, NetError] {
+///|
+pub impl Stream for NoProgressStream with fn write(
+  _ : NoProgressStream,
+  buf : Buffer,
+) -> Result[Int32, NetError] {
   Ok(buf.length())
 }
 
-pub impl Stream for NoProgressStream with fn flush(_ : NoProgressStream) -> Result[Unit, NetError] {
+///|
+pub impl Stream for NoProgressStream with fn flush(_ : NoProgressStream) -> Result[
+  Unit,
+  NetError,
+] {
   Ok(())
 }
 
-pub impl Stream for NoProgressStream with fn close(_ : NoProgressStream) -> Result[Unit, NetError] {
+///|
+pub impl Stream for NoProgressStream with fn close(_ : NoProgressStream) -> Result[
+  Unit,
+  NetError,
+] {
   Ok(())
 }
 
-pub impl Stream for NoProgressStream with fn set_timeout(self : NoProgressStream, timeout_ms : Int) -> Result[Unit, NetError] {
+///|
+pub impl Stream for NoProgressStream with fn set_timeout(
+  self : NoProgressStream,
+  timeout_ms : Int32,
+) -> Result[Unit, NetError] {
   let _ = self
   let _ = timeout_ms
   Ok(())
 }
 
-pub impl Stream for NoProgressStream with fn peer_addr(self : NoProgressStream) -> Result[String, NetError] {
+///|
+pub impl Stream for NoProgressStream with fn peer_addr(self : NoProgressStream) -> Result[
+  String,
+  NetError,
+] {
   let _ = self
   Ok("mock:0")
 }
 
-pub impl Stream for NoProgressStream with fn local_addr(self : NoProgressStream) -> Result[String, NetError] {
+///|
+pub impl Stream for NoProgressStream with fn local_addr(self : NoProgressStream) -> Result[
+  String,
+  NetError,
+] {
   let _ = self
   Ok("mock:0")
 }
 
+///|
 struct ReadErrorStream {
   mut is_open : Bool
 }
 
-pub impl Stream for ReadErrorStream with fn read(self : ReadErrorStream, buf : Buffer) -> Result[Int, NetError] {
+///|
+pub impl Stream for ReadErrorStream with fn read(
+  self : ReadErrorStream,
+  buf : Buffer,
+) -> Result[Int32, NetError] {
   let _ = self
   let _ = buf
   Err(NetError::ReadError("read failed"))
 }
 
-pub impl Stream for ReadErrorStream with fn write(self : ReadErrorStream, buf : Buffer) -> Result[Int, NetError] {
+///|
+pub impl Stream for ReadErrorStream with fn write(
+  self : ReadErrorStream,
+  buf : Buffer,
+) -> Result[Int32, NetError] {
   let _ = self
   Ok(buf.length())
 }
 
-pub impl Stream for ReadErrorStream with fn flush(self : ReadErrorStream) -> Result[Unit, NetError] {
+///|
+pub impl Stream for ReadErrorStream with fn flush(self : ReadErrorStream) -> Result[
+  Unit,
+  NetError,
+] {
   let _ = self
   Ok(())
 }
 
-pub impl Stream for ReadErrorStream with fn close(self : ReadErrorStream) -> Result[Unit, NetError] {
+///|
+pub impl Stream for ReadErrorStream with fn close(self : ReadErrorStream) -> Result[
+  Unit,
+  NetError,
+] {
   self.is_open = false
   Ok(())
 }
 
-pub impl Stream for ReadErrorStream with fn set_timeout(self : ReadErrorStream, timeout_ms : Int) -> Result[Unit, NetError] {
+///|
+pub impl Stream for ReadErrorStream with fn set_timeout(
+  self : ReadErrorStream,
+  timeout_ms : Int32,
+) -> Result[Unit, NetError] {
   let _ = self
   let _ = timeout_ms
   Ok(())
 }
 
-pub impl Stream for ReadErrorStream with fn peer_addr(self : ReadErrorStream) -> Result[String, NetError] {
+///|
+pub impl Stream for ReadErrorStream with fn peer_addr(self : ReadErrorStream) -> Result[
+  String,
+  NetError,
+] {
   let _ = self
   Ok("mock:0")
 }
 
-pub impl Stream for ReadErrorStream with fn local_addr(self : ReadErrorStream) -> Result[String, NetError] {
+///|
+pub impl Stream for ReadErrorStream with fn local_addr(self : ReadErrorStream) -> Result[
+  String,
+  NetError,
+] {
   let _ = self
   Ok("mock:0")
 }
 
 ///|
 test "streams reporting progress without data are rejected" {
-  let stream = NoProgressStream::{}
+  let stream = NoProgressStream::{ }
   let codec = H1Codec::new(stream)
   assert_true(codec.decode_response() is Err(NetworkError(ReadError(_))))
 }
 
 ///|
 test "proxy CONNECT rejects streams reporting progress without data" {
-  let stream = NoProgressStream::{}
+  let stream = NoProgressStream::{ }
   assert_true(read_connect_response(stream) is Err(NetworkError(ReadError(_))))
 }
+
 ///|
 test "response status helpers and URL scheme checks" {
-  let response = Response::new(204, Headers::new(), regression_mock_stream("", 4096, 4096))
+  let response = Response::new(
+    204,
+    Headers::new(),
+    regression_mock_stream("", 4096, 4096),
+  )
   assert_true(response.is_success())
   assert_false(response.is_redirection())
   assert_false(response.is_client_error())
   assert_false(response.is_server_error())
-  let redirect = Response::new(308, Headers::new(), regression_mock_stream("", 4096, 4096))
+  let redirect = Response::new(
+    308,
+    Headers::new(),
+    regression_mock_stream("", 4096, 4096),
+  )
   assert_true(redirect.is_redirection())
-  let client_error = Response::new(404, Headers::new(), regression_mock_stream("", 4096, 4096))
+  let client_error = Response::new(
+    404,
+    Headers::new(),
+    regression_mock_stream("", 4096, 4096),
+  )
   assert_true(client_error.is_client_error())
-  let server_error = Response::new(503, Headers::new(), regression_mock_stream("", 4096, 4096))
+  let server_error = Response::new(
+    503,
+    Headers::new(),
+    regression_mock_stream("", 4096, 4096),
+  )
   assert_true(server_error.is_server_error())
   let url = Url::parse("http://example.com/").unwrap()
   assert_false(url.is_secure())
   assert_true(Url::parse("HTTPS://example.com/").unwrap().is_secure())
 }
+
 ///|
 test "basic auth replaces existing authorization headers" {
   let url = Url::parse("https://example.com/").unwrap()
@@ -2162,30 +2312,50 @@ test "basic auth replaces existing authorization headers" {
     .with_basic_auth("user", "pass")
   assert_eq(request.get_header("Authorization").unwrap(), "Basic dXNlcjpwYXNz")
   assert_eq(request.headers.length(), 1)
-  assert_eq(request.with_basic_auth("", "").get_header("Authorization").unwrap(), "Basic Og==")
+  assert_eq(
+    request.with_basic_auth("", "").get_header("Authorization").unwrap(),
+    "Basic Og==",
+  )
 }
+
 ///|
 test "a non-final chunked transfer coding is close-delimited" {
   let invalid = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked, gzip\r\n\r\n5\r\nhello\r\n0\r\n\r\n"
-  let response = H1Codec::new(regression_mock_stream(invalid, 4096, 4096)).decode_response().unwrap()
+  let response = H1Codec::new(regression_mock_stream(invalid, 4096, 4096))
+    .decode_response()
+    .unwrap()
   assert_eq(
     response.read_body().unwrap(),
     @utf8.encode("5\r\nhello\r\n0\r\n\r\n"),
   )
   let valid = "HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\n\r\n"
-  let response = H1Codec::new(regression_mock_stream(valid, 4096, 4096)).decode_response().unwrap()
+  let response = H1Codec::new(regression_mock_stream(valid, 4096, 4096))
+    .decode_response()
+    .unwrap()
   assert_eq(response.read_body().unwrap(), b"hello")
 }
+
 ///|
 test "reading a body rejects streams that make no progress" {
-  let response = Response::new(200, Headers::new(), NoProgressStream::{})
+  let response = Response::new(200, Headers::new(), NoProgressStream::{ })
   assert_true(response.read_body() is Err(NetworkError(ReadError(_))))
 }
+
 ///|
 test "response body reads enforce an explicit limit" {
-  let response = Response::new(200, Headers::new(), regression_mock_stream("hello", 4096, 4096))
-  assert_true(response.read_body_with_limit(4) is Err(NetworkError(ReadError(_))))
-  let response = Response::new(200, Headers::new(), regression_mock_stream("hello", 4096, 4096))
+  let response = Response::new(
+    200,
+    Headers::new(),
+    regression_mock_stream("hello", 4096, 4096),
+  )
+  assert_true(
+    response.read_body_with_limit(4) is Err(NetworkError(ReadError(_))),
+  )
+  let response = Response::new(
+    200,
+    Headers::new(),
+    regression_mock_stream("hello", 4096, 4096),
+  )
   assert_eq(response.read_body_with_limit(5).unwrap(), b"hello")
 }
 
@@ -2195,28 +2365,35 @@ test "exceeding an explicit body limit closes the response stream" {
   let stream = regression_mock_stream(raw, 4096, 0)
   let codec = H1Codec::new(stream)
   let response = codec.decode_response().unwrap()
-  assert_true(response.read_body_with_limit(2) is Err(NetworkError(ReadError(_))))
+  assert_true(
+    response.read_body_with_limit(2) is Err(NetworkError(ReadError(_))),
+  )
   assert_false(stream.is_open)
 
-  let stalled = Response::new(200, Headers::new(), NoProgressStream::{})
-  assert_true(stalled.read_body_with_limit(4) is Err(NetworkError(ReadError(_))))
+  let stalled = Response::new(200, Headers::new(), NoProgressStream::{ })
+  assert_true(
+    stalled.read_body_with_limit(4) is Err(NetworkError(ReadError(_))),
+  )
 }
+
 ///|
 test "body read errors close the response stream" {
-  let stream = ReadErrorStream::{ is_open: true }
+  let stream = ReadErrorStream::{ is_open: true, }
   let response = Response::new(200, Headers::new(), stream)
-  assert_true(response.read_body_with_limit(4) is Err(NetworkError(ReadError(_))))
+  assert_true(
+    response.read_body_with_limit(4) is Err(NetworkError(ReadError(_))),
+  )
   assert_false(stream.is_open)
 }
+
 ///|
 test "client option builders clamp negative limits" {
-  let options = ClientOptions::new()
-    .with_timeout(-5)
-    .with_max_redirects(-3)
+  let options = ClientOptions::new().with_timeout(-5).with_max_redirects(-3)
   assert_eq(options.timeout_ms, 0)
   assert_eq(options.max_redirects, 0)
   assert_eq(TcpDialer::with_timeout(-1).timeout_ms, 0)
 }
+
 ///|
 test "form requests percent-encode fields" {
   let url = Url::parse("https://example.com/submit").unwrap()
@@ -2225,7 +2402,10 @@ test "form requests percent-encode fields" {
     ("symbols", "a+b&c=d/é"),
     ("empty", ""),
   ])
-  assert_eq(request.get_header("Content-Type").unwrap(), "application/x-www-form-urlencoded")
+  assert_eq(
+    request.get_header("Content-Type").unwrap(),
+    "application/x-www-form-urlencoded",
+  )
   assert_eq(request.headers.get_all("Content-Type").length(), 1)
   assert_eq(
     @utf8.decode(request.body.unwrap()[:]),
@@ -2237,20 +2417,29 @@ test "form requests percent-encode fields" {
     .set_header("Content-Type", "text/plain")
     .with_form([("a", "b")])
   assert_eq(replaced.headers.get_all("Content-Type").length(), 1)
-  assert_eq(replaced.get_header("Content-Type").unwrap(), "application/x-www-form-urlencoded")
+  assert_eq(
+    replaced.get_header("Content-Type").unwrap(),
+    "application/x-www-form-urlencoded",
+  )
 }
+
 ///|
 test "empty Location headers are not followed" {
   let raw = "HTTP/1.1 302 Found\r\nLocation:   \r\nContent-Length: 0\r\n\r\n"
   let stream = regression_mock_stream(raw, 4096, 4096)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new(),
+    redirect_count: 0,
+  }
   let url = Url::parse("http://example.com/start").unwrap()
   let response = client.request(Request::new(GET, url)).unwrap()
   assert_eq(response.status, 302)
   assert_eq(dialer.count, 1)
 }
+
 ///|
 test "request headers can be replaced and removed" {
   let url = Url::parse("https://example.com/").unwrap()
@@ -2261,24 +2450,30 @@ test "request headers can be replaced and removed" {
     .without_header("Missing")
   assert_eq(request.headers.get_all("X-Test"), @list.List(["three"]))
 }
+
 ///|
 test "replacing TLS configuration closes the old pool" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
   let stream = regression_mock_stream(raw, 4096, 4096)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new(),
+    redirect_count: 0,
+  }
   let url = Url::parse("http://example.com/").unwrap()
   let _ = client.request(Request::new(GET, url)).unwrap()
   let _ = client.with_tls_config(TlsConfig::new("example.com"))
   assert_false(stream.is_open)
 }
+
 ///|
 test "replacing connector TLS configuration closes its pool" {
   let first_stream = regression_mock_stream("", 1, 0)
   let second_stream = regression_mock_stream("", 1, 0)
   let streams : Array[&Stream] = [first_stream, second_stream]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let url = Url::parse("http://example.com/").unwrap()
   let _ = connector.connect(url).unwrap()
@@ -2287,13 +2482,14 @@ test "replacing connector TLS configuration closes its pool" {
   let _ = replaced.connect(url).unwrap()
   assert_eq(dialer.index, 2)
 }
+
 ///|
 test "replacing connector TLS configuration isolates the new pool" {
   let first = regression_mock_stream("", 1, 0)
   let second = regression_mock_stream("", 1, 0)
   let third = regression_mock_stream("", 1, 0)
   let streams : Array[&Stream] = [first, second, third]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let url = Url::parse("http://example.com/").unwrap()
   let _ = connector.connect(url).unwrap()
@@ -2303,6 +2499,7 @@ test "replacing connector TLS configuration isolates the new pool" {
   let _ = connector.connect(url).unwrap()
   assert_eq(dialer.index, 3)
 }
+
 ///|
 test "101 responses close the upgraded connection" {
   let raw = "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n"
@@ -2313,14 +2510,15 @@ test "101 responses close the upgraded connection" {
   assert_eq(response.body.read(@buffer.new(size_hint=4)).unwrap(), 0)
   assert_false(stream.is_open)
 }
+
 ///|
 test "client closes upgraded connections without a body read" {
   let raw = "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n"
   let stream = regression_mock_stream(raw, 0, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let options = ClientOptions::new().with_follow_redirects(false)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let url = Url::parse("http://example.com/").unwrap()
   let response = client.request(Request::new(GET, url)).unwrap()
   assert_eq(response.status, 101)
@@ -2362,6 +2560,7 @@ test "a failed response decode clears HEAD framing state" {
   let response = codec.decode_response().unwrap()
   assert_eq(response.text().unwrap(), "hello")
 }
+
 ///|
 test "request and response expose repeated header values" {
   let raw = "HTTP/1.1 200 OK\r\nSet-Cookie: a=1\r\nSet-Cookie: b=2\r\nContent-Length: 0\r\n\r\n"
@@ -2373,18 +2572,26 @@ test "request and response expose repeated header values" {
     .with_header("X-Test", "two")
   assert_eq(request.get_header_all("x-test"), @list.List(["one", "two"]))
 }
+
 ///|
 test "post_form sends a URL-encoded request" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
   let stream = regression_mock_stream(raw, 4096, 4096)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
-  let response = client.post_form("http://example.com/submit", [("a", "b c")]).unwrap()
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new(),
+    redirect_count: 0,
+  }
+  let response = client
+    .post_form("http://example.com/submit", [("a", "b c")])
+    .unwrap()
   assert_eq(response.text().unwrap(), "ok")
   let written = @utf8.decode(stream.output.to_bytes()[:])
   assert_true(written.has_suffix("\r\n\r\na=b+c"))
 }
+
 ///|
 test "connector caps idle connections per host" {
   let first = regression_mock_stream("", 1, 0)
@@ -2392,9 +2599,10 @@ test "connector caps idle connections per host" {
   let third = regression_mock_stream("", 1, 0)
   let fourth = regression_mock_stream("", 1, 0)
   let streams : Array[&Stream] = [first, second, third, fourth]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
-  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-    .with_max_idle_per_host(2)
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_max_idle_per_host(
+    2,
+  )
   assert_eq(connector.max_idle_per_host(), 2)
   let url = Url::parse("http://example.com/").unwrap()
   let (_s0, lease0) = connector.checkout(url).unwrap()
@@ -2415,8 +2623,9 @@ test "connector caps idle connections per host" {
 ///|
 test "connector clamps the idle cap to at least one" {
   let dialer = TcpDialer::new()
-  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-    .with_max_idle_per_host(0)
+  let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_max_idle_per_host(
+    0,
+  )
   assert_eq(connector.max_idle_per_host(), 1)
 }
 
@@ -2426,7 +2635,7 @@ test "lowering the idle cap closes excess pooled connections" {
   let second = regression_mock_stream("", 1, 0)
   let third = regression_mock_stream("", 1, 0)
   let streams : Array[&Stream] = [first, second, third]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let url = Url::parse("http://example.com/").unwrap()
   let (_s0, lease0) = connector.checkout(url).unwrap()
@@ -2450,9 +2659,10 @@ test "connector enforces a per-host connection cap" {
   let first = regression_mock_stream("", 1, 0)
   let second = regression_mock_stream("", 1, 0)
   let streams : Array[&Stream] = [first, second]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
-  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-    .with_max_connections_per_host(1)
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_max_connections_per_host(
+    1,
+  )
   assert_eq(connector.max_connections_per_host(), 1)
   let url = Url::parse("http://example.com/").unwrap()
   let (_stream, lease) = connector.checkout(url).unwrap()
@@ -2468,7 +2678,7 @@ test "connection cap also limits reuse of extra idle connections" {
   let first = regression_mock_stream("", 1, 0)
   let second = regression_mock_stream("", 1, 0)
   let streams : Array[&Stream] = [first, second]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let url = Url::parse("http://example.com/").unwrap()
   let (_s0, lease0) = connector.checkout(url).unwrap()
@@ -2486,11 +2696,16 @@ test "connector connection cap is counted per host" {
   let first = regression_mock_stream("", 1, 0)
   let second = regression_mock_stream("", 1, 0)
   let streams : Array[&Stream] = [first, second]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
-  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-    .with_max_connections_per_host(1)
-  let (_s0, lease0) = connector.checkout(Url::parse("http://a.example/").unwrap()).unwrap()
-  let (_s1, _lease1) = connector.checkout(Url::parse("http://b.example/").unwrap()).unwrap()
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_max_connections_per_host(
+    1,
+  )
+  let (_s0, lease0) = connector
+    .checkout(Url::parse("http://a.example/").unwrap())
+    .unwrap()
+  let (_s1, _lease1) = connector
+    .checkout(Url::parse("http://b.example/").unwrap())
+    .unwrap()
   let _ = lease0
   assert_eq(dialer.index, 2)
 }
@@ -2498,8 +2713,9 @@ test "connector connection cap is counted per host" {
 ///|
 test "connector clamps the connection cap to unlimited" {
   let dialer = TcpDialer::new()
-  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-    .with_max_connections_per_host(0)
+  let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_max_connections_per_host(
+    0,
+  )
   assert_eq(connector.max_connections_per_host(), 0)
 }
 
@@ -2548,7 +2764,10 @@ test "connector exposes a configurable idle timeout" {
 test "Proxy::new parses URL and credentials" {
   let proxy = Proxy::new("http://user:secret@proxy.example:3128").unwrap()
   assert_eq(proxy.authority(), "proxy.example:3128")
-  assert_eq(proxy.authorization(), Some("Basic " + @base64.encode(@utf8.encode("user:secret"))))
+  assert_eq(
+    proxy.authorization(),
+    Some("Basic " + @base64.encode(@utf8.encode("user:secret"))),
+  )
   let plain = Proxy::new("http://proxy.example").unwrap()
   assert_eq(plain.authority(), "proxy.example")
   assert_true(plain.authorization() is None)
@@ -2570,13 +2789,11 @@ test "Proxy::new rejects non-http schemes and bad ports" {
 
 ///|
 test "Proxy::new rejects paths, queries, and fragments" {
-  for url in [
-    "http://proxy.example/path",
-    "http://proxy.example/?query=1",
-    "http://proxy.example/#fragment",
-    "http://proxy.example?",
-    "http://proxy.example#",
-  ] {
+  for
+    url in [
+      "http://proxy.example/path", "http://proxy.example/?query=1", "http://proxy.example/#fragment",
+      "http://proxy.example?", "http://proxy.example#",
+    ] {
     assert_true(Proxy::new(url) is Err(InvalidUrl(_)))
   }
   assert_true(Proxy::new("http://proxy.example/") is Ok(_))
@@ -2587,7 +2804,10 @@ test "Proxy::new rejects paths, queries, and fragments" {
 test "Proxy::new_with_basic_auth encodes credentials" {
   let proxy = Proxy::new_with_basic_auth("127.0.0.1", 8080, "u", "p").unwrap()
   assert_eq(proxy.authority(), "127.0.0.1:8080")
-  assert_eq(proxy.authorization(), Some("Basic " + @base64.encode(@utf8.encode("u:p"))))
+  assert_eq(
+    proxy.authorization(),
+    Some("Basic " + @base64.encode(@utf8.encode("u:p"))),
+  )
 }
 
 ///|
@@ -2596,45 +2816,51 @@ test "proxy basic auth preserves percent-decoded credential bytes" {
   assert_eq(proxy.authorization(), Some("Basic dXNlcv86cGFzcw=="))
 }
 
+///|
 test "proxy credentials reject a colon in the username" {
   assert_true(
     Proxy::new("http://us%3Aer:pass@proxy.example") is Err(InvalidUrl(_)),
   )
   assert_true(
-    Proxy::new_with_basic_auth("127.0.0.1", 8080, "us:er", "pass") is Err(InvalidUrl(_)),
+    Proxy::new_with_basic_auth("127.0.0.1", 8080, "us:er", "pass")
+    is Err(InvalidUrl(_)),
   )
-  assert_true(
-    Proxy::new("http://user:pa%3Ass@proxy.example") is Ok(_),
-  )
+  assert_true(Proxy::new("http://user:pa%3Ass@proxy.example") is Ok(_))
 }
 
+///|
 test "plain HTTP through a proxy uses absolute-form and proxy auth" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
   let stream = regression_mock_stream(raw, 4096, 4096)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let options = ClientOptions::new().with_follow_redirects(false)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let proxy = Proxy::new("http://user:secret@proxy.example:3128").unwrap()
   let client = client.with_proxy(proxy)
   let url = Url::parse("http://example.com/path?x=1").unwrap()
-  let response = client.request(
-    Request::new(GET, url).with_header("Host", "other.example"),
-  ).unwrap()
+  let response = client
+    .request(Request::new(GET, url).with_header("Host", "other.example"))
+    .unwrap()
   assert_eq(response.text().unwrap(), "ok")
   assert_eq(dialer.count, 1)
   let wire = @utf8.decode(stream.output.to_bytes()[:])
   assert_true(wire.contains("GET http://example.com/path?x=1 HTTP/1.1\r\n"))
   assert_true(wire.contains("Host: example.com\r\n"))
   assert_true(!wire.contains("Host: other.example"))
-  assert_true(wire.contains("Proxy-Authorization: Basic " + @base64.encode(@utf8.encode("user:secret"))))
+  assert_true(
+    wire.contains(
+      "Proxy-Authorization: Basic " +
+      @base64.encode(@utf8.encode("user:secret")),
+    ),
+  )
 }
 
 ///|
 test "plain HTTP through a proxy dials the proxy host" {
   let raw = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
   let stream = regression_mock_stream(raw, 4096, 4096)
-  let dialer = RegressionProxyDialer::{ stream, host: "", port: 0 }
+  let dialer = RegressionProxyDialer::{ stream, host: "", port: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_proxy(
     Proxy::new("http://proxy.example:3128").unwrap(),
   )
@@ -2648,7 +2874,7 @@ test "plain HTTP through a proxy dials the proxy host" {
 test "HTTPS through a proxy opens a CONNECT tunnel before TLS" {
   let raw = "HTTP/1.1 200 Connection Established\r\n\r\n"
   let stream = regression_mock_stream(raw, 4096, 4096)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_proxy(
     Proxy::new("http://user:secret@proxy.example:3128").unwrap(),
   )
@@ -2657,22 +2883,28 @@ test "HTTPS through a proxy opens a CONNECT tunnel before TLS" {
   let wire = @utf8.decode(stream.output.to_bytes()[:])
   assert_true(wire.has_prefix("CONNECT example.com:8443 HTTP/1.1\r\n"))
   assert_true(wire.contains("Host: example.com:8443\r\n"))
-  assert_true(wire.contains("Proxy-Authorization: Basic " + @base64.encode(@utf8.encode("user:secret"))))
+  assert_true(
+    wire.contains(
+      "Proxy-Authorization: Basic " +
+      @base64.encode(@utf8.encode("user:secret")),
+    ),
+  )
 }
 
 ///|
 test "HTTPS tunnels do not forward caller proxy authorization to the origin" {
   let raw = "HTTP/1.1 200 Connection Established\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"
   let stream = regression_mock_stream(raw, 4096, 4096)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_proxy(
     Proxy::new("http://proxy.example:3128").unwrap(),
   )
   let options = ClientOptions::new().with_follow_redirects(false)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let url = Url::parse("https://example.com/").unwrap()
-  let request = Request::new(GET, url)
-    .with_header("Proxy-Authorization", "Basic secret")
+  let request = Request::new(GET, url).with_header(
+    "Proxy-Authorization", "Basic secret",
+  )
   let response = client.request(request).unwrap()
   assert_eq(response.text().unwrap(), "ok")
   let wire = @utf8.decode(stream.output.to_bytes()[:])
@@ -2683,7 +2915,7 @@ test "HTTPS tunnels do not forward caller proxy authorization to the origin" {
 test "HTTPS proxy CONNECT always includes the target port" {
   let raw = "HTTP/1.1 200 Connection Established\r\n\r\n"
   let stream = regression_mock_stream(raw, 4096, 4096)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_proxy(
     Proxy::new("http://proxy.example:3128").unwrap(),
   )
@@ -2698,7 +2930,7 @@ test "HTTPS proxy CONNECT always includes the target port" {
 test "failed proxy CONNECT returns an error" {
   let raw = "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n"
   let stream = regression_mock_stream(raw, 4096, 4096)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_proxy(
     Proxy::new("http://proxy.example:3128").unwrap(),
   )
@@ -2712,11 +2944,13 @@ test "replacing the proxy closes the old pool and isolates keys" {
   let first = regression_mock_stream("", 1, 0)
   let second = regression_mock_stream("", 1, 0)
   let streams : Array[&Stream] = [first, second]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let url = Url::parse("http://example.com/").unwrap()
   let _ = connector.connect(url).unwrap()
-  let proxied = connector.with_proxy(Proxy::new("http://proxy.example:3128").unwrap())
+  let proxied = connector.with_proxy(
+    Proxy::new("http://proxy.example:3128").unwrap(),
+  )
   assert_false(first.is_open)
   let _ = proxied.connect(url).unwrap()
   assert_eq(dialer.index, 2)
@@ -2726,11 +2960,16 @@ test "replacing the proxy closes the old pool and isolates keys" {
 test "client preserves TLS configuration when a proxy is added" {
   let raw = "HTTP/1.1 200 Connection Established\r\n\r\n"
   let stream = regression_mock_stream(raw, 4096, 4096)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
-    .with_tls_config(TlsConfig::new("example.com"))
-  let client = client.with_proxy(Proxy::new("http://proxy.example:3128").unwrap())
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new(),
+    redirect_count: 0,
+  }.with_tls_config(TlsConfig::new("example.com"))
+  let client = client.with_proxy(
+    Proxy::new("http://proxy.example:3128").unwrap(),
+  )
   assert_true(client.connector.tls_config is Some(_))
   assert_true(client.connector.proxy is Some(_))
 }
@@ -2738,8 +2977,11 @@ test "client preserves TLS configuration when a proxy is added" {
 ///|
 test "client preserves proxy when TLS configuration is replaced" {
   let connector = Connector::new(TcpDialer::new(), MockTlsProvider::new("test"))
-  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
-    .with_proxy(Proxy::new("http://proxy.example:3128").unwrap())
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new(),
+    redirect_count: 0,
+  }.with_proxy(Proxy::new("http://proxy.example:3128").unwrap())
   let client = client.with_tls_config(TlsConfig::new("example.com"))
   assert_true(client.connector.tls_config is Some(_))
   assert_true(client.connector.proxy is Some(_))
@@ -2748,7 +2990,11 @@ test "client preserves proxy when TLS configuration is replaced" {
 ///|
 test "with_proxy_url parses and applies a proxy string" {
   let connector = Connector::new(TcpDialer::new(), MockTlsProvider::new("test"))
-  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new(),
+    redirect_count: 0,
+  }
   assert_true(client.with_proxy_url("http://proxy.example:8080") is Ok(_))
   assert_true(client.with_proxy_url("ftp://proxy.example") is Err(_))
 }
@@ -2756,7 +3002,11 @@ test "with_proxy_url parses and applies a proxy string" {
 ///|
 test "replacing TLS or proxy settings preserves pool tuning" {
   let connector = Connector::new(TcpDialer::new(), MockTlsProvider::new("test"))
-  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+  let client = UnifiedClient::{
+      connector,
+      options: ClientOptions::new(),
+      redirect_count: 0,
+    }
     .with_max_idle_per_host(3)
     .with_idle_timeout(1234)
     .with_max_connections_per_host(2)
@@ -2791,13 +3041,17 @@ test "CONNECT response parsing tolerates tunnel data in the same read" {
 
 ///|
 test "CONNECT response parsing still accepts a head split across reads" {
-  let stream = regression_mock_stream("HTTP/1.1 200 Connection Established\r\nA: b\r\n\r\n", 3, 0)
+  let stream = regression_mock_stream(
+    "HTTP/1.1 200 Connection Established\r\nA: b\r\n\r\n", 3, 0,
+  )
   assert_true(read_connect_response(stream) is Ok(_))
 }
 
 ///|
 test "CONNECT response parsing rejects a head without a terminator" {
-  let stream = regression_mock_stream("HTTP/1.1 200 Connection Established\r\nA: b\r\n", 0, 0)
+  let stream = regression_mock_stream(
+    "HTTP/1.1 200 Connection Established\r\nA: b\r\n", 0, 0,
+  )
   assert_true(read_connect_response(stream) is Err(_))
 }
 
@@ -2812,13 +3066,17 @@ test "CONNECT response parsing rejects an oversized head in one read" {
 
 ///|
 test "CONNECT response parsing rejects an invalid HTTP version" {
-  let stream = regression_mock_stream("FOO 200 Connection Established\r\n\r\n", 0, 0)
+  let stream = regression_mock_stream(
+    "FOO 200 Connection Established\r\n\r\n", 0, 0,
+  )
   assert_true(read_connect_response(stream) is Err(ProtocolError(_)))
 }
 
 ///|
 test "CONNECT failure is reported when tunnel data follows the head" {
-  let stream = regression_mock_stream("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\nPRESHUTDOWN", 0, 0)
+  let stream = regression_mock_stream(
+    "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\nPRESHUTDOWN", 0, 0,
+  )
   assert_true(read_connect_response(stream) is Err(ProtocolError(_)))
 }
 
@@ -2854,7 +3112,7 @@ test "response headers iterate in wire order" {
 ///|
 test "connection lease release is idempotent" {
   let stream = regression_mock_stream("", 1, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let url = Url::parse("http://example.com/").unwrap()
   let (_stream, lease) = connector.checkout(url).unwrap()
@@ -2864,6 +3122,7 @@ test "connection lease release is idempotent" {
   let idle = connector.pool.val.idle.get(key).unwrap()
   assert_eq(idle.length(), 1)
 }
+
 ///|
 test "form encoding uses the WHATWG safe byte set" {
   let url = Url::parse("https://example.com/submit").unwrap()
@@ -2884,10 +3143,9 @@ test "chunked responses with Content-Length are not pooled" {
   let raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 5\r\n\r\n5\r\nhello\r\n0\r\n\r\n"
   let stream = regression_mock_stream(raw, 4096, 4096)
   let completions : Array[Bool] = []
-  let codec = H1Codec::new_with_completion(
-    stream,
-    fn(reusable) { completions.push(reusable) },
-  )
+  let codec = H1Codec::new_with_completion(stream, fn(reusable) {
+    completions.push(reusable)
+  })
   let response = codec.decode_response().unwrap()
   assert_eq(response.text().unwrap(), "hello")
   assert_eq(completions, [false])

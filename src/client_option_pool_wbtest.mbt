@@ -1,7 +1,8 @@
+///|
 test "option-only client builders keep an independent pool" {
   let raw = "HTTP/1.1 204 No Content\r\n\r\n"
   let stream = regression_mock_stream(raw, 0, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let original = UnifiedClient::{
     connector: Connector::new(dialer, MockTlsProvider::new("test")),
     options: ClientOptions::new().with_follow_redirects(false),

@@ -1,3 +1,4 @@
+///|
 /// Error types for network operations
 #derive(Eq, Debug)
 pub enum NetError {
@@ -10,13 +11,14 @@ pub enum NetError {
   IoError(String)
 }
 
+///|
 /// Stream interface for reading and writing bytes
 pub trait Stream {
   // Read data into buffer, returns number of bytes read
-  fn read(Self, Buffer) -> Result[Int, NetError]
+  fn read(Self, Buffer) -> Result[Int32, NetError]
 
   // Write data from buffer, returns number of bytes written
-  fn write(Self, Buffer) -> Result[Int, NetError]
+  fn write(Self, Buffer) -> Result[Int32, NetError]
 
   // Flush any buffered data
   fn flush(Self) -> Result[Unit, NetError]
@@ -25,12 +27,12 @@ pub trait Stream {
   fn close(Self) -> Result[Unit, NetError]
 
   // Optional: Set read/write timeout
-  fn set_timeout(Self, Int) -> Result[Unit, NetError]
+  fn set_timeout(Self, Int32) -> Result[Unit, NetError]
 
   // Optional: The timeout currently applied to this transport, in
   // milliseconds. Zero means no deadline. TLS uses it to bound a trickling
   // handshake by the same connection deadline as dialing.
-  fn get_timeout(Self) -> Int = _
+  fn get_timeout(Self) -> Int32 = _
 
   // Optional: Get peer address
   fn peer_addr(Self) -> Result[String, NetError]
@@ -43,7 +45,7 @@ pub trait Stream {
   fn is_alive(Self) -> Bool = _
 
   // Optional: authorize reading more body bytes for an explicit caller limit.
-  fn set_body_limit(Self, Int) -> Unit = _
+  fn set_body_limit(Self, Int32) -> Unit = _
 
   // Optional: whether another read can make progress without blocking. The
   // default keeps in-memory streams aggregating small reads as before; socket
@@ -62,33 +64,40 @@ pub trait Stream {
   // clean timeout. The default preserves the historical behavior by only
   // consulting `read_ready`; socket transports override it with a real poll so
   // callers can bound a wait without blocking forever.
-  fn wait_readable(Self, Int) -> Result[Bool, NetError] = _
+  fn wait_readable(Self, Int32) -> Result[Bool, NetError] = _
 }
 
+///|
 impl Stream with fn is_alive(self) {
   self.peer_addr() is Ok(_)
 }
 
+///|
 impl Stream with fn get_timeout(_self) {
   0
 }
 
+///|
 impl Stream with fn set_body_limit(_self, _limit) {
   ()
 }
 
+///|
 impl Stream with fn read_ready(_self) {
   true
 }
 
+///|
 impl Stream with fn has_buffered_input(_self) {
   false
 }
 
+///|
 impl Stream with fn wait_readable(_self, _timeout_ms) {
   Ok(_self.read_ready())
 }
 
+///|
 /// Placeholder TCP stream kept for API compatibility and tests. It validates
 /// the target address and tracks open state, but performs no socket I/O at
 /// all: reads report EOF and writes report success without sending bytes.
@@ -97,14 +106,16 @@ impl Stream with fn wait_readable(_self, _timeout_ms) {
 pub struct TcpStream {
   // Target description only; no socket handle is ever opened.
   host : String
-  port : Int
+  port : Int32
   mut is_open : Bool
 }
 
-pub fn TcpStream::new(host : String, port : Int) -> TcpStream {
-  TcpStream::{ host, port, is_open: false }
+///|
+pub fn TcpStream::new(host : String, port : Int32) -> TcpStream {
+  TcpStream::{ host, port, is_open: false, }
 }
 
+///|
 pub fn TcpStream::open(self : TcpStream) -> Result[TcpStream, NetError] {
   if self.is_open {
     return Ok(self)
@@ -120,7 +131,11 @@ pub fn TcpStream::open(self : TcpStream) -> Result[TcpStream, NetError] {
   Ok(self)
 }
 
-pub impl Stream for TcpStream with fn read(self : TcpStream, buf : Buffer) -> Result[Int, NetError] {
+///|
+pub impl Stream for TcpStream with fn read(self : TcpStream, buf : Buffer) -> Result[
+  Int32,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -129,7 +144,11 @@ pub impl Stream for TcpStream with fn read(self : TcpStream, buf : Buffer) -> Re
   Ok(0)
 }
 
-pub impl Stream for TcpStream with fn write(self : TcpStream, buf : Buffer) -> Result[Int, NetError] {
+///|
+pub impl Stream for TcpStream with fn write(self : TcpStream, buf : Buffer) -> Result[
+  Int32,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -137,19 +156,31 @@ pub impl Stream for TcpStream with fn write(self : TcpStream, buf : Buffer) -> R
   Ok(buf.length())
 }
 
-pub impl Stream for TcpStream with fn flush(self : TcpStream) -> Result[Unit, NetError] {
+///|
+pub impl Stream for TcpStream with fn flush(self : TcpStream) -> Result[
+  Unit,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   Ok(())
 }
 
-pub impl Stream for TcpStream with fn close(self : TcpStream) -> Result[Unit, NetError] {
+///|
+pub impl Stream for TcpStream with fn close(self : TcpStream) -> Result[
+  Unit,
+  NetError,
+] {
   self.is_open = false
   Ok(())
 }
 
-pub impl Stream for TcpStream with fn set_timeout(self : TcpStream, timeout_ms : Int) -> Result[Unit, NetError] {
+///|
+pub impl Stream for TcpStream with fn set_timeout(
+  self : TcpStream,
+  timeout_ms : Int32,
+) -> Result[Unit, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -157,11 +188,16 @@ pub impl Stream for TcpStream with fn set_timeout(self : TcpStream, timeout_ms :
   Ok(())
 }
 
-pub impl Stream for TcpStream with fn peer_addr(self : TcpStream) -> Result[String, NetError] {
+///|
+pub impl Stream for TcpStream with fn peer_addr(self : TcpStream) -> Result[
+  String,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
-  let host = if self.host.contains(":") && !(self.host.has_prefix("[") && self.host.has_suffix("]")) {
+  let host = if self.host.contains(":") &&
+    !(self.host.has_prefix("[") && self.host.has_suffix("]")) {
     "[" + self.host + "]"
   } else {
     self.host
@@ -169,7 +205,11 @@ pub impl Stream for TcpStream with fn peer_addr(self : TcpStream) -> Result[Stri
   Ok(host + ":" + self.port.to_string())
 }
 
-pub impl Stream for TcpStream with fn local_addr(self : TcpStream) -> Result[String, NetError] {
+///|
+pub impl Stream for TcpStream with fn local_addr(self : TcpStream) -> Result[
+  String,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }

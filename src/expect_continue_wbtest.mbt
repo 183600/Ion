@@ -8,8 +8,7 @@ test "expect 100-continue withholds a fixed-length body until acceptance" {
   let url = Url::parse("http://example.com/upload").unwrap()
   let stream = regression_mock_stream(
     "HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
-    1,
-    0,
+    1, 0,
   )
   let codec = H1Codec::new(stream)
   let request = Request::new(POST, url)
@@ -32,9 +31,7 @@ test "expect 100-continue withholds a fixed-length body until acceptance" {
 test "a final response without 100 drops the deferred body" {
   let url = Url::parse("http://example.com/upload").unwrap()
   let stream = regression_mock_stream(
-    "HTTP/1.1 417 Expectation Failed\r\nContent-Length: 0\r\n\r\n",
-    0,
-    0,
+    "HTTP/1.1 417 Expectation Failed\r\nContent-Length: 0\r\n\r\n", 0, 0,
   )
   let codec = H1Codec::new(stream)
   let request = Request::new(POST, url)
@@ -53,8 +50,7 @@ test "early hints do not release the body but 100 sends it exactly once" {
   let url = Url::parse("http://example.com/upload").unwrap()
   let stream = regression_mock_stream(
     "HTTP/1.1 103 Early Hints\r\nLink: </style.css>; rel=preload\r\n\r\nHTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 204 No Content\r\n\r\n",
-    2,
-    0,
+    2, 0,
   )
   let codec = H1Codec::new(stream)
   let request = Request::new(POST, url)
@@ -74,8 +70,7 @@ test "expect 100-continue defers chunked bodies and trailers" {
   let url = Url::parse("http://example.com/upload").unwrap()
   let stream = regression_mock_stream(
     "HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n",
-    0,
-    0,
+    0, 0,
   )
   let codec = H1Codec::new(stream)
   let request = Request::new(POST, url)
@@ -108,13 +103,12 @@ test "requests without an expectation still send the body immediately" {
 test "client sends an expect body after 100 and keeps the exchange usable" {
   let stream = regression_mock_stream(
     "HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
-    0,
-    0,
+    0, 0,
   )
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let options = ClientOptions::new().with_follow_redirects(false)
-  let client = UnifiedClient::{ connector, options, redirect_count: 0 }
+  let client = UnifiedClient::{ connector, options, redirect_count: 0, }
   let url = Url::parse("http://example.com/upload").unwrap()
   let request = Request::new(POST, url)
     .with_expect_continue()
@@ -130,9 +124,7 @@ test "client sends an expect body after 100 and keeps the exchange usable" {
 test "a final response without 100 never reuses the connection" {
   let url = Url::parse("http://example.com/upload").unwrap()
   let stream = regression_mock_stream(
-    "HTTP/1.1 417 Expectation Failed\r\nContent-Length: 0\r\n\r\n",
-    0,
-    0,
+    "HTTP/1.1 417 Expectation Failed\r\nContent-Length: 0\r\n\r\n", 0, 0,
   )
   let codec = H1Codec::new(stream)
   let request = Request::new(POST, url)
@@ -168,7 +160,7 @@ fn expect_early_hints_stream() -> ExpectEarlyHintsStream {
 pub impl Stream for ExpectEarlyHintsStream with fn read(
   self : ExpectEarlyHintsStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   if !self.sent_hints {
     self.sent_hints = true
     let hints = @utf8.encode(
@@ -179,7 +171,9 @@ pub impl Stream for ExpectEarlyHintsStream with fn read(
   }
   if !self.sent_final && expect_wire(self.inner).contains("early-body") {
     self.sent_final = true
-    let response = @utf8.encode("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+    let response = @utf8.encode(
+      "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok",
+    )
     buf.write_bytes(response)
     return Ok(response.length())
   }
@@ -193,7 +187,7 @@ pub impl Stream for ExpectEarlyHintsStream with fn read(
 pub impl Stream for ExpectEarlyHintsStream with fn write(
   self : ExpectEarlyHintsStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   self.inner.write(buf)
 }
 
@@ -214,7 +208,7 @@ pub impl Stream for ExpectEarlyHintsStream with fn close(
 ///|
 pub impl Stream for ExpectEarlyHintsStream with fn set_timeout(
   self : ExpectEarlyHintsStream,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Unit, NetError] {
   self.inner.set_timeout(timeout_ms)
 }
@@ -236,7 +230,7 @@ pub impl Stream for ExpectEarlyHintsStream with fn local_addr(
 ///|
 pub impl Stream for ExpectEarlyHintsStream with fn wait_readable(
   self : ExpectEarlyHintsStream,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Bool, NetError] {
   let _ = timeout_ms
   if !self.sent_hints {

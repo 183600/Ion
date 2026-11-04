@@ -1,3 +1,4 @@
+///|
 test "cookie jar evicts the oldest cookies beyond the per-domain limit" {
   let jar = CookieJar::new()
   let url = Url::parse("http://a.example/").unwrap()
@@ -18,6 +19,7 @@ test "cookie jar evicts the oldest cookies beyond the per-domain limit" {
   assert_true(header.contains("c54="))
 }
 
+///|
 test "cookie jar evicts the oldest cookies beyond the global limit" {
   let jar = CookieJar::new()
   let mut index = 0
@@ -33,6 +35,7 @@ test "cookie jar evicts the oldest cookies beyond the global limit" {
   assert_true(jar.cookie_header_at(last, 10000UL) is Some(_))
 }
 
+///|
 test "overfull cookie domains evict non-secure cookies first" {
   let jar = CookieJar::new()
   let secure = Url::parse("https://a.example/").unwrap()
@@ -56,6 +59,7 @@ test "overfull cookie domains evict non-secure cookies first" {
   assert_false(names.contains("c1"))
 }
 
+///|
 test "cookie eviction uses last-access time" {
   let jar = CookieJar::new()
   let plain = Url::parse("http://a.example/").unwrap()
@@ -80,6 +84,7 @@ test "cookie eviction uses last-access time" {
   assert_false(names.contains("c1"))
 }
 
+///|
 test "cookie jar limits do not evict a replaced cookie" {
   let jar = CookieJar::new()
   let url = Url::parse("http://a.example/").unwrap()

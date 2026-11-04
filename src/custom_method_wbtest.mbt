@@ -7,7 +7,8 @@ test "custom methods validate RFC 9110 tokens" {
   assert_eq(HttpMethod::custom("CONNECT"), Ok(CONNECT))
   // Unknown methods are case-sensitive and preserve their spelling.
   assert_eq(HttpMethod::custom("propfind").unwrap().to_string(), "propfind")
-  for invalid in ["", "BAD METHOD", "BAD\tMETHOD", "GET:", "prop/find", "méthod"] {
+  for
+    invalid in ["", "BAD METHOD", "BAD\tMETHOD", "GET:", "prop/find", "méthod"] {
     assert_true(HttpMethod::custom(invalid) is Err(InvalidMethod(_)))
   }
 }
@@ -42,7 +43,9 @@ test "invalid custom method tokens are rejected at the wire boundary" {
   let url = Url::parse("http://example.com/").unwrap()
   let request = Request::new(Custom("BAD METHOD"), url)
   let stream = regression_mock_stream("", 0, 0)
-  assert_true(H1Codec::new(stream).encode_request(request) is Err(InvalidMethod(_)))
+  assert_true(
+    H1Codec::new(stream).encode_request(request) is Err(InvalidMethod(_)),
+  )
   assert_true(h2_request_headers(request) is Err(InvalidMethod(_)))
 }
 
@@ -54,12 +57,11 @@ test "strict method parsing still rejects extension methods" {
   assert_eq(HttpMethod::custom("proppatch").unwrap().to_string(), "proppatch")
 }
 
+///|
 test "uppercase standard Custom methods keep H1 framing semantics" {
   let url = Url::parse("http://example.com/").unwrap()
   let head_stream = regression_mock_stream(
-    "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello",
-    4096,
-    4096,
+    "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello", 4096, 4096,
   )
   let head_codec = H1Codec::new(head_stream)
   head_codec.encode_request(Request::new(Custom("HEAD"), url)).unwrap()
@@ -75,10 +77,11 @@ test "uppercase standard Custom methods keep H1 framing semantics" {
   let codec = H1Codec::new(regression_mock_stream("", 0, 0))
   assert_true(
     codec.encode_request(Request::new(Custom("CONNECT"), with_path))
-      is Err(InvalidUrl(_)),
+    is Err(InvalidUrl(_)),
   )
 }
 
+///|
 test "uppercase standard Custom methods keep H2 pseudo-header semantics" {
   let connect = h2_request_headers(
     Request::new(
@@ -87,7 +90,10 @@ test "uppercase standard Custom methods keep H2 pseudo-header semantics" {
     ),
   ).unwrap()
   assert_eq(h2_test_header_value(connect, ":method"), Some("CONNECT"))
-  assert_eq(h2_test_header_value(connect, ":authority"), Some("example.com:443"))
+  assert_eq(
+    h2_test_header_value(connect, ":authority"),
+    Some("example.com:443"),
+  )
   assert_eq(h2_test_header_value(connect, ":scheme"), None)
   assert_eq(h2_test_header_value(connect, ":path"), None)
   let options = h2_request_headers(

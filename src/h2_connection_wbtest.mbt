@@ -1,3 +1,4 @@
+///|
 fn h2_test_concat(frames : Array[Bytes]) -> Bytes {
   let output = Buffer(size_hint=1024)
   for frame in frames {
@@ -6,25 +7,33 @@ fn h2_test_concat(frames : Array[Bytes]) -> Bytes {
   output.to_bytes()
 }
 
+///|
 fn h2_test_frame(
-  frame_type : Int,
-  flags : Int,
-  stream_id : Int,
+  frame_type : Int32,
+  flags : Int32,
+  stream_id : Int32,
   payload : Bytes,
 ) -> Bytes {
   h2_frame_bytes(frame_type, flags, stream_id, payload)
 }
 
+///|
 fn h2_test_settings() -> Bytes {
   h2_test_frame(
     H2_FRAME_SETTINGS,
     0,
     0,
-    h2_settings_payload([(H2_SETTINGS_INITIAL_WINDOW_SIZE, H2_DEFAULT_WINDOW_SIZE)]),
+    h2_settings_payload([
+      (H2_SETTINGS_INITIAL_WINDOW_SIZE, H2_DEFAULT_WINDOW_SIZE),
+    ]),
   )
 }
 
-fn h2_test_header_value(fields : Array[(String, String)], name : String) -> String? {
+///|
+fn h2_test_header_value(
+  fields : Array[(String, String)],
+  name : String,
+) -> String? {
   for field in fields {
     let (field_name, field_value) = field
     if field_name == name {
@@ -34,8 +43,11 @@ fn h2_test_header_value(fields : Array[(String, String)], name : String) -> Stri
   None
 }
 
+///|
 fn h2_test_client_frames(stream : H2FrameMockStream) -> Array[H2Frame] {
-  let reader = StreamReader::new(h2_frame_mock_stream(stream.output.to_bytes(), 0))
+  let reader = StreamReader::new(
+    h2_frame_mock_stream(stream.output.to_bytes(), 0),
+  )
   let preface : Array[Byte] = []
   reader.read_exact(H2_PREFACE.length(), preface).unwrap()
   let frames : Array[H2Frame] = []
@@ -48,6 +60,7 @@ fn h2_test_client_frames(stream : H2FrameMockStream) -> Array[H2Frame] {
   frames
 }
 
+///|
 test "http2 request returns a buffered response body" {
   let response_headers = hpack_encode([
     (":status", "200"),
@@ -56,10 +69,18 @@ test "http2 request returns a buffered response body" {
   ])
   let input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let request = Request::new(GET, Url::parse("https://example.com/path?q=1").unwrap())
+  let request = Request::new(
+    GET,
+    Url::parse("https://example.com/path?q=1").unwrap(),
+  )
   let response = h2_request(stream, request).unwrap()
   assert_eq(response.version, "HTTP/2")
   assert_eq(response.status, 200)
@@ -68,15 +89,27 @@ test "http2 request returns a buffered response body" {
   assert_eq(response.read_body().unwrap(), b"")
 }
 
+///|
 test "http2 request sends pseudo headers and body data" {
-  let response_headers = hpack_encode([(":status", "201"), ("x-response", "yes")])
+  let response_headers = hpack_encode([
+    (":status", "201"),
+    ("x-response", "yes"),
+  ])
   let input = h2_test_concat([
     h2_test_settings(),
     h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, response_headers),
-    h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, @utf8.encode("response")),
+    h2_test_frame(
+      H2_FRAME_DATA,
+      H2_FLAG_END_STREAM,
+      1,
+      @utf8.encode("response"),
+    ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let request = Request::new(POST, Url::parse("https://example.com/upload?x=1").unwrap())
+  let request = Request::new(
+      POST,
+      Url::parse("https://example.com/upload?x=1").unwrap(),
+    )
     .with_body(@utf8.encode("payload"))
     .set_header("X-Custom", "custom")
     .set_header("Host", "ignored.example")
@@ -114,9 +147,16 @@ test "http2 request sends pseudo headers and body data" {
   assert_eq(@utf8.decode_lossy(data_frame.payload[:]), "payload")
 }
 
+///|
 test "http2 skips informational responses and records trailers" {
-  let informational = hpack_encode([(":status", "103"), ("link", "</style.css>; rel=preload")])
-  let final_headers = hpack_encode([(":status", "200"), ("content-type", "text/plain")])
+  let informational = hpack_encode([
+    (":status", "103"),
+    ("link", "</style.css>; rel=preload"),
+  ])
+  let final_headers = hpack_encode([
+    (":status", "200"),
+    ("content-type", "text/plain"),
+  ])
   let trailers = hpack_encode([("x-trailer", "done")])
   let input = h2_test_concat([
     h2_test_settings(),
@@ -124,7 +164,12 @@ test "http2 skips informational responses and records trailers" {
     h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, final_headers),
     h2_test_frame(H2_FRAME_DATA, 0, 1, @utf8.encode("hello ")),
     h2_test_frame(H2_FRAME_DATA, 0, 1, @utf8.encode("world")),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, trailers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      trailers,
+    ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
@@ -135,6 +180,7 @@ test "http2 skips informational responses and records trailers" {
   assert_eq(response.trailers().get("x-trailer"), Some("done"))
 }
 
+///|
 test "http2 applies flow control while sending a large body" {
   let response_headers = hpack_encode([(":status", "204")])
   let input = h2_test_concat([
@@ -151,11 +197,18 @@ test "http2 applies flow control while sending a large body" {
       0,
       h2_window_update_payload(100000),
     ),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let request = Request::new(POST, Url::parse("https://example.com/large").unwrap())
-    .with_body(Bytes::make(70000, b'x'))
+  let request = Request::new(
+    POST,
+    Url::parse("https://example.com/large").unwrap(),
+  ).with_body(Bytes::make(70000, b'x'))
   let response = h2_request(stream, request).unwrap()
   assert_eq(response.status, 204)
   let frames = h2_test_client_frames(stream)
@@ -168,12 +221,18 @@ test "http2 applies flow control while sending a large body" {
   assert_eq(body_bytes, 70000)
 }
 
+///|
 test "http2 rejects a response body over the configured limit" {
   let response_headers = hpack_encode([(":status", "200")])
   let input = h2_test_concat([
     h2_test_settings(),
     h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, response_headers),
-    h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, @utf8.encode("too large")),
+    h2_test_frame(
+      H2_FRAME_DATA,
+      H2_FLAG_END_STREAM,
+      1,
+      @utf8.encode("too large"),
+    ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
@@ -183,13 +242,15 @@ test "http2 rejects a response body over the configured limit" {
   }
 }
 
+///|
 test "http2 rejects an out-of-range initial window setting" {
   let flow = H2FlowState::new()
   let too_large = h2_settings_payload([
     (H2_SETTINGS_INITIAL_WINDOW_SIZE, -2147483648),
   ])
   match h2_apply_settings(too_large, flow) {
-    Err(err) => assert_eq(err, ProtocolError("Invalid HTTP/2 initial window size"))
+    Err(err) =>
+      assert_eq(err, ProtocolError("Invalid HTTP/2 initial window size"))
     Ok(_) => fail("out-of-range HTTP/2 initial window was accepted")
   }
 
@@ -207,7 +268,9 @@ test "http2 rejects an out-of-range initial window setting" {
       Ok(_) => fail("invalid HTTP/2 max frame size was accepted")
     }
   }
-  let valid = h2_settings_payload([(H2_SETTINGS_MAX_FRAME_SIZE, H2_MAX_FRAME_SIZE)])
+  let valid = h2_settings_payload([
+    (H2_SETTINGS_MAX_FRAME_SIZE, H2_MAX_FRAME_SIZE),
+  ])
   h2_apply_settings(valid, flow).unwrap()
 
   let overflow = H2FlowState::new()
@@ -231,6 +294,7 @@ test "http2 rejects an out-of-range initial window setting" {
   }
 }
 
+///|
 test "http2 propagates stream reset and GOAWAY errors" {
   let reset = h2_test_concat([
     h2_test_settings(),
@@ -251,20 +315,28 @@ test "http2 propagates stream reset and GOAWAY errors" {
   let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
   match h2_request(stream, request) {
     Ok(_) => fail("HTTP/2 GOAWAY was ignored")
-    Err(err) => assert_eq(err, ProtocolError("HTTP/2 connection closed by GOAWAY"))
+    Err(err) =>
+      assert_eq(err, ProtocolError("HTTP/2 connection closed by GOAWAY"))
   }
 }
 
+///|
 test "http2 fragments oversized request header blocks" {
   let response_headers = hpack_encode([(":status", "200")])
   let input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let large_value = "a".repeat(20000)
-  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
-    .with_header("X-Large", large_value)
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap()).with_header(
+    "X-Large", large_value,
+  )
   let response = h2_request(stream, request).unwrap()
   assert_eq(response.status, 200)
 
@@ -293,6 +365,7 @@ test "http2 fragments oversized request header blocks" {
   assert_eq(h2_test_header_value(fields, "x-large").unwrap().length(), 20000)
 }
 
+///|
 test "http2 rejects forbidden trailer fields" {
   let response_headers = hpack_encode([(":status", "200")])
   let trailers = hpack_encode([("content-length", "5")])
@@ -300,7 +373,12 @@ test "http2 rejects forbidden trailer fields" {
     h2_test_settings(),
     h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, response_headers),
     h2_test_frame(H2_FRAME_DATA, 0, 1, @utf8.encode("hello")),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, trailers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      trailers,
+    ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
@@ -310,7 +388,9 @@ test "http2 rejects forbidden trailer fields" {
   }
 }
 
-test "http2 enforces response content length" {  let headers = hpack_encode([(":status", "200"), ("content-length", "10")])
+///|
+test "http2 enforces response content length" {
+  let headers = hpack_encode([(":status", "200"), ("content-length", "10")])
   let input = h2_test_concat([
     h2_test_settings(),
     h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, headers),
@@ -321,7 +401,10 @@ test "http2 enforces response content length" {  let headers = hpack_encode([(":
   match h2_request(stream, request) {
     Ok(_) => fail("HTTP/2 Content-Length mismatch was accepted")
     Err(err) =>
-      assert_eq(err, ProtocolError("HTTP/2 response body does not match Content-Length"))
+      assert_eq(
+        err,
+        ProtocolError("HTTP/2 response body does not match Content-Length"),
+      )
   }
 
   let matching = hpack_encode([(":status", "200"), ("content-length", "5")])
@@ -339,36 +422,60 @@ test "http2 enforces response content length" {  let headers = hpack_encode([(":
     h2_test_settings(),
     h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, headers),
     h2_test_frame(H2_FRAME_DATA, 0, 1, @utf8.encode("hello")),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, trailers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      trailers,
+    ),
   ])
   let truncated_stream = h2_frame_mock_stream(truncated_input, 0)
   match h2_request(truncated_stream, request) {
     Ok(_) => fail("truncated HTTP/2 body ending in trailers was accepted")
     Err(err) =>
-      assert_eq(err, ProtocolError("HTTP/2 response body does not match Content-Length"))
+      assert_eq(
+        err,
+        ProtocolError("HTTP/2 response body does not match Content-Length"),
+      )
   }
 }
 
+///|
 test "http2 rejects bodies on HEAD and bodyless responses" {
-  let head_headers = hpack_encode([(":status", "200"), ("content-length", "100")])
+  let head_headers = hpack_encode([
+    (":status", "200"),
+    ("content-length", "100"),
+  ])
   let head_input = h2_test_concat([
     h2_test_settings(),
     h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, head_headers),
     h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, @utf8.encode("bogus")),
   ])
   let head_stream = h2_frame_mock_stream(head_input, 0)
-  let head_request = Request::new(HEAD, Url::parse("https://example.com/").unwrap())
+  let head_request = Request::new(
+    HEAD,
+    Url::parse("https://example.com/").unwrap(),
+  )
   match h2_request(head_stream, head_request) {
     Ok(_) => fail("HTTP/2 HEAD response body was accepted")
-    Err(err) => assert_eq(err, ProtocolError("HTTP/2 response must not include a body"))
+    Err(err) =>
+      assert_eq(err, ProtocolError("HTTP/2 response must not include a body"))
   }
 
   let empty_head_input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, head_headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      head_headers,
+    ),
   ])
   let empty_head_stream = h2_frame_mock_stream(empty_head_input, 0)
-  let empty_head_request = Request::new(HEAD, Url::parse("https://example.com/").unwrap())
+  let empty_head_request = Request::new(
+    HEAD,
+    Url::parse("https://example.com/").unwrap(),
+  )
   let response = h2_request(empty_head_stream, empty_head_request).unwrap()
   assert_eq(response.read_body().unwrap(), b"")
 
@@ -379,16 +486,18 @@ test "http2 rejects bodies on HEAD and bodyless responses" {
     h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, @utf8.encode("bogus")),
   ])
   let no_content_stream = h2_frame_mock_stream(no_content_input, 0)
-  let get_request = Request::new(GET, Url::parse("https://example.com/").unwrap())
+  let get_request = Request::new(
+    GET,
+    Url::parse("https://example.com/").unwrap(),
+  )
   match h2_request(no_content_stream, get_request) {
     Ok(_) => fail("HTTP/2 204 response body was accepted")
-    Err(err) => assert_eq(err, ProtocolError("HTTP/2 response must not include a body"))
+    Err(err) =>
+      assert_eq(err, ProtocolError("HTTP/2 response must not include a body"))
   }
 }
 
-
-
-
+///|
 test "http2 request content length accepts HTTP whitespace and leading zeroes" {
   let url = Url::parse("https://example.com/upload").unwrap()
   for declared in [" 5 ", "05", "005"] {
@@ -404,69 +513,86 @@ test "http2 request content length accepts HTTP whitespace and leading zeroes" {
   assert_eq(h2_request_headers(request), Err(InvalidHeader("Content-Length")))
 }
 
+///|
 struct H2FlushGatedStream {
   inner : H2FrameMockStream
   mut flushed : Bool
 }
 
+///|
 fn h2_flush_gated_stream(input : Bytes) -> H2FlushGatedStream {
-  H2FlushGatedStream::{ inner: h2_frame_mock_stream(input, 0), flushed: false }
+  H2FlushGatedStream::{ inner: h2_frame_mock_stream(input, 0), flushed: false, }
 }
 
+///|
 pub impl Stream for H2FlushGatedStream with fn read(
   self : H2FlushGatedStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   if !self.flushed {
     return Err(NetError::ReadError("read before flush"))
   }
   self.inner.read(buf)
 }
 
+///|
 pub impl Stream for H2FlushGatedStream with fn write(
   self : H2FlushGatedStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   self.inner.write(buf)
 }
 
-pub impl Stream for H2FlushGatedStream with fn flush(
-  self : H2FlushGatedStream,
-) -> Result[Unit, NetError] {
+///|
+pub impl Stream for H2FlushGatedStream with fn flush(self : H2FlushGatedStream) -> Result[
+  Unit,
+  NetError,
+] {
   self.flushed = true
   self.inner.flush()
 }
 
-pub impl Stream for H2FlushGatedStream with fn close(
-  self : H2FlushGatedStream,
-) -> Result[Unit, NetError] {
+///|
+pub impl Stream for H2FlushGatedStream with fn close(self : H2FlushGatedStream) -> Result[
+  Unit,
+  NetError,
+] {
   self.inner.close()
 }
 
+///|
 pub impl Stream for H2FlushGatedStream with fn set_timeout(
   self : H2FlushGatedStream,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Unit, NetError] {
   self.inner.set_timeout(timeout_ms)
 }
 
+///|
 pub impl Stream for H2FlushGatedStream with fn peer_addr(
   self : H2FlushGatedStream,
 ) -> Result[String, NetError] {
   self.inner.peer_addr()
 }
 
+///|
 pub impl Stream for H2FlushGatedStream with fn local_addr(
   self : H2FlushGatedStream,
 ) -> Result[String, NetError] {
   self.inner.local_addr()
 }
 
+///|
 test "http2 flushes the request before waiting for a response" {
   let response_headers = hpack_encode([(":status", "200")])
   let input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
   ])
   let stream = h2_flush_gated_stream(input)
   let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
@@ -475,6 +601,7 @@ test "http2 flushes the request before waiting for a response" {
   assert_true(stream.flushed)
 }
 
+///|
 test "http2 rejects frames on unknown streams" {
   let response_headers = hpack_encode([(":status", "200")])
   let data_input = h2_test_concat([
@@ -495,29 +622,46 @@ test "http2 rejects frames on unknown streams" {
   let headers_stream = h2_frame_mock_stream(headers_input, 0)
   match h2_request(headers_stream, request) {
     Ok(_) => fail("HTTP/2 HEADERS on an unknown stream was accepted")
-    Err(err) => assert_eq(err, ProtocolError("HTTP/2 HEADERS on unknown stream"))
+    Err(err) =>
+      assert_eq(err, ProtocolError("HTTP/2 HEADERS on unknown stream"))
   }
 }
 
+///|
 test "http2 rejects leading and trailing whitespace in field values" {
   for value in [" leading", "trailing ", "\ttabbed", "tabbed\t"] {
     let response_headers = hpack_encode([(":status", "200"), ("x-test", value)])
     let input = h2_test_concat([
       h2_test_settings(),
-      h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+      h2_test_frame(
+        H2_FRAME_HEADERS,
+        H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+        1,
+        response_headers,
+      ),
     ])
     let stream = h2_frame_mock_stream(input, 0)
     let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
     match h2_request(stream, request) {
-      Ok(_) => fail("HTTP/2 field value with surrounding whitespace was accepted")
-      Err(err) => assert_eq(err, ProtocolError("Invalid HTTP/2 response header"))
+      Ok(_) =>
+        fail("HTTP/2 field value with surrounding whitespace was accepted")
+      Err(err) =>
+        assert_eq(err, ProtocolError("Invalid HTTP/2 response header"))
     }
   }
 
-  let response_headers = hpack_encode([(":status", "200"), ("x-test", "inner space")])
+  let response_headers = hpack_encode([
+    (":status", "200"),
+    ("x-test", "inner space"),
+  ])
   let input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
@@ -525,6 +669,7 @@ test "http2 rejects leading and trailing whitespace in field values" {
   assert_eq(response.headers.get("x-test"), Some("inner space"))
 }
 
+///|
 test "http2 strips headers nominated by Connection" {
   let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
     .set_header("Connection", "X-Hop, x-hop, X-Custom")
@@ -538,6 +683,7 @@ test "http2 strips headers nominated by Connection" {
   assert_eq(h2_test_header_value(fields, "x-keep"), Some("keep me"))
 }
 
+///|
 test "http2 accepts ENABLE_PUSH=0 and rejects enabling server push" {
   let disabled = h2_settings_payload([(H2_SETTINGS_ENABLE_PUSH, 0)])
   h2_apply_settings(disabled, H2FlowState::new()).unwrap()
@@ -566,17 +712,31 @@ test "http2 accepts ENABLE_PUSH=0 and rejects enabling server push" {
   }
 }
 
+///|
 test "http2 client connection reuses one stream for sequential requests" {
   let first = hpack_encode([(":status", "200"), ("x-request", "first")])
   let second = hpack_encode([(":status", "201"), ("x-request", "second")])
   let input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, first),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 3, second),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      first,
+    ),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      3,
+      second,
+    ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let connection = H2ClientConnection::new(stream).unwrap()
-  let request = Request::new(GET, Url::parse("https://example.com/one").unwrap())
+  let request = Request::new(
+    GET,
+    Url::parse("https://example.com/one").unwrap(),
+  )
   let first_response = connection.request(request).unwrap()
   assert_eq(first_response.status, 200)
   assert_eq(first_response.headers.get("x-request"), Some("first"))
@@ -587,7 +747,7 @@ test "http2 client connection reuses one stream for sequential requests" {
 
   let frames = h2_test_client_frames(stream)
   let mut settings_count = 0
-  let header_streams : Array[Int] = []
+  let header_streams : Array[Int32] = []
   for frame in frames {
     if frame.frame_type == H2_FRAME_SETTINGS && (frame.flags & H2_FLAG_ACK) == 0 {
       settings_count = settings_count + 1
@@ -600,8 +760,12 @@ test "http2 client connection reuses one stream for sequential requests" {
   assert_eq(header_streams, [1, 3])
 }
 
+///|
 test "http2 completes an accepted stream after a graceful GOAWAY" {
-  let response_headers = hpack_encode([(":status", "200"), ("x-graceful", "yes")])
+  let response_headers = hpack_encode([
+    (":status", "200"),
+    ("x-graceful", "yes"),
+  ])
   let goaway = h2_test_frame(
     H2_FRAME_GOAWAY,
     0,
@@ -630,6 +794,7 @@ test "http2 completes an accepted stream after a graceful GOAWAY" {
   assert_false(stream.is_open)
 }
 
+///|
 test "http2 GOAWAY last stream ids must not increase" {
   let response_headers = hpack_encode([(":status", "200")])
   let input = h2_test_concat([
@@ -645,27 +810,48 @@ test "http2 GOAWAY last stream ids must not increase" {
   let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
   match connection.request(request) {
     Ok(_) => fail("increasing HTTP/2 GOAWAY stream id was accepted")
-    Err(err) => assert_eq(err, ProtocolError("HTTP/2 GOAWAY stream id increased"))
+    Err(err) =>
+      assert_eq(err, ProtocolError("HTTP/2 GOAWAY stream id increased"))
   }
   assert_false(connection.is_open())
 }
 
+///|
 test "http2 validates Content-Length on bodyless responses" {
-  let head_headers = hpack_encode([(":status", "200"), ("content-length", "invalid")])
+  let head_headers = hpack_encode([
+    (":status", "200"),
+    ("content-length", "invalid"),
+  ])
   let head_input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, head_headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      head_headers,
+    ),
   ])
-  let head_request = Request::new(HEAD, Url::parse("https://example.com/").unwrap())
+  let head_request = Request::new(
+    HEAD,
+    Url::parse("https://example.com/").unwrap(),
+  )
   match h2_request(h2_frame_mock_stream(head_input, 0), head_request) {
     Ok(_) => fail("invalid HTTP/2 HEAD Content-Length was accepted")
     Err(err) => assert_eq(err, ProtocolError("Invalid HTTP/2 Content-Length"))
   }
 
-  let no_content_headers = hpack_encode([(":status", "204"), ("content-length", "0, 1")])
+  let no_content_headers = hpack_encode([
+    (":status", "204"),
+    ("content-length", "0, 1"),
+  ])
   let no_content_input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, no_content_headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      no_content_headers,
+    ),
   ])
   let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
   match h2_request(h2_frame_mock_stream(no_content_input, 0), request) {
@@ -674,25 +860,43 @@ test "http2 validates Content-Length on bodyless responses" {
   }
 }
 
+///|
 test "http2 rejects ambiguous path and query delimiters" {
   let url = Url::parse("https://example.com/").unwrap()
   for path in ["/a?b", "/a#b"] {
     let request = Request::new(GET, url.with_path(path))
-    assert_eq(h2_request_headers(request), Err(InvalidUrl("Invalid request target")))
+    assert_eq(
+      h2_request_headers(request),
+      Err(InvalidUrl("Invalid request target")),
+    )
   }
   let request = Request::new(GET, url.with_query("a#b"))
-  assert_eq(h2_request_headers(request), Err(InvalidUrl("Invalid request target")))
+  assert_eq(
+    h2_request_headers(request),
+    Err(InvalidUrl("Invalid request target")),
+  )
 }
 
+///|
 test "http2 resets the request stream after an early response" {
-  let response_headers = hpack_encode([(":status", "413"), ("content-length", "0")])
+  let response_headers = hpack_encode([
+    (":status", "413"),
+    ("content-length", "0"),
+  ])
   let input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let request = Request::new(POST, Url::parse("https://example.com/upload").unwrap())
-    .with_body(Bytes::make(70000, b'x'))
+  let request = Request::new(
+    POST,
+    Url::parse("https://example.com/upload").unwrap(),
+  ).with_body(Bytes::make(70000, b'x'))
   let response = h2_request(stream, request).unwrap()
   assert_eq(response.status, 413)
 
@@ -709,9 +913,13 @@ test "http2 resets the request stream after an early response" {
   }
 }
 
+///|
 test "http2 ignores late DATA on an already closed stream" {
   let first_headers = hpack_encode([(":status", "413"), ("content-length", "0")])
-  let second_headers = hpack_encode([(":status", "200"), ("x-request", "second")])
+  let second_headers = hpack_encode([
+    (":status", "200"),
+    ("x-request", "second"),
+  ])
   let input = h2_test_concat([
     h2_test_settings(),
     h2_test_frame(
@@ -730,17 +938,20 @@ test "http2 ignores late DATA on an already closed stream" {
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let connection = H2ClientConnection::new(stream).unwrap()
-  let upload = Request::new(POST, Url::parse("https://example.com/upload").unwrap())
-    .with_body(Bytes::make(70000, b'x'))
+  let upload = Request::new(
+    POST,
+    Url::parse("https://example.com/upload").unwrap(),
+  ).with_body(Bytes::make(70000, b'x'))
   assert_eq(connection.request(upload).unwrap().status, 413)
-  let second = connection.request(
-    Request::new(GET, Url::parse("https://example.com/two").unwrap()),
-  ).unwrap()
+  let second = connection
+    .request(Request::new(GET, Url::parse("https://example.com/two").unwrap()))
+    .unwrap()
   assert_eq(second.status, 200)
   assert_eq(second.headers.get("x-request"), Some("second"))
   assert_true(connection.is_open())
 }
 
+///|
 test "http2 closes a connection after a failed exchange" {
   let reset = h2_test_concat([
     h2_test_settings(),
@@ -760,6 +971,7 @@ test "http2 closes a connection after a failed exchange" {
   }
 }
 
+///|
 test "http2 surfaces a nonzero GOAWAY error code" {
   let input = h2_test_concat([
     h2_test_settings(),
@@ -770,21 +982,28 @@ test "http2 surfaces a nonzero GOAWAY error code" {
   let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
   match connection.request(request) {
     Ok(_) => fail("nonzero HTTP/2 GOAWAY error code was ignored")
-    Err(err) => assert_eq(
-      err,
-      ProtocolError(
-        "HTTP/2 connection closed by GOAWAY before opening a stream (error 1)",
-      ),
-    )
+    Err(err) =>
+      assert_eq(
+        err,
+        ProtocolError(
+          "HTTP/2 connection closed by GOAWAY before opening a stream (error 1)",
+        ),
+      )
   }
   assert_false(connection.is_open())
 }
 
+///|
 test "http2 consumes a GOAWAY buffered after the response" {
   let response_headers = hpack_encode([(":status", "200")])
   let input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
     h2_test_frame(H2_FRAME_GOAWAY, 0, 0, b"\x00\x00\x00\x01\x00\x00\x00\x00"),
   ])
   let stream = h2_frame_mock_stream(input, 0)
@@ -795,12 +1014,18 @@ test "http2 consumes a GOAWAY buffered after the response" {
   assert_false(connection.is_open())
 }
 
+///|
 test "http2 acknowledges a PING buffered after the response" {
   let response_headers = hpack_encode([(":status", "200")])
   let ping = b"\x01\x02\x03\x04\x05\x06\x07\x08"
   let input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
     h2_test_frame(H2_FRAME_PING, 0, 0, ping),
   ])
   let stream = h2_frame_mock_stream(input, 0)
@@ -820,6 +1045,7 @@ test "http2 acknowledges a PING buffered after the response" {
   assert_true(acknowledged)
 }
 
+///|
 test "http2 filters synthesized headers nominated by Connection" {
   let request = Request::new(POST, Url::parse("https://example.com/").unwrap())
     .with_header("Connection", "User-Agent, Content-Length")
@@ -829,23 +1055,35 @@ test "http2 filters synthesized headers nominated by Connection" {
   assert_eq(h2_test_header_value(fields, "content-length"), None)
 }
 
+///|
 test "http2 rejects surrounding whitespace in outgoing field values" {
-  let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
-    .with_header("X-Test", " value ")
+  let request = Request::new(GET, Url::parse("https://example.com/").unwrap()).with_header(
+    "X-Test", " value ",
+  )
   assert_eq(h2_request_headers(request), Err(InvalidHeader("X-Test")))
 }
 
+///|
 test "http2 accepts a Host field in a response" {
-  let response_headers = hpack_encode([(":status", "200"), ("host", "backend.example")])
+  let response_headers = hpack_encode([
+    (":status", "200"),
+    ("host", "backend.example"),
+  ])
   let input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
   ])
   let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
   let response = h2_request(h2_frame_mock_stream(input, 0), request).unwrap()
   assert_eq(response.headers.get("host"), Some("backend.example"))
 }
 
+///|
 test "http2 rejects 101 Switching Protocols" {
   let response_headers = hpack_encode([(":status", "101")])
   let input = h2_test_concat([
@@ -855,10 +1093,15 @@ test "http2 rejects 101 Switching Protocols" {
   let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
   match h2_request(h2_frame_mock_stream(input, 0), request) {
     Ok(_) => fail("HTTP/2 101 response was accepted")
-    Err(err) => assert_eq(err, ProtocolError("HTTP/2 does not allow 101 Switching Protocols"))
+    Err(err) =>
+      assert_eq(
+        err,
+        ProtocolError("HTTP/2 does not allow 101 Switching Protocols"),
+      )
   }
 }
 
+///|
 test "http2 reports REFUSED_STREAM distinctly" {
   let input = h2_test_concat([
     h2_test_settings(),
@@ -874,6 +1117,7 @@ test "http2 reports REFUSED_STREAM distinctly" {
   assert_false(connection.is_open())
 }
 
+///|
 test "http2 honors a zero max concurrent streams setting before opening a stream" {
   let input = h2_test_concat([
     h2_test_frame(
@@ -887,7 +1131,8 @@ test "http2 honors a zero max concurrent streams setting before opening a stream
   let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
   match h2_request(stream, request) {
     Ok(_) => fail("HTTP/2 stream was opened with zero max concurrent streams")
-    Err(err) => assert_eq(err, ProtocolError("HTTP/2 max concurrent streams is zero"))
+    Err(err) =>
+      assert_eq(err, ProtocolError("HTTP/2 max concurrent streams is zero"))
   }
   let frames = h2_test_client_frames(stream)
   for frame in frames {
@@ -895,6 +1140,7 @@ test "http2 honors a zero max concurrent streams setting before opening a stream
   }
 }
 
+///|
 test "http2 honors a small max header list setting" {
   let input = h2_test_concat([
     h2_test_frame(
@@ -908,7 +1154,8 @@ test "http2 honors a small max header list setting" {
   let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
   match h2_request(stream, request) {
     Ok(_) => fail("oversized HTTP/2 request header list was sent")
-    Err(err) => assert_eq(err, ProtocolError("HTTP/2 request header list too large"))
+    Err(err) =>
+      assert_eq(err, ProtocolError("HTTP/2 request header list too large"))
   }
   let frames = h2_test_client_frames(stream)
   for frame in frames {
@@ -916,6 +1163,7 @@ test "http2 honors a small max header list setting" {
   }
 }
 
+///|
 test "http2 applies buffered SETTINGS before sending a request body" {
   let response_headers = hpack_encode([(":status", "200")])
   let input = h2_test_concat([
@@ -925,11 +1173,17 @@ test "http2 applies buffered SETTINGS before sending a request body" {
       0,
       h2_settings_payload([(H2_SETTINGS_INITIAL_WINDOW_SIZE, 0)]),
     ),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, response_headers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      response_headers,
+    ),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let request = Request::new(POST, Url::parse("https://example.com/").unwrap())
-    .with_body(@utf8.encode("hello"))
+  let request = Request::new(POST, Url::parse("https://example.com/").unwrap()).with_body(
+    @utf8.encode("hello"),
+  )
   let response = h2_request(stream, request).unwrap()
   assert_eq(response.status, 200)
   let frames = h2_test_client_frames(stream)
@@ -938,14 +1192,23 @@ test "http2 applies buffered SETTINGS before sending a request body" {
   }
 }
 
+///|
 test "http2 accepts ordinary fields in trailers" {
   let response_headers = hpack_encode([(":status", "200")])
-  let trailers = hpack_encode([("content-type", "text/plain"), ("cache-control", "no-store")])
+  let trailers = hpack_encode([
+    ("content-type", "text/plain"),
+    ("cache-control", "no-store"),
+  ])
   let input = h2_test_concat([
     h2_test_settings(),
     h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, response_headers),
     h2_test_frame(H2_FRAME_DATA, 0, 1, @utf8.encode("hello")),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, trailers),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      trailers,
+    ),
   ])
   let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
   let response = h2_request(h2_frame_mock_stream(input, 0), request).unwrap()
@@ -954,8 +1217,12 @@ test "http2 accepts ordinary fields in trailers" {
   assert_eq(response.trailers().get("cache-control"), Some("no-store"))
 }
 
+///|
 test "http2 accepts an empty trailer block that ends the stream" {
-  let response_headers = hpack_encode([(":status", "200"), ("content-length", "5")])
+  let response_headers = hpack_encode([
+    (":status", "200"),
+    ("content-length", "5"),
+  ])
   let input = h2_test_concat([
     h2_test_settings(),
     h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, response_headers),
@@ -973,6 +1240,7 @@ test "http2 accepts an empty trailer block that ends the stream" {
   assert_eq(response.trailers().length(), 0)
 }
 
+///|
 test "http2 rejects an empty trailer block that does not end the stream" {
   let response_headers = hpack_encode([(":status", "200")])
   let input = h2_test_concat([
@@ -988,6 +1256,7 @@ test "http2 rejects an empty trailer block that does not end the stream" {
   }
 }
 
+///|
 test "http2 rejects a SETTINGS_ENABLE_PUSH value with the high bit set" {
   let flow = H2FlowState::new()
   let invalid = h2_settings_payload([(H2_SETTINGS_ENABLE_PUSH, -1)])
@@ -997,6 +1266,7 @@ test "http2 rejects a SETTINGS_ENABLE_PUSH value with the high bit set" {
   }
 }
 
+///|
 test "http2 honors a buffered GOAWAY before writing request headers" {
   let input = h2_test_concat([
     h2_test_settings(),
@@ -1007,7 +1277,8 @@ test "http2 honors a buffered GOAWAY before writing request headers" {
   let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
   match connection.request(request) {
     Ok(_) => fail("GOAWAY before a request was ignored")
-    Err(err) => assert_eq(err, ProtocolError("HTTP/2 connection closed by GOAWAY"))
+    Err(err) =>
+      assert_eq(err, ProtocolError("HTTP/2 connection closed by GOAWAY"))
   }
   let frames = h2_test_client_frames(stream)
   for frame in frames {
@@ -1016,6 +1287,7 @@ test "http2 honors a buffered GOAWAY before writing request headers" {
   assert_false(connection.is_open())
 }
 
+///|
 test "http2 does not open a stream after a buffered GOAWAY with a later id" {
   // A GOAWAY still forbids new streams when its last-stream-id covers the
   // would-be stream (RFC 9113 §6.8); the id only describes what was accepted
@@ -1029,7 +1301,8 @@ test "http2 does not open a stream after a buffered GOAWAY with a later id" {
   let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
   match connection.request(request) {
     Ok(_) => fail("a stream was opened after a buffered GOAWAY")
-    Err(err) => assert_eq(err, ProtocolError("HTTP/2 connection closed by GOAWAY"))
+    Err(err) =>
+      assert_eq(err, ProtocolError("HTTP/2 connection closed by GOAWAY"))
   }
   for frame in h2_test_client_frames(stream) {
     assert_true(frame.frame_type != H2_FRAME_HEADERS)
@@ -1037,6 +1310,7 @@ test "http2 does not open a stream after a buffered GOAWAY with a later id" {
   assert_false(connection.is_open())
 }
 
+///|
 test "http2 processes SETTINGS buffered behind a WINDOW_UPDATE" {
   let input = h2_test_concat([
     h2_test_settings(),
@@ -1061,12 +1335,14 @@ test "http2 processes SETTINGS buffered behind a WINDOW_UPDATE" {
   }
 }
 
+///|
 test "http2 rejects frames on an idle stream" {
   let response_headers = hpack_encode([(":status", "200")])
-  for frame in [
-    h2_test_frame(H2_FRAME_WINDOW_UPDATE, 0, 3, b"\x00\x00\x00\x01"),
-    h2_test_frame(H2_FRAME_RST_STREAM, 0, 3, b"\x00\x00\x00\x00"),
-  ] {
+  for
+    frame in [
+      h2_test_frame(H2_FRAME_WINDOW_UPDATE, 0, 3, b"\x00\x00\x00\x01"),
+      h2_test_frame(H2_FRAME_RST_STREAM, 0, 3, b"\x00\x00\x00\x00"),
+    ] {
     let input = h2_test_concat([
       h2_test_settings(),
       frame,
@@ -1086,6 +1362,7 @@ test "http2 rejects frames on an idle stream" {
   }
 }
 
+///|
 test "http2 rejects trailers on a bodyless response" {
   let response_headers = hpack_encode([(":status", "204")])
   let trailers = hpack_encode([("x-trailer", "done")])
@@ -1107,6 +1384,7 @@ test "http2 rejects trailers on a bodyless response" {
   }
 }
 
+///|
 test "http2 closes a session with an invalid buffered frame after the response" {
   let response_headers = hpack_encode([(":status", "200")])
   let input = h2_test_concat([
@@ -1127,6 +1405,7 @@ test "http2 closes a session with an invalid buffered frame after the response" 
   assert_false(connection.is_open())
 }
 
+///|
 test "http2 rejects an oversized buffered frame after the response" {
   let response_headers = hpack_encode([(":status", "200")])
   // A DATA frame header that declares the maximum 24-bit length but has no
@@ -1135,8 +1414,7 @@ test "http2 rejects an oversized buffered frame after the response" {
   // just-completed stream and an idle future stream.
   for stream_id in [1, 3] {
     let header : Array[Byte] = [
-      b'\xff', b'\xff', b'\xff', b'\x00', b'\x00', b'\x00', b'\x00', b'\x00',
-      b'\x01',
+      b'\xff', b'\xff', b'\xff', b'\x00', b'\x00', b'\x00', b'\x00', b'\x00', b'\x01',
     ]
     header[8] = stream_id.to_byte()
     let input = h2_test_concat([
@@ -1158,6 +1436,7 @@ test "http2 rejects an oversized buffered frame after the response" {
   }
 }
 
+///|
 test "http2 ignores WINDOW_UPDATE for a stream that already ended" {
   let settings = h2_test_frame(
     H2_FRAME_SETTINGS,
@@ -1184,6 +1463,7 @@ test "http2 ignores WINDOW_UPDATE for a stream that already ended" {
   assert_true(connection.is_open())
 }
 
+///|
 test "http2 applies the last duplicate setting and ignores unknown ones" {
   let flow = H2FlowState::new()
   let known = h2_settings_payload([
@@ -1194,7 +1474,10 @@ test "http2 applies the last duplicate setting and ignores unknown ones" {
   ])
   match h2_apply_settings(known, flow) {
     Ok(_) => ()
-    Err(err) => fail("valid repeated HTTP/2 settings were rejected: " + @debug.to_string(err))
+    Err(err) =>
+      fail(
+        "valid repeated HTTP/2 settings were rejected: " + @debug.to_string(err),
+      )
   }
   // The second occurrence is the value that remains in effect.
   assert_eq(flow.peer_max_frame_size, H2_MAX_FRAME_SIZE + 1)
@@ -1217,6 +1500,7 @@ test "http2 applies the last duplicate setting and ignores unknown ones" {
   assert_eq(response.status, 200)
 }
 
+///|
 test "http2 server preface must not begin with a settings acknowledgement" {
   let response_headers = hpack_encode([(":status", "200")])
   let input = h2_test_concat([
@@ -1237,8 +1521,12 @@ test "http2 server preface must not begin with a settings acknowledgement" {
   }
 }
 
+///|
 test "http2 bounds informational responses" {
-  let informational = hpack_encode([(":status", "103"), ("link", "</style.css>")])
+  let informational = hpack_encode([
+    (":status", "103"),
+    ("link", "</style.css>"),
+  ])
   let frames : Array[Bytes] = [h2_test_settings()]
   for _ in 0..<9 {
     frames.push(
@@ -1253,6 +1541,7 @@ test "http2 bounds informational responses" {
   }
 }
 
+///|
 test "http2 rejects non-SETTINGS frames in the server preface" {
   let response_headers = hpack_encode([(":status", "200")])
   let input = h2_test_concat([
@@ -1273,33 +1562,52 @@ test "http2 rejects non-SETTINGS frames in the server preface" {
   }
 }
 
+///|
 test "http2 rejects Content-Length on 204 and informational responses" {
   let informational = hpack_encode([(":status", "103"), ("content-length", "0")])
   let no_content = hpack_encode([(":status", "204"), ("content-length", "0")])
-  for input in [
-    h2_test_concat([
-      h2_test_settings(),
-      h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, informational),
-      h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, hpack_encode([(":status", "200")])),
-    ]),
-    h2_test_concat([
-      h2_test_settings(),
-      h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, no_content),
-    ]),
-  ] {
+  for
+    input in [
+      h2_test_concat([
+        h2_test_settings(),
+        h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS, 1, informational),
+        h2_test_frame(
+          H2_FRAME_HEADERS,
+          H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+          1,
+          hpack_encode([(":status", "200")]),
+        ),
+      ]),
+      h2_test_concat([
+        h2_test_settings(),
+        h2_test_frame(
+          H2_FRAME_HEADERS,
+          H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+          1,
+          no_content,
+        ),
+      ]),
+    ] {
     let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
     match h2_request(h2_frame_mock_stream(input, 0), request) {
-      Ok(_) => fail("HTTP/2 response with forbidden Content-Length was accepted")
+      Ok(_) =>
+        fail("HTTP/2 response with forbidden Content-Length was accepted")
       Err(_) => ()
     }
   }
 }
 
+///|
 test "http2 only allows a zero Content-Length on 205" {
   let invalid = hpack_encode([(":status", "205"), ("content-length", "1")])
   let input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, invalid),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      invalid,
+    ),
   ])
   let request = Request::new(GET, Url::parse("https://example.com/").unwrap())
   match h2_request(h2_frame_mock_stream(input, 0), request) {
@@ -1307,20 +1615,28 @@ test "http2 only allows a zero Content-Length on 205" {
     Err(err) =>
       assert_eq(
         err,
-        ProtocolError("HTTP/2 205 response must not have a non-zero Content-Length"),
+        ProtocolError(
+          "HTTP/2 205 response must not have a non-zero Content-Length",
+        ),
       )
   }
 
   let valid = hpack_encode([(":status", "205"), ("content-length", "0")])
   let input = h2_test_concat([
     h2_test_settings(),
-    h2_test_frame(H2_FRAME_HEADERS, H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM, 1, valid),
+    h2_test_frame(
+      H2_FRAME_HEADERS,
+      H2_FLAG_END_HEADERS | H2_FLAG_END_STREAM,
+      1,
+      valid,
+    ),
   ])
   let response = h2_request(h2_frame_mock_stream(input, 0), request).unwrap()
   assert_eq(response.status, 205)
   assert_eq(response.read_body().unwrap(), b"")
 }
 
+///|
 test "http2 ignores unknown extension frames buffered after a response" {
   let first = hpack_encode([(":status", "200")])
   let second = hpack_encode([(":status", "201"), ("x-request", "second")])
@@ -1352,6 +1668,7 @@ test "http2 ignores unknown extension frames buffered after a response" {
   assert_true(connection.is_open())
 }
 
+///|
 test "http2 strips connection-nominated Content-Length without validating it" {
   let request = Request::new(POST, Url::parse("https://example.com/").unwrap())
     .with_body(b"hello")
@@ -1363,6 +1680,7 @@ test "http2 strips connection-nominated Content-Length without validating it" {
   assert_eq(h2_test_header_value(headers, ":method"), Some("POST"))
 }
 
+///|
 test "http2 request TE only permits trailers" {
   let url = Url::parse("https://example.com/").unwrap()
   for value in ["trailers", "Trailers", "trailers,", ", trailers"] {
@@ -1376,6 +1694,7 @@ test "http2 request TE only permits trailers" {
   }
 }
 
+///|
 test "http2 rejects TE in responses" {
   let response_headers = hpack_encode([(":status", "200"), ("te", "trailers")])
   let input = h2_test_concat([
@@ -1391,7 +1710,10 @@ test "http2 rejects TE in responses" {
   match h2_request(h2_frame_mock_stream(input, 0), request) {
     Ok(_) => fail("HTTP/2 response with TE was accepted")
     Err(err) =>
-      assert_eq(err, ProtocolError("Connection-specific HTTP/2 response header"))
+      assert_eq(
+        err,
+        ProtocolError("Connection-specific HTTP/2 response header"),
+      )
   }
 }
 
@@ -1446,7 +1768,10 @@ test "http2 keeps the session after a self-dependent PRIORITY frame" {
 ///|
 test "http2 resets only the stream after a zero WINDOW_UPDATE increment" {
   let first_headers = hpack_encode([(":status", "204")])
-  let second_headers = hpack_encode([(":status", "200"), ("x-request", "second")])
+  let second_headers = hpack_encode([
+    (":status", "200"),
+    ("x-request", "second"),
+  ])
   let input = h2_test_concat([
     h2_test_settings(),
     h2_test_frame(H2_FRAME_WINDOW_UPDATE, 0, 1, b"\x00\x00\x00\x00"),
@@ -1504,6 +1829,7 @@ test "http2 ignores a self-dependent priority on response HEADERS" {
   let _ = connection.close()
 }
 
+///|
 test "http2 ignores a zero WINDOW_UPDATE after the response ended" {
   let response_headers = hpack_encode([(":status", "200")])
   let input = h2_test_concat([
@@ -1525,8 +1851,12 @@ test "http2 ignores a zero WINDOW_UPDATE after the response ended" {
   let _ = connection.close()
 }
 
+///|
 test "http2 treats an uppercase Custom HEAD as a bodyless request" {
-  let response_headers = hpack_encode([(":status", "200"), ("content-length", "5")])
+  let response_headers = hpack_encode([
+    (":status", "200"),
+    ("content-length", "5"),
+  ])
   let input = h2_test_concat([
     h2_test_settings(),
     h2_test_frame(

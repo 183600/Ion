@@ -1,3 +1,4 @@
+///|
 #cfg(target="native")
 test "native TLS ignores the root store when verification is disabled" {
   let roots = @utf8.encode("this is not a PEM certificate")

@@ -46,23 +46,21 @@ test "HTTP/1 CONNECT rejects URL paths and request content" {
   ]
   for request in cases {
     let codec = H1Codec::new(regression_mock_stream("", 0, 0))
-    assert_true(
-      codec.encode_request(request) is Err(InvalidHeader(_)),
-    )
+    assert_true(codec.encode_request(request) is Err(InvalidHeader(_)))
   }
 }
 
 ///|
 test "HTTP/1 successful CONNECT exposes the tunnel as the response stream" {
   let stream = regression_mock_stream(
-    "HTTP/1.1 200 Connection Established\r\n\r\nhello",
-    0,
-    0,
+    "HTTP/1.1 200 Connection Established\r\n\r\nhello", 0, 0,
   )
   let codec = H1Codec::new(stream)
-  codec.encode_request(
+  codec
+  .encode_request(
     Request::new(CONNECT, Url::parse("http://example.com:80/").unwrap()),
-  ).unwrap()
+  )
+  .unwrap()
   let response = codec.decode_response().unwrap()
   assert_eq(response.status, 200)
   assert_eq(response.read_body().unwrap(), b"hello")
@@ -71,14 +69,16 @@ test "HTTP/1 successful CONNECT exposes the tunnel as the response stream" {
 
 ///|
 test "HTTP/1 successful CONNECT rejects HTTP body framing" {
-  for raw in [
-    "HTTP/1.1 200 Connection Established\r\nContent-Length: 0\r\n\r\n",
-    "HTTP/1.1 200 Connection Established\r\nTransfer-Encoding: chunked\r\n\r\n",
-  ] {
+  for
+    raw in [
+      "HTTP/1.1 200 Connection Established\r\nContent-Length: 0\r\n\r\n", "HTTP/1.1 200 Connection Established\r\nTransfer-Encoding: chunked\r\n\r\n",
+    ] {
     let codec = H1Codec::new(regression_mock_stream(raw, 0, 0))
-    codec.encode_request(
+    codec
+    .encode_request(
       Request::new(CONNECT, Url::parse("http://example.com:80/").unwrap()),
-    ).unwrap()
+    )
+    .unwrap()
     match codec.decode_response() {
       Ok(_) => fail("CONNECT response with framing headers was accepted")
       Err(ProtocolError(message)) =>
@@ -92,13 +92,14 @@ test "HTTP/1 successful CONNECT rejects HTTP body framing" {
 test "HTTP/1 failed CONNECT still carries an ordinary response body" {
   let stream = regression_mock_stream(
     "HTTP/1.1 407 Proxy Authentication Required\r\nContent-Length: 4\r\n\r\nnope",
-    0,
-    0,
+    0, 0,
   )
   let codec = H1Codec::new(stream)
-  codec.encode_request(
+  codec
+  .encode_request(
     Request::new(CONNECT, Url::parse("http://example.com:80/").unwrap()),
-  ).unwrap()
+  )
+  .unwrap()
   let response = codec.decode_response().unwrap()
   assert_eq(response.status, 407)
   assert_eq(response.read_body().unwrap(), b"nope")
@@ -109,14 +110,11 @@ test "HTTP/2 CONNECT omits :scheme and :path" {
   let fields = h2_request_headers(
     Request::new(CONNECT, Url::parse("http://example.com:8080/").unwrap()),
   ).unwrap()
-  assert_eq(
-    fields,
-    [
-      (":method", "CONNECT"),
-      (":authority", "example.com:8080"),
-      ("user-agent", "Feather/0.1.0"),
-    ],
-  )
+  assert_eq(fields, [
+    (":method", "CONNECT"),
+    (":authority", "example.com:8080"),
+    ("user-agent", "Feather/0.1.0"),
+  ])
   let with_path = Url::parse("http://example.com/tunnel").unwrap()
   assert_eq(
     h2_request_headers(Request::new(CONNECT, with_path)),
@@ -142,9 +140,11 @@ test "HTTP/2 successful CONNECT reads tunnel DATA until END_STREAM" {
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let connection = H2ClientConnection::new(stream).unwrap()
-  let response = connection.request(
-    Request::new(CONNECT, Url::parse("http://example.com:80/").unwrap()),
-  ).unwrap()
+  let response = connection
+    .request(
+      Request::new(CONNECT, Url::parse("http://example.com:80/").unwrap()),
+    )
+    .unwrap()
   assert_eq(response.status, 200)
   assert_eq(response.read_body().unwrap(), b"hello")
 }
@@ -163,14 +163,17 @@ test "HTTP/2 successful CONNECT rejects Content-Length" {
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let connection = H2ClientConnection::new(stream).unwrap()
-  match connection.request(
-    Request::new(CONNECT, Url::parse("http://example.com:80/").unwrap()),
-  ) {
+  match
+    connection.request(
+      Request::new(CONNECT, Url::parse("http://example.com:80/").unwrap()),
+    ) {
     Ok(_) => fail("CONNECT response with Content-Length was accepted")
     Err(err) =>
       assert_eq(
         err,
-        ProtocolError("Successful CONNECT response must not include Content-Length"),
+        ProtocolError(
+          "Successful CONNECT response must not include Content-Length",
+        ),
       )
   }
 }
@@ -178,11 +181,9 @@ test "HTTP/2 successful CONNECT rejects Content-Length" {
 ///|
 test "UnifiedClient exposes a CONNECT convenience method" {
   let stream = regression_mock_stream(
-    "HTTP/1.1 200 Connection Established\r\n\r\ntunnel",
-    0,
-    0,
+    "HTTP/1.1 200 Connection Established\r\n\r\ntunnel", 0, 0,
   )
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let client = UnifiedClient::{
     connector,
@@ -201,7 +202,7 @@ test "UnifiedClient exposes a CONNECT convenience method" {
 test "CONNECT responses are not followed as redirects" {
   let raw = "HTTP/1.1 303 See Other\r\nLocation: http://evil.example/pwn\r\nContent-Length: 0\r\n\r\n"
   let stream = regression_mock_stream(raw, 4096, 4096)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let client = UnifiedClient::{
     connector,

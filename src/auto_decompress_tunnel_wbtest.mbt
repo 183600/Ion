@@ -19,19 +19,16 @@ test "automatic decoding is not enabled for an HTTP/2 extended CONNECT tunnel" {
     h2_test_frame(H2_FRAME_DATA, H2_FLAG_END_STREAM, 1, b"tunnel"),
   ])
   let stream = h2_frame_mock_stream(input, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
-  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2"), }
   let client = UnifiedClient::with_transport(
     dialer,
     provider,
-    ClientOptions::new()
-      .with_follow_redirects(false)
-      .with_auto_decompress(true),
+    ClientOptions::new().with_follow_redirects(false).with_auto_decompress(true),
   )
-  let request = Request::from_url(
-    GET,
-    "https://example.com/socket",
-  ).unwrap().with_upgrade("websocket")
+  let request = Request::from_url(GET, "https://example.com/socket")
+    .unwrap()
+    .with_upgrade("websocket")
   let response = client.request(request).unwrap()
   assert_eq(response.status, 200)
   assert_false(response.auto_decompress())
@@ -41,17 +38,15 @@ test "automatic decoding is not enabled for an HTTP/2 extended CONNECT tunnel" {
 ///|
 test "automatic decoding is not enabled for an unsolicited HTTP/1.1 101" {
   let stream = regression_mock_stream(
-    "HTTP/1.1 101 Switching Protocols\r\n\r\n",
-    0,
-    0,
+    "HTTP/1.1 101 Switching Protocols\r\n\r\n", 0, 0,
   )
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let client = UnifiedClient::{
     connector,
     options: ClientOptions::new()
-      .with_follow_redirects(false)
-      .with_auto_decompress(true),
+    .with_follow_redirects(false)
+    .with_auto_decompress(true),
     redirect_count: 0,
   }
   let response = client.get("http://example.com/socket").unwrap()

@@ -1,3 +1,4 @@
+///|
 /// A synchronous `HttpClient` backed by the browser `XMLHttpRequest` API.
 ///
 /// JavaScript has no synchronous socket API, so this transport delegates the
@@ -11,9 +12,10 @@
 /// not forwarded as the client would see them on a raw socket.
 #derive(Eq, Debug)
 pub struct BrowserFetchClient {
-  max_response_body_bytes : Int
+  max_response_body_bytes : Int32
 }
 
+///|
 /// A one-shot client using the browser transport. On targets without an
 /// `XMLHttpRequest` implementation requests fail with a clear connection
 /// error instead of silently falling back to a different transport.
@@ -23,19 +25,24 @@ pub fn default_browser_client() -> BrowserFetchClient {
 
 ///|
 pub fn BrowserFetchClient::new() -> BrowserFetchClient {
-  BrowserFetchClient::{ max_response_body_bytes: DEFAULT_MAX_BODY_BYTES }
+  BrowserFetchClient::{ max_response_body_bytes: DEFAULT_MAX_BODY_BYTES, }
 }
 
 ///|
 pub fn BrowserFetchClient::with_max_response_body_bytes(
   _ : BrowserFetchClient,
-  max_bytes : Int,
+  max_bytes : Int32,
 ) -> BrowserFetchClient {
   BrowserFetchClient::{
-    max_response_body_bytes: if max_bytes < 0 { 0 } else { max_bytes },
+    max_response_body_bytes: if max_bytes < 0 {
+      0
+    } else {
+      max_bytes
+    },
   }
 }
 
+///|
 #cfg(target="js")
 extern "js" fn browser_fetch(
   http_method : String,
@@ -111,6 +118,7 @@ extern "js" fn browser_fetch(
   #|   }
   #| }
 
+///|
 #cfg(not(target="js"))
 fn browser_fetch(
   http_method : String,
@@ -124,11 +132,10 @@ fn browser_fetch(
   let _ = headers
   let _ = has_body
   let _ = body_base64
-  [
-    "browser fetch is only available on the JavaScript target", "0", "", "",
-  ]
+  ["browser fetch is only available on the JavaScript target", "0", "", ""]
 }
 
+///|
 fn browser_fetch_headers(headers : Headers) -> FixedArray[String] {
   let values : Array[String] = []
   for header in headers.iter() {
@@ -138,9 +145,10 @@ fn browser_fetch_headers(headers : Headers) -> FixedArray[String] {
   FixedArray::from_array(values)
 }
 
+///|
 fn browser_fetch_response(
   result : FixedArray[String],
-  max_body_bytes : Int,
+  max_body_bytes : Int32,
 ) -> Result[Response, HttpError] {
   if result.length() < 4 {
     return Err(ProtocolError("browser fetch returned a malformed result"))
@@ -148,17 +156,13 @@ fn browser_fetch_response(
   if result[0].length() > 0 {
     return Err(NetworkError(ConnectionFailed(result[0])))
   }
-  let status = try {
-    @string.parse_int(result[1][:])
-  } catch {
+  let status = @string.parse_int(result[1][:]) catch {
     _ => return Err(ProtocolError("browser fetch returned an invalid status"))
   }
   if status < 100 || status > 599 {
     return Err(ProtocolError("browser fetch returned an invalid status"))
   }
-  let body = try {
-    @base64.decode(result[3])
-  } catch {
+  let body = @base64.decode(result[3]) catch {
     _ => return Err(ProtocolError("browser fetch returned an invalid body"))
   }
   if body.length() > max_body_bytes {
@@ -171,16 +175,19 @@ fn browser_fetch_response(
     let lower = name.to_lower()
     // The browser has already decoded the payload and manages cookies, so
     // these wire-level fields would describe a different representation.
-    if lower != "content-encoding" && lower != "content-length" &&
-      lower != "transfer-encoding" && lower != "set-cookie" {
+    if lower != "content-encoding" &&
+      lower != "content-length" &&
+      lower != "transfer-encoding" &&
+      lower != "set-cookie" {
       headers = headers.add(name, result[index + 1])
     }
     index = index + 2
   }
   let buffered = BufferedStream::new(body)
   let stream : &Stream = buffered
-  let response = Response::new(status, headers, stream)
-    .with_max_body_bytes(max_body_bytes)
+  let response = Response::new(status, headers, stream).with_max_body_bytes(
+    max_body_bytes,
+  )
   // `XMLHttpRequest.responseURL` reports the final URL after redirects. Fall
   // back to the caller-provided URL when the host does not expose it.
   if result[2].length() > 0 {
@@ -192,6 +199,7 @@ fn browser_fetch_response(
   Ok(response)
 }
 
+///|
 fn browser_fetch_validate_url(url : Url) -> Result[Unit, HttpError] {
   let scheme = url.scheme.to_lower()
   if scheme != "http" && scheme != "https" {
@@ -203,13 +211,15 @@ fn browser_fetch_validate_url(url : Url) -> Result[Unit, HttpError] {
   if url.port < 1 || url.port > 65535 {
     return Err(InvalidUrl("Invalid port number"))
   }
-  if !valid_url_path_chars(url.path) || !valid_url_query_chars(url.query) ||
+  if !valid_url_path_chars(url.path) ||
+    !valid_url_query_chars(url.query) ||
     !valid_url_fragment_chars(url.fragment) {
     return Err(InvalidUrl("Invalid URL characters"))
   }
   Ok(())
 }
 
+///|
 pub impl HttpClient for BrowserFetchClient with fn request(
   self : BrowserFetchClient,
   request : Request,

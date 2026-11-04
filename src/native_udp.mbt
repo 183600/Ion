@@ -1,73 +1,84 @@
+///|
 /// Native UDP transport backed by POSIX datagram sockets.
 ///
 /// The socket is opened in dual-stack mode when the host supports it, so a
 /// single descriptor reaches both IPv4 and IPv6 peers. Datagram reads report
 /// the sender, which lets callers reject replies that did not come from the
 /// peer they queried.
+extern "C" fn feather_udp_open() -> Int32 = "feather_udp_open"
 
-extern "C" fn feather_udp_open() -> Int = "feather_udp_open"
+///|
+extern "C" fn feather_udp_bind(fd : Int32, port : Int32) -> Int32 = "feather_udp_bind"
 
-extern "C" fn feather_udp_bind(fd : Int, port : Int) -> Int = "feather_udp_bind"
-
+///|
 #borrow(host)
 extern "C" fn feather_udp_connect(
-  fd : Int,
+  fd : Int32,
   host : Bytes,
-  port : Int,
-) -> Int = "feather_udp_connect"
+  port : Int32,
+) -> Int32 = "feather_udp_connect"
 
+///|
 #borrow(payload)
 extern "C" fn feather_udp_send(
-  fd : Int,
+  fd : Int32,
   payload : Bytes,
-  length : Int,
-) -> Int = "feather_udp_send"
+  length : Int32,
+) -> Int32 = "feather_udp_send"
 
+///|
 #borrow(payload, host)
 extern "C" fn feather_udp_send_to(
-  fd : Int,
+  fd : Int32,
   payload : Bytes,
-  length : Int,
+  length : Int32,
   host : Bytes,
-  port : Int,
-) -> Int = "feather_udp_send_to"
+  port : Int32,
+) -> Int32 = "feather_udp_send_to"
 
+///|
 #borrow(buffer, output)
 extern "C" fn feather_udp_recv_from(
-  fd : Int,
+  fd : Int32,
   buffer : Bytes,
-  capacity : Int,
+  capacity : Int32,
   output : Bytes,
-  output_capacity : Int,
-) -> Int = "feather_udp_recv_from"
+  output_capacity : Int32,
+) -> Int32 = "feather_udp_recv_from"
 
-extern "C" fn feather_udp_set_timeout(fd : Int, timeout_ms : Int) -> Int =
-  "feather_udp_set_timeout"
+///|
+extern "C" fn feather_udp_set_timeout(fd : Int32, timeout_ms : Int32) -> Int32 = "feather_udp_set_timeout"
 
-extern "C" fn feather_udp_close(fd : Int) -> Int = "feather_udp_close"
+///|
+extern "C" fn feather_udp_close(fd : Int32) -> Int32 = "feather_udp_close"
 
-extern "C" fn feather_udp_local_port(fd : Int) -> Int = "feather_udp_local_port"
+///|
+extern "C" fn feather_udp_local_port(fd : Int32) -> Int32 = "feather_udp_local_port"
 
+///|
 /// The largest datagram the transport accepts. UDP payloads cannot exceed
 /// 65507 bytes on IPv4, and the receive buffer is sized for the maximum.
-const NATIVE_UDP_MAX_DATAGRAM : Int = 65535
+const NATIVE_UDP_MAX_DATAGRAM : Int32 = 65535
 
+///|
 /// The capacity of the scratch buffer that receives the peer description.
-const NATIVE_UDP_PEER_CAPACITY : Int = 128
+const NATIVE_UDP_PEER_CAPACITY : Int32 = 128
 
+///|
 /// Read a NUL-terminated string from a buffer filled by the native stub.
 fn native_udp_read_c_string(data : Bytes) -> String {
   let mut end = 0
   while end < data.length() && data[end] != b'\x00' {
     end = end + 1
   }
-  @utf8.decode_lossy(data.exact_view(start=0, end=end))
+  @utf8.decode_lossy(data.exact_view(start=0, end~))
 }
 
+///|
 /// Split the `host:port` peer description produced by the native stub into its
 /// address and port parts. IPv6 literals are bracketed, and their optional
 /// scope identifier is part of the address.
-fn native_udp_split_peer(peer : String) -> (String, Int) {
+fn native_udp_split_peer(peer : String) -> (String, Int32) {
   match peer.rev_find(":") {
     Some(index) => {
       let address = if peer.has_prefix("[") && index > 1 {
@@ -75,35 +86,34 @@ fn native_udp_split_peer(peer : String) -> (String, Int) {
       } else {
         peer[0:index].to_owned()
       }
-      let port = try {
-        @string.parse_int(peer[index + 1:])
-      } catch {
-        _ => 0
-      }
+      let port = @string.parse_int(peer[index + 1:]) catch { _ => 0 }
       (address, port)
     }
     None => (peer, 0)
   }
 }
 
+///|
 /// A UDP socket backed by the native operating system.
 #derive(Eq, Debug)
 pub struct NativeUdpDatagram {
-  mut fd : Int
+  mut fd : Int32
   mut is_open : Bool
-  mut timeout_ms : Int
+  mut timeout_ms : Int32
   mut connected : Bool
 }
 
+///|
 /// Open a native UDP socket.
 pub fn NativeUdpDatagram::open() -> Result[NativeUdpDatagram, NetError] {
   NativeUdpDatagram::with_timeout(30000)
 }
 
+///|
 /// Open a native UDP socket that applies `timeout_ms` to blocking sends and
 /// receives.
 pub fn NativeUdpDatagram::with_timeout(
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[NativeUdpDatagram, NetError] {
   let timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
   let fd = feather_udp_open()
@@ -136,11 +146,12 @@ pub fn NativeUdpDatagram::with_timeout(
   Ok(datagram)
 }
 
+///|
 pub impl Datagram for NativeUdpDatagram with fn send_to(
   self : NativeUdpDatagram,
   payload : Bytes,
   address : String,
-  port : Int,
+  port : Int32,
 ) -> Result[Unit, NetError] {
   if !self.is_open || self.fd < 0 {
     return Err(NetError::Closed)
@@ -170,6 +181,7 @@ pub impl Datagram for NativeUdpDatagram with fn send_to(
   Ok(())
 }
 
+///|
 pub impl Datagram for NativeUdpDatagram with fn receive_from(
   self : NativeUdpDatagram,
   buffer : Buffer,
@@ -190,16 +202,15 @@ pub impl Datagram for NativeUdpDatagram with fn receive_from(
     return Err(native_tcp_error(-count, "UDP receive"))
   }
   buffer.write_bytes(temporary.exact_view(start=0, end=count))
-  let (address, port) = native_udp_split_peer(
-    native_udp_read_c_string(peer),
-  )
-  Ok(DatagramPacket::{ length: count, address, port })
+  let (address, port) = native_udp_split_peer(native_udp_read_c_string(peer))
+  Ok(DatagramPacket::{ length: count, address, port, })
 }
 
+///|
 pub impl Datagram for NativeUdpDatagram with fn connect(
   self : NativeUdpDatagram,
   address : String,
-  port : Int,
+  port : Int32,
 ) -> Result[Unit, NetError] {
   if !self.is_open || self.fd < 0 {
     return Err(NetError::Closed)
@@ -215,9 +226,10 @@ pub impl Datagram for NativeUdpDatagram with fn connect(
   Ok(())
 }
 
+///|
 pub impl Datagram for NativeUdpDatagram with fn set_timeout(
   self : NativeUdpDatagram,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Unit, NetError] {
   if !self.is_open || self.fd < 0 {
     return Err(NetError::Closed)
@@ -231,9 +243,10 @@ pub impl Datagram for NativeUdpDatagram with fn set_timeout(
   Ok(())
 }
 
+///|
 pub impl Datagram for NativeUdpDatagram with fn local_port(
   self : NativeUdpDatagram,
-) -> Int {
+) -> Int32 {
   if !self.is_open || self.fd < 0 {
     return 0
   }
@@ -245,9 +258,11 @@ pub impl Datagram for NativeUdpDatagram with fn local_port(
   }
 }
 
-pub impl Datagram for NativeUdpDatagram with fn close(
-  self : NativeUdpDatagram,
-) -> Result[Unit, NetError] {
+///|
+pub impl Datagram for NativeUdpDatagram with fn close(self : NativeUdpDatagram) -> Result[
+  Unit,
+  NetError,
+] {
   if !self.is_open {
     return Ok(())
   }

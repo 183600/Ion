@@ -8,12 +8,7 @@ test "http2 rejects frames on a server-push stream" {
       "HTTP/2 DATA on a server-push stream",
     ),
     (
-      h2_test_frame(
-        H2_FRAME_WINDOW_UPDATE,
-        0,
-        2,
-        h2_window_update_payload(1),
-      ),
+      h2_test_frame(H2_FRAME_WINDOW_UPDATE, 0, 2, h2_window_update_payload(1)),
       "HTTP/2 WINDOW_UPDATE on a server-push stream",
     ),
     (

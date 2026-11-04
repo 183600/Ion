@@ -3,7 +3,7 @@ test "connector reports idle and active connection counts" {
   let first = regression_mock_stream("", 1, 0)
   let second = regression_mock_stream("", 1, 0)
   let streams : Array[&Stream] = [first, second]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let url = Url::parse("http://example.com/").unwrap()
   assert_eq(connector.connection_count(), 0)
@@ -26,7 +26,7 @@ test "close_idle leaves checked-out connections open" {
   let first = regression_mock_stream("", 1, 0)
   let second = regression_mock_stream("", 1, 0)
   let streams : Array[&Stream] = [first, second]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let url = Url::parse("http://example.com/").unwrap()
   let (_, first_lease) = connector.checkout(url).unwrap()

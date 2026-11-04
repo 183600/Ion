@@ -1,63 +1,74 @@
+///|
 /// A stream whose readiness check always times out. It models a peer that
 /// ignores `Expect: 100-continue` and waits for the request body before it
 /// sends any response at all.
-
 struct ExpectSilentStream {
   inner : RegressionMockStream
 }
 
+///|
 fn expect_silent_stream(input : String) -> ExpectSilentStream {
-  ExpectSilentStream::{ inner: regression_mock_stream(input, 0, 0) }
+  ExpectSilentStream::{ inner: regression_mock_stream(input, 0, 0), }
 }
 
+///|
 pub impl Stream for ExpectSilentStream with fn read(
   self : ExpectSilentStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   self.inner.read(buf)
 }
 
+///|
 pub impl Stream for ExpectSilentStream with fn write(
   self : ExpectSilentStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   self.inner.write(buf)
 }
 
-pub impl Stream for ExpectSilentStream with fn flush(
-  self : ExpectSilentStream,
-) -> Result[Unit, NetError] {
+///|
+pub impl Stream for ExpectSilentStream with fn flush(self : ExpectSilentStream) -> Result[
+  Unit,
+  NetError,
+] {
   self.inner.flush()
 }
 
-pub impl Stream for ExpectSilentStream with fn close(
-  self : ExpectSilentStream,
-) -> Result[Unit, NetError] {
+///|
+pub impl Stream for ExpectSilentStream with fn close(self : ExpectSilentStream) -> Result[
+  Unit,
+  NetError,
+] {
   self.inner.close()
 }
 
+///|
 pub impl Stream for ExpectSilentStream with fn set_timeout(
   self : ExpectSilentStream,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Unit, NetError] {
   self.inner.set_timeout(timeout_ms)
 }
 
+///|
 pub impl Stream for ExpectSilentStream with fn peer_addr(
   self : ExpectSilentStream,
 ) -> Result[String, NetError] {
   self.inner.peer_addr()
 }
 
+///|
 pub impl Stream for ExpectSilentStream with fn local_addr(
   self : ExpectSilentStream,
 ) -> Result[String, NetError] {
   self.inner.local_addr()
 }
 
+///|
 pub impl Stream for ExpectSilentStream with fn wait_readable(
   self : ExpectSilentStream,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Bool, NetError] {
   let _ = self
   let _ = timeout_ms
@@ -130,9 +141,9 @@ test "an explicit zero expect timeout keeps the unbounded wait" {
 ///|
 #cfg(target="native")
 extern "C" fn feather_tcp_wait_readable_probe(
-  fd : Int,
-  timeout_ms : Int,
-) -> Int = "feather_tcp_wait_readable"
+  fd : Int32,
+  timeout_ms : Int32,
+) -> Int32 = "feather_tcp_wait_readable"
 
 ///|
 #cfg(target="native")

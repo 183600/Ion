@@ -1,3 +1,4 @@
+///|
 test "opaque transfer coding leaves content encoding untouched" {
   let raw = "HTTP/1.1 200 OK\r\n" +
     "Transfer-Encoding: chunked, gzip\r\n" +

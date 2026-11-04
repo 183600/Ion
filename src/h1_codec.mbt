@@ -1,3 +1,4 @@
+///|
 /// HTTP/1.1 codec for encoding requests and decoding responses
 pub struct H1Codec {
   stream : &Stream
@@ -23,37 +24,49 @@ pub struct H1Codec {
   // `Expect: 100-continue` body anyway. A value of 0 waits indefinitely for
   // the response (the historical behavior). Built-in socket transports make
   // this a real poll; other streams fall back to `read_ready`.
-  mut expect_timeout_ms : Int
-  max_body_bytes : Int
+  mut expect_timeout_ms : Int32
+  max_body_bytes : Int32
   on_complete : ((Bool) -> Unit)?
 }
 
-const DEFAULT_MAX_BODY_BYTES : Int = 67108864
-const DEFAULT_EXPECT_CONTINUE_WAIT_MS : Int = 1000
+///|
+const DEFAULT_MAX_BODY_BYTES : Int32 = 67108864
+
+///|
+const DEFAULT_EXPECT_CONTINUE_WAIT_MS : Int32 = 1000
 // CONNECT tunnels carry an opaque byte stream rather than a response
 // representation, so the normal response-body cap does not apply to them.
-const TUNNEL_BODY_LIMIT : Int = 2147483647
 
+///|
+const TUNNEL_BODY_LIMIT : Int32 = 2147483647
+
+///|
 pub fn H1Codec::new(stream : &Stream) -> H1Codec {
   H1Codec::new_with_limit(stream, DEFAULT_MAX_BODY_BYTES)
 }
 
-pub fn H1Codec::new_with_limit(stream : &Stream, max_body_bytes : Int) -> H1Codec {
+///|
+pub fn H1Codec::new_with_limit(
+  stream : &Stream,
+  max_body_bytes : Int32,
+) -> H1Codec {
   H1Codec::make(stream, max_body_bytes, None)
 }
 
+///|
 /// Bound how long a request that advertised `Expect: 100-continue` waits for
 /// the peer's interim response before sending the body. This avoids a deadlock
 /// with peers that ignore the expectation and wait for the body. A value below
 /// 1 restores the unbounded (historical) wait.
 pub fn H1Codec::with_expect_timeout(
   self : H1Codec,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> H1Codec {
   self.expect_timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
   self
 }
 
+///|
 pub fn H1Codec::new_with_completion(
   stream : &Stream,
   on_complete : (Bool) -> Unit,
@@ -61,17 +74,19 @@ pub fn H1Codec::new_with_completion(
   H1Codec::make(stream, DEFAULT_MAX_BODY_BYTES, Some(on_complete))
 }
 
+///|
 pub fn H1Codec::new_with_limit_and_completion(
   stream : &Stream,
-  max_body_bytes : Int,
+  max_body_bytes : Int32,
   on_complete : (Bool) -> Unit,
 ) -> H1Codec {
   H1Codec::make(stream, max_body_bytes, Some(on_complete))
 }
 
+///|
 fn H1Codec::make(
   stream : &Stream,
-  max_body_bytes : Int,
+  max_body_bytes : Int32,
   on_complete : ((Bool) -> Unit)?,
 ) -> H1Codec {
   let limit = if max_body_bytes < 0 { 0 } else { max_body_bytes }
@@ -93,25 +108,23 @@ fn H1Codec::make(
   }
 }
 
+///|
 struct StreamReader {
   stream : &Stream
   mut pending : Bytes
-  mut pending_offset : Int
+  mut pending_offset : Int32
   // Wire bytes consumed by the most recent read_line, including the line
   // terminator. This keeps size limits byte-based even when invalid UTF-8 is
   // decoded lossily for parsing.
-  mut last_line_bytes : Int
+  mut last_line_bytes : Int32
 }
 
+///|
 fn StreamReader::new(stream : &Stream) -> StreamReader {
-  StreamReader::{
-    stream,
-    pending: b"",
-    pending_offset: 0,
-    last_line_bytes: 0,
-  }
+  StreamReader::{ stream, pending: b"", pending_offset: 0, last_line_bytes: 0, }
 }
 
+///|
 fn StreamReader::next_byte(self : StreamReader) -> Result[Byte?, NetError] {
   if self.pending_offset < self.pending.length() {
     let byte = self.pending[self.pending_offset]
@@ -141,9 +154,10 @@ fn StreamReader::next_byte(self : StreamReader) -> Result[Byte?, NetError] {
   Ok(Some(byte))
 }
 
+///|
 fn StreamReader::read_exact(
   self : StreamReader,
-  length : Int,
+  length : Int32,
   output : Array[Byte],
 ) -> Result[Unit, NetError] {
   let mut remaining = length
@@ -181,11 +195,12 @@ fn StreamReader::read_exact(
   Ok(())
 }
 
+///|
 fn StreamReader::read_some(
   self : StreamReader,
   output : Buffer,
-  max_bytes : Int,
-) -> Result[Int, NetError] {
+  max_bytes : Int32,
+) -> Result[Int32, NetError] {
   if max_bytes <= 0 {
     return Ok(0)
   }
@@ -228,6 +243,7 @@ fn StreamReader::read_some(
   Ok(take)
 }
 
+///|
 fn write_all(stream : &Stream, data : Bytes) -> Result[Unit, NetError] {
   let total = data.length()
   let mut offset = 0
@@ -240,7 +256,9 @@ fn write_all(stream : &Stream, data : Bytes) -> Result[Unit, NetError] {
           return Err(NetError::WriteError("stream made no progress"))
         }
         if written > total - offset {
-          return Err(NetError::WriteError("stream reported too many bytes written"))
+          return Err(
+            NetError::WriteError("stream reported too many bytes written"),
+          )
         }
         offset = offset + written
       }
@@ -250,14 +268,29 @@ fn write_all(stream : &Stream, data : Bytes) -> Result[Unit, NetError] {
   Ok(())
 }
 
+///|
 fn is_header_token_char(ch : Char) -> Bool {
-  (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-  (ch >= '0' && ch <= '9') || ch == '!' || ch == '#' || ch == '$' ||
-  ch == '%' || ch == '&' || ch == '\u{27}' || ch == '*' || ch == '+' ||
-  ch == '-' || ch == '.' || ch == '^' || ch == '_' || ch == '\u{60}' ||
-  ch == '|' || ch == '~'
+  (ch >= 'a' && ch <= 'z') ||
+  (ch >= 'A' && ch <= 'Z') ||
+  (ch >= '0' && ch <= '9') ||
+  ch == '!' ||
+  ch == '#' ||
+  ch == '$' ||
+  ch == '%' ||
+  ch == '&' ||
+  ch == '\u{27}' ||
+  ch == '*' ||
+  ch == '+' ||
+  ch == '-' ||
+  ch == '.' ||
+  ch == '^' ||
+  ch == '_' ||
+  ch == '\u{60}' ||
+  ch == '|' ||
+  ch == '~'
 }
 
+///|
 fn valid_header_name(name : String) -> Bool {
   if name.length() == 0 {
     return false
@@ -270,6 +303,7 @@ fn valid_header_name(name : String) -> Bool {
   true
 }
 
+///|
 fn valid_header_value(value : String) -> Bool {
   for ch in value {
     if (ch < ' ' && ch != '\t') || ch == '\u{7f}' {
@@ -279,6 +313,7 @@ fn valid_header_value(value : String) -> Bool {
   true
 }
 
+///|
 fn trim_header_ows(value : String) -> String {
   let mut start = 0
   while start < value.length() {
@@ -301,6 +336,7 @@ fn trim_header_ows(value : String) -> String {
   value[start:end].to_owned()
 }
 
+///|
 fn valid_request_target(value : String, allow_brackets? : Bool) -> Bool {
   if value.length() == 0 || !valid_encoded_url_chars(value) {
     return false
@@ -316,18 +352,16 @@ fn valid_request_target(value : String, allow_brackets? : Bool) -> Bool {
   true
 }
 
+///|
 fn valid_host_port(value : String) -> Bool {
   if !is_decimal_digits(value) {
     return false
   }
-  let port = try {
-    @string.parse_int(value[:])
-  } catch {
-    _ => return false
-  }
+  let port = @string.parse_int(value[:]) catch { _ => return false }
   port >= 1 && port <= 65535
 }
 
+///|
 fn valid_host(value : String) -> Bool {
   if value.length() == 0 {
     return false
@@ -364,6 +398,7 @@ fn valid_host(value : String) -> Bool {
   }
 }
 
+///|
 fn split_header_list(value : String) -> Array[String] {
   let parts : Array[String] = []
   let mut start = 0
@@ -400,6 +435,7 @@ fn split_header_list(value : String) -> Array[String] {
   parts
 }
 
+///|
 fn header_has_token(value : String, token : String) -> Bool {
   let token = token.to_lower()
   for part in split_header_list(value) {
@@ -410,6 +446,7 @@ fn header_has_token(value : String, token : String) -> Bool {
   false
 }
 
+///|
 fn headers_have_token(headers : Headers, name : String, token : String) -> Bool {
   for value in headers.get_all(name) {
     if header_has_token(value, token) {
@@ -419,6 +456,7 @@ fn headers_have_token(headers : Headers, name : String, token : String) -> Bool 
   false
 }
 
+///|
 /// Remove the `100-continue` expectation from one Expect field value while
 /// preserving any other expectations the caller supplied. A bodyless request
 /// must not advertise an expectation that only applies to request content.
@@ -433,7 +471,8 @@ fn without_expect_continue(value : String) -> String {
   parts.join(", ")
 }
 
-fn request_content_length(headers : Headers) -> Result[Option[Int], HttpError] {
+///|
+fn request_content_length(headers : Headers) -> Result[Int32?, HttpError] {
   let values = headers.get_all("Content-Length")
   if values.length() == 0 {
     return Ok(None)
@@ -445,9 +484,7 @@ fn request_content_length(headers : Headers) -> Result[Option[Int], HttpError] {
   if !is_decimal_digits(text) {
     return Err(InvalidHeader("Content-Length"))
   }
-  let length = try {
-    @string.parse_int(text[:])
-  } catch {
+  let length = @string.parse_int(text[:]) catch {
     _ => return Err(InvalidHeader("Content-Length"))
   }
   if length < 0 {
@@ -456,6 +493,7 @@ fn request_content_length(headers : Headers) -> Result[Option[Int], HttpError] {
   Ok(Some(length))
 }
 
+///|
 fn request_is_chunked(headers : Headers) -> Result[Bool, HttpError] {
   let values = headers.get_all("Transfer-Encoding")
   if values.length() == 0 {
@@ -490,6 +528,7 @@ fn request_is_chunked(headers : Headers) -> Result[Bool, HttpError] {
   Ok(true)
 }
 
+///|
 /// Methods for which an absent body still has a defined meaning, so an explicit
 /// `Content-Length: 0` should be sent when the caller did not frame the body.
 fn method_defines_body(verb : HttpMethod) -> Bool {
@@ -501,6 +540,7 @@ fn method_defines_body(verb : HttpMethod) -> Bool {
   }
 }
 
+///|
 fn validate_request_trailers(trailers : Headers) -> Result[Unit, HttpError] {
   for trailer in trailers.iter() {
     if !valid_header_name(trailer.name) ||
@@ -512,6 +552,7 @@ fn validate_request_trailers(trailers : Headers) -> Result[Unit, HttpError] {
   Ok(())
 }
 
+///|
 fn request_trailer_names(trailers : Headers) -> String {
   let names = Buffer(size_hint=64)
   for trailer in trailers.iter() {
@@ -523,6 +564,7 @@ fn request_trailer_names(trailers : Headers) -> String {
   @utf8.decode_lossy(names.to_bytes()[:])
 }
 
+///|
 fn write_chunked_body(
   stream : &Stream,
   body : Bytes,
@@ -548,10 +590,11 @@ fn write_chunked_body(
     Err(err) => return Err(err)
   }
   for trailer in trailers.iter() {
-    match write_all(
-      stream,
-      @utf8.encode(trailer.name + ": " + trailer.value + "\r\n"),
-    ) {
+    match
+      write_all(
+        stream,
+        @utf8.encode(trailer.name + ": " + trailer.value + "\r\n"),
+      ) {
       Ok(_) => ()
       Err(err) => return Err(err)
     }
@@ -559,6 +602,7 @@ fn write_chunked_body(
   write_all(stream, @utf8.encode("\r\n"))
 }
 
+///|
 fn send_deferred_request_body(
   stream : &Stream,
   body : Bytes,
@@ -575,6 +619,7 @@ fn send_deferred_request_body(
   }
 }
 
+///|
 fn write_request_body(
   stream : &Stream,
   body : Bytes,
@@ -590,6 +635,7 @@ fn write_request_body(
   }
 }
 
+///|
 /// Encode HTTP request to HTTP/1.1 format.
 ///
 /// `absolute_form` selects the request-target form: `false` (the default) sends
@@ -641,11 +687,7 @@ pub fn H1Codec::encode_request(
   if !valid_host(if is_connect { target } else { req.url.authority() }) {
     return Err(InvalidUrl("Invalid host"))
   }
-  let host_header_value = if is_connect {
-    target
-  } else {
-    req.url.authority()
-  }
+  let host_header_value = if is_connect { target } else { req.url.authority() }
   let verb = resolved_method.to_string()
   // `HttpMethod::Custom` is public, so validate the token again at the wire
   // boundary instead of relying only on the constructor.
@@ -664,8 +706,10 @@ pub fn H1Codec::encode_request(
   // by conforming peers, so reject it instead of sending contradictory
   // framing.
   if req.headers.contains("Upgrade") &&
-    (!headers_have_token(req.headers, "Connection", "upgrade") ||
-      upgrade_protocols(req.headers).length() == 0) {
+    (
+      !headers_have_token(req.headers, "Connection", "upgrade") ||
+      upgrade_protocols(req.headers).length() == 0
+    ) {
     return Err(InvalidHeader("Upgrade"))
   }
   let host_values = req.headers.get_all("Host")
@@ -678,9 +722,10 @@ pub fn H1Codec::encode_request(
   // RFC 9110 §9.3.6 requires the Host field of a CONNECT request to be
   // identical to the authority-form request-target. Accepting a different
   // value would make the tunnel endpoint ambiguous for proxies.
-  if is_connect && host_values.length() == 1 &&
+  if is_connect &&
+    host_values.length() == 1 &&
     lowercase_host_preserving_zone(host_values.nth(0).unwrap()) !=
-      lowercase_host_preserving_zone(host_header_value) {
+    lowercase_host_preserving_zone(host_header_value) {
     return Err(InvalidHeader("Host"))
   }
 
@@ -709,7 +754,8 @@ pub fn H1Codec::encode_request(
     }
     chunked = true
   }
-  let synthesize_chunked = has_trailers && !req.headers.contains("Transfer-Encoding")
+  let synthesize_chunked = has_trailers &&
+    !req.headers.contains("Transfer-Encoding")
 
   let body_length = match req.body {
     Some(body) => body.length()
@@ -722,14 +768,20 @@ pub fn H1Codec::encode_request(
   // CONNECT establishes a tunnel rather than transferring request content.
   // Rejecting framed bodies avoids sending a body the peer would interpret as
   // the first bytes of the tunnelled protocol.
-  if is_connect && (req.body is Some(_) || req.trailers.length() > 0 ||
-    chunked || content_length is Some(_)) {
+  if is_connect &&
+    (
+      req.body is Some(_) ||
+      req.trailers.length() > 0 ||
+      chunked ||
+      content_length is Some(_)
+    ) {
     return Err(InvalidHeader("CONNECT request content is not allowed"))
   }
   match content_length {
-    Some(declared) => if declared != body_length {
-      return Err(InvalidHeader("Content-Length"))
-    }
+    Some(declared) =>
+      if declared != body_length {
+        return Err(InvalidHeader("Content-Length"))
+      }
     None => ()
   }
 
@@ -746,7 +798,8 @@ pub fn H1Codec::encode_request(
   // that define a body send an explicit zero length when none was supplied so
   // servers and intermediaries never have to guess (RFC 9112 §6.3).
   if (req.body is Some(_) || method_defines_body(resolved_method)) &&
-    content_length is None && !chunked {
+    content_length is None &&
+    !chunked {
     headers_str += "Content-Length: " + body_length.to_string() + "\r\n"
   }
 
@@ -776,7 +829,8 @@ pub fn H1Codec::encode_request(
   let mut cookie_written = false
   for header in req.headers.iter() {
     if header.name.to_lower() == "expect" &&
-      headers_have_token(req.headers, "Expect", "100-continue") && !defer_body {
+      headers_have_token(req.headers, "Expect", "100-continue") &&
+      !defer_body {
       let filtered = without_expect_continue(header.value)
       if filtered.length() > 0 {
         headers_str += header.name + ": " + filtered + "\r\n"
@@ -788,7 +842,8 @@ pub fn H1Codec::encode_request(
         continue
       }
       cookie_written = true
-      headers_str += header.name + ": " +
+      headers_str += header.name +
+        ": " +
         req.headers.get_all("Cookie").to_array().join("; ") +
         "\r\n"
       continue
@@ -834,16 +889,21 @@ pub fn H1Codec::encode_request(
       self.last_is_connect = is_connect
       self.last_is_upgrade = request_requests_upgrade(req.headers)
       self.last_upgrade_protocols = upgrade_protocols(req.headers)
-      self.close_after_request = headers_have_token(req.headers, "Connection", "close")
+      self.close_after_request = headers_have_token(
+        req.headers,
+        "Connection",
+        "close",
+      )
       Ok(())
     }
     Err(err) => Err(http_error_from_net(err))
   }
 }
 
+///|
 fn read_line(
   reader : StreamReader,
-  max_bytes? : Int,
+  max_bytes? : Int32,
 ) -> Result[String?, NetError] {
   let limit = match max_bytes {
     Some(value) => value
@@ -874,28 +934,35 @@ fn read_line(
   let bytes = line.to_bytes()
   let length = bytes.length()
   reader.last_line_bytes = length
-  let end = if length >= 2 && bytes[length - 2] == b'\r' && bytes[length - 1] == b'\n' {
+  let end = if length >= 2 &&
+    bytes[length - 2] == b'\r' &&
+    bytes[length - 1] == b'\n' {
     length - 2
   } else if length >= 1 && bytes[length - 1] == b'\n' {
     length - 1
   } else {
     length
   }
-  Ok(Some(@utf8.decode_lossy(bytes.exact_view(start=0, end=end))))
+  Ok(Some(@utf8.decode_lossy(bytes.exact_view(start=0, end~))))
 }
 
+///|
 struct ResponseHead {
   version : String
-  status : Int
+  status : Int32
   headers : Headers
 }
 
-const MAX_RESPONSE_HEADERS : Int = 200
+///|
+const MAX_RESPONSE_HEADERS : Int32 = 200
+
+///|
 /// Bound the whole response head, not just each line: 200 lines of 8 KiB
 /// would otherwise allow a peer to make the client buffer more than a
 /// megabyte before the body framing is even known.
-const MAX_RESPONSE_HEAD_BYTES : Int = 1048576
+const MAX_RESPONSE_HEAD_BYTES : Int32 = 1048576
 
+///|
 fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] {
   // RFC 9112 §2.2 allows a client to ignore empty lines received before the
   // response-line. Bound them with the same head budget so a peer cannot send
@@ -927,12 +994,12 @@ fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] 
   }
   let mut status_start = first_space
   while status_start < response_line.length() &&
-    response_line.get_char(status_start) == Some(' ') {
+        response_line.get_char(status_start) == Some(' ') {
     status_start = status_start + 1
   }
   let mut status_end = status_start
   while status_end < response_line.length() &&
-    response_line.get_char(status_end) != Some(' ') {
+        response_line.get_char(status_end) != Some(' ') {
     status_end = status_end + 1
   }
   if status_end - status_start != 3 {
@@ -942,9 +1009,7 @@ fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] 
   if !is_decimal_digits(status_text) {
     return Err(ProtocolError("Invalid status code"))
   }
-  let status = try {
-    @string.parse_int(status_text[:])
-  } catch {
+  let status = @string.parse_int(status_text[:]) catch {
     _ => return Err(ProtocolError("Invalid status code"))
   }
   if status < 100 || status > 599 {
@@ -961,7 +1026,8 @@ fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] 
   while true {
     let line = match read_line(reader) {
       Ok(Some(line)) => line
-      Ok(None) => return Err(ProtocolError("Unexpected end of response headers"))
+      Ok(None) =>
+        return Err(ProtocolError("Unexpected end of response headers"))
       Err(err) => return Err(http_error_from_net(err))
     }
     if line.length() == 0 {
@@ -997,23 +1063,26 @@ fn read_response_head(reader : StreamReader) -> Result[ResponseHead, HttpError] 
     headers = headers.add(name, value)
   }
 
-  Ok(ResponseHead::{ version, status, headers })
+  Ok(ResponseHead::{ version, status, headers, })
 }
 
+///|
 /// Whether one `Upgrade` protocol value has the RFC 9110 grammar
 /// `protocol-name [ "/" protocol-version ]`, with both parts being tokens.
 fn valid_upgrade_protocol(value : String) -> Bool {
   let slash = match value.find("/") {
     Some(index) => index
-    None => return value.length() > 0 && {
-      let mut valid = true
-      for ch in value {
-        if !is_header_token_char(ch) {
-          valid = false
-        }
-      }
-      valid
-    }
+    None =>
+      return value.length() > 0 &&
+        ({
+          let mut valid = true
+          for ch in value {
+            if !is_header_token_char(ch) {
+              valid = false
+            }
+          }
+          valid
+        })
   }
   let name = value[0:slash].to_owned()
   let version = value[slash + 1:].to_owned()
@@ -1033,13 +1102,15 @@ fn valid_upgrade_protocol(value : String) -> Bool {
   true
 }
 
+///|
 /// Collect the valid protocol tokens offered by `Upgrade` headers.
 fn upgrade_protocols(headers : Headers) -> Array[String] {
   let protocols : Array[String] = []
   for value in headers.get_all("Upgrade") {
     for part in split_header_list(value) {
       let token = part.trim().to_owned().to_lower()
-      if token.length() > 0 && valid_upgrade_protocol(token) &&
+      if token.length() > 0 &&
+        valid_upgrade_protocol(token) &&
         !protocols.contains(token) {
         protocols.push(token)
       }
@@ -1048,6 +1119,7 @@ fn upgrade_protocols(headers : Headers) -> Array[String] {
   protocols
 }
 
+///|
 /// Whether the response headers confirm a switch to one of the protocols the
 /// request offered. Both `Connection: Upgrade` and a matching `Upgrade` field
 /// are required by RFC 9110 §7.8.
@@ -1066,6 +1138,7 @@ fn response_confirms_upgrade(
   false
 }
 
+///|
 /// Whether a request explicitly offered a protocol upgrade. Both the
 /// `Connection: Upgrade` nomination and a non-empty, valid `Upgrade` field are
 /// required; otherwise a 101 response is unsolicited.
@@ -1074,6 +1147,7 @@ fn request_requests_upgrade(headers : Headers) -> Bool {
   upgrade_protocols(headers).length() > 0
 }
 
+///|
 /// Decode HTTP response from HTTP/1.1 format
 pub fn H1Codec::decode_response(
   self : H1Codec,
@@ -1109,7 +1183,7 @@ pub fn H1Codec::decode_response(
   // reading its response instead of starting a second wait.
   let mut expect_wait_done = false
   let mut informational_count = 0
-  let early_hints : Array[(Int, Headers)] = []
+  let early_hints : Array[(Int32, Headers)] = []
   while true {
     if deferred_pending && !deferred_body_sent && !expect_wait_done {
       expect_wait_done = true
@@ -1121,12 +1195,13 @@ pub fn H1Codec::decode_response(
             // The peer did not answer the expectation in time. Send the body
             // rather than blocking forever; a later 100 is still consumed and
             // must not cause the body to be sent twice.
-            match send_deferred_request_body(
-              self.reader.val.stream,
-              deferred_body_bytes,
-              deferred_trailers,
-              deferred_chunked,
-            ) {
+            match
+              send_deferred_request_body(
+                self.reader.val.stream,
+                deferred_body_bytes,
+                deferred_trailers,
+                deferred_chunked,
+              ) {
               Ok(_) => ()
               Err(err) => return Err(err)
             }
@@ -1144,33 +1219,41 @@ pub fn H1Codec::decode_response(
     // on them (RFC 9110 §8.6 and RFC 9112 §6.1). Rejecting them also avoids
     // accidentally treating framing metadata meant for a later response as
     // part of the interim head.
-    if response_head.status >= 100 && response_head.status < 200 &&
-      (response_head.headers.contains("Content-Length") ||
-        response_head.headers.contains("Transfer-Encoding")) {
-      return Err(ProtocolError("Informational response must not include framing headers"))
+    if response_head.status >= 100 &&
+      response_head.status < 200 &&
+      (
+        response_head.headers.contains("Content-Length") ||
+        response_head.headers.contains("Transfer-Encoding")
+      ) {
+      return Err(
+        ProtocolError("Informational response must not include framing headers"),
+      )
     }
     // Keep interim headers for callers that act on `103 Early Hints`. A 101
     // is the final protocol switch response, not an early hint.
-    if response_head.status >= 100 && response_head.status < 200 &&
+    if response_head.status >= 100 &&
+      response_head.status < 200 &&
       response_head.status != 101 {
       early_hints.push((response_head.status, response_head.headers))
     }
     // A 100 Continue accepts the deferred request content. Other interim
     // responses (such as 103 Early Hints) do not, so the body stays pending.
     if response_head.status == 100 && !deferred_body_sent && deferred_pending {
-      match send_deferred_request_body(
-        self.reader.val.stream,
-        deferred_body_bytes,
-        deferred_trailers,
-        deferred_chunked,
-      ) {
+      match
+        send_deferred_request_body(
+          self.reader.val.stream,
+          deferred_body_bytes,
+          deferred_trailers,
+          deferred_chunked,
+        ) {
         Ok(_) => ()
         Err(err) => return Err(err)
       }
       deferred_body_sent = true
     }
     // Skip interim responses such as 100 Continue; 101 is a final response.
-    if response_head.status >= 100 && response_head.status < 200 &&
+    if response_head.status >= 100 &&
+      response_head.status < 200 &&
       response_head.status != 101 {
       informational_count = informational_count + 1
       if informational_count > 8 {
@@ -1190,22 +1273,35 @@ pub fn H1Codec::decode_response(
     // response, but the connection is closed rather than pooled. A 101 that
     // answers an offer with a different/missing protocol is malformed and
     // must not become a tunnel.
-    let upgrade_tunnel = response_head.status == 101 && request_upgrade &&
-      response_confirms_upgrade(response_head.headers, request_upgrade_protocols)
+    let upgrade_tunnel = response_head.status == 101 &&
+      request_upgrade &&
+      response_confirms_upgrade(
+        response_head.headers,
+        request_upgrade_protocols,
+      )
     if response_head.status == 101 && request_upgrade && !upgrade_tunnel {
       let _ = self.reader.val.stream.close()
-      return Err(ProtocolError("HTTP/1.1 101 response does not confirm the requested upgrade"))
+      return Err(
+        ProtocolError(
+          "HTTP/1.1 101 response does not confirm the requested upgrade",
+        ),
+      )
     }
     // A successful CONNECT response switches to the tunnelled stream. It is
     // close-delimited and must not carry HTTP body framing (RFC 9110 §9.3.6).
     let connect_tunnel = request_connect &&
-      response_head.status >= 200 && response_head.status < 300
+      response_head.status >= 200 &&
+      response_head.status < 300
     if connect_tunnel &&
-      (response_head.headers.contains("Content-Length") ||
-        response_head.headers.contains("Transfer-Encoding")) {
-      return Err(ProtocolError(
-        "Successful CONNECT response must not include framing headers",
-      ))
+      (
+        response_head.headers.contains("Content-Length") ||
+        response_head.headers.contains("Transfer-Encoding")
+      ) {
+      return Err(
+        ProtocolError(
+          "Successful CONNECT response must not include framing headers",
+        ),
+      )
     }
     let trailers = @ref.Ref(Headers::new())
     let response_stream = ResponseStream::{
@@ -1246,8 +1342,10 @@ pub fn H1Codec::decode_response(
       // sees them. Framing validation still matters: returning a response
       // whose stream is already poisoned would hide a protocol error from
       // callers that never read a (non-existent) body.
-      let completed = if is_head || response_head.status == 101 ||
-        response_head.status == 204 || response_head.status == 205 ||
+      let completed = if is_head ||
+        response_head.status == 101 ||
+        response_head.status == 204 ||
+        response_head.status == 205 ||
         response_head.status == 304 {
         response_stream.prepare()
       } else {
@@ -1267,20 +1365,21 @@ pub fn H1Codec::decode_response(
         response_head.headers,
         response_stream,
       )
-        .with_trailers(trailers)
-        .with_early_hints(early_hints)
-        .with_max_body_bytes(
-          if connect_tunnel || upgrade_tunnel {
-            TUNNEL_BODY_LIMIT
-          } else {
-            self.max_body_bytes
-          },
-        ),
+      .with_trailers(trailers)
+      .with_early_hints(early_hints)
+      .with_max_body_bytes(
+        if connect_tunnel || upgrade_tunnel {
+          TUNNEL_BODY_LIMIT
+        } else {
+          self.max_body_bytes
+        },
+      ),
     )
   }
   Err(ProtocolError("Invalid response"))
 }
 
+///|
 enum ResponseBodyMode {
   BodyUnknown
   BodyNone
@@ -1289,31 +1388,34 @@ enum ResponseBodyMode {
   BodyUntilEof
 }
 
+///|
 enum ResponseTransferEncoding {
   TransferEncodingAbsent
   TransferEncodingChunked
   TransferEncodingUntilEof
 }
 
+///|
 enum ChunkReadState {
   ChunkSize
   ChunkData
 }
 
+///|
 /// Response stream for reading HTTP response body
 struct ResponseStream {
   reader : @ref.Ref[StreamReader]
   version : String
   headers : Headers
-  status : Int
+  status : Int32
   head : Bool
   // A successful CONNECT response switches the same byte stream to an opaque
   // tunnel, so the body shim must also forward writes.
   tunnel : Bool
-  mut max_body_bytes : Int
+  mut max_body_bytes : Int32
   mut body_mode : ResponseBodyMode
-  mut remaining : Int
-  mut total_read : Int
+  mut remaining : Int32
+  mut total_read : Int32
   mut chunk_state : ChunkReadState
   mut close_after_body : Bool
   mut prepared : Bool
@@ -1325,6 +1427,7 @@ struct ResponseStream {
   trailers : @ref.Ref[Headers]
 }
 
+///|
 fn ResponseStream::complete(self : ResponseStream, reusable : Bool) -> Unit {
   if self.completed {
     return
@@ -1337,10 +1440,12 @@ fn ResponseStream::complete(self : ResponseStream, reusable : Bool) -> Unit {
   }
 }
 
+///|
 fn ResponseStream::is_released_to_pool(self : ResponseStream) -> Bool {
   self.completed && self.released_to_pool
 }
 
+///|
 /// Whether another read can proceed without blocking. Returning partial body
 /// data as soon as the transport has none ready keeps streaming responses and
 /// CONNECT tunnels responsive instead of waiting for a full 8 KiB buffer.
@@ -1349,7 +1454,8 @@ fn ResponseStream::has_more_input(self : ResponseStream) -> Bool {
   self.reader.val.stream.read_ready()
 }
 
-fn skip_chunk_ext_ows(value : String, start : Int) -> Int {
+///|
+fn skip_chunk_ext_ows(value : String, start : Int32) -> Int32 {
   let mut index = start
   while index < value.length() {
     let ch = value.get_char(index)
@@ -1362,15 +1468,22 @@ fn skip_chunk_ext_ows(value : String, start : Int) -> Int {
   index
 }
 
+///|
 fn is_chunk_quoted_text_char(ch : Char) -> Bool {
-  ch == '\t' || ch == ' ' || ch == '!' || (ch >= '#' && ch <= '[') ||
-  (ch >= ']' && ch <= '~') || ch >= '\u{80}'
+  ch == '\t' ||
+  ch == ' ' ||
+  ch == '!' ||
+  (ch >= '#' && ch <= '[') ||
+  (ch >= ']' && ch <= '~') ||
+  ch >= '\u{80}'
 }
 
+///|
 fn is_chunk_quoted_pair_char(ch : Char) -> Bool {
   ch == '\t' || ch == ' ' || (ch >= '!' && ch <= '~') || ch >= '\u{80}'
 }
 
+///|
 fn valid_chunk_extensions(value : String) -> Bool {
   let length = value.length()
   let mut index = 0
@@ -1468,10 +1581,12 @@ fn valid_chunk_extensions(value : String) -> Bool {
   true
 }
 
-fn read_chunk_size(reader : StreamReader) -> Result[Int, NetError] {
+///|
+fn read_chunk_size(reader : StreamReader) -> Result[Int32, NetError] {
   let line = match read_line(reader) {
     Ok(Some(line)) => line
-    Ok(None) => return Err(NetError::ReadError("unexpected end of chunked body"))
+    Ok(None) =>
+      return Err(NetError::ReadError("unexpected end of chunked body"))
     Err(err) => return Err(err)
   }
   let extension_index = line.find(";")
@@ -1480,7 +1595,8 @@ fn read_chunk_size(reader : StreamReader) -> Result[Int, NetError] {
       let raw = line[0:index].to_owned()
       // BWS is only allowed between the size and the extension. Leading
       // whitespace is not part of chunk-size and must be rejected.
-      if raw.length() == 0 || raw.get_char(0) == Some(' ') ||
+      if raw.length() == 0 ||
+        raw.get_char(0) == Some(' ') ||
         raw.get_char(0) == Some('\t') {
         return Err(NetError::ReadError("invalid chunk size"))
       }
@@ -1500,9 +1616,7 @@ fn read_chunk_size(reader : StreamReader) -> Result[Int, NetError] {
   if !is_hex_digits(size_text) {
     return Err(NetError::ReadError("invalid chunk size"))
   }
-  let size = try {
-    @string.parse_int(size_text[:], base=16)
-  } catch {
+  let size = @string.parse_int(size_text[:], base=16) catch {
     _ => return Err(NetError::ReadError("invalid chunk size"))
   }
   if size < 0 {
@@ -1518,6 +1632,7 @@ fn read_chunk_size(reader : StreamReader) -> Result[Int, NetError] {
   Ok(size)
 }
 
+///|
 fn is_forbidden_trailer_field(name : String) -> Bool {
   match name.to_lower() {
     "content-length"
@@ -1563,6 +1678,7 @@ fn is_forbidden_trailer_field(name : String) -> Bool {
   }
 }
 
+///|
 fn consume_chunk_trailers(
   reader : StreamReader,
   trailers : @ref.Ref[Headers],
@@ -1573,7 +1689,8 @@ fn consume_chunk_trailers(
   while true {
     let trailer = match read_line(reader) {
       Ok(Some(trailer)) => trailer
-      Ok(None) => return Err(NetError::ReadError("unexpected end of chunked trailers"))
+      Ok(None) =>
+        return Err(NetError::ReadError("unexpected end of chunked trailers"))
       Err(err) => return Err(err)
     }
     if trailer.length() == 0 {
@@ -1597,7 +1714,8 @@ fn consume_chunk_trailers(
     }
     let name = trailer[0:colon_idx].to_owned()
     let value = trim_header_ows(trailer[colon_idx + 1:].to_owned())
-    if !valid_header_name(name) || !valid_header_value(value) ||
+    if !valid_header_name(name) ||
+      !valid_header_value(value) ||
       is_forbidden_trailer_field(name) {
       return Err(NetError::ReadError("invalid chunked trailer"))
     }
@@ -1606,6 +1724,7 @@ fn consume_chunk_trailers(
   Ok(())
 }
 
+///|
 fn valid_transfer_coding(value : String) -> Bool {
   let length = value.length()
   let mut index = skip_chunk_ext_ows(value, 0)
@@ -1708,6 +1827,7 @@ fn valid_transfer_coding(value : String) -> Bool {
   true
 }
 
+///|
 fn transfer_coding_name(value : String) -> String {
   // transfer-coding = token *( OWS ";" OWS transfer-parameter ); parameters
   // do not change the coding's identity, so only the name is significant.
@@ -1718,6 +1838,7 @@ fn transfer_coding_name(value : String) -> String {
   }
 }
 
+///|
 fn response_transfer_encoding(
   headers : Headers,
 ) -> Result[ResponseTransferEncoding, NetError] {
@@ -1761,6 +1882,7 @@ fn response_transfer_encoding(
   }
 }
 
+///|
 /// The transfer codings on a response, in the order they were applied. The
 /// chunked coding is included so callers can reason about whether it was the
 /// final coding; `ResponseStream` has already removed its framing by the time
@@ -1798,8 +1920,9 @@ fn response_transfer_codings(
   Ok(codings)
 }
 
-fn response_content_length(headers : Headers) -> Result[Option[Int], NetError] {
-  let mut result : Option[Int] = None
+///|
+fn response_content_length(headers : Headers) -> Result[Int32?, NetError] {
+  let mut result : Int32? = None
   for header in headers.iter() {
     if header.name.to_lower() == "content-length" {
       for part in header.value.split(",") {
@@ -1807,9 +1930,7 @@ fn response_content_length(headers : Headers) -> Result[Option[Int], NetError] {
         if !is_decimal_digits(value) {
           return Err(NetError::ReadError("invalid Content-Length"))
         }
-        let parsed = try {
-          @string.parse_int(value[:])
-        } catch {
+        let parsed = @string.parse_int(value[:]) catch {
           _ => return Err(NetError::ReadError("invalid Content-Length"))
         }
         if parsed < 0 {
@@ -1817,9 +1938,12 @@ fn response_content_length(headers : Headers) -> Result[Option[Int], NetError] {
         }
         match result {
           None => result = Some(parsed)
-          Some(existing) => if existing != parsed {
-            return Err(NetError::ReadError("conflicting Content-Length headers"))
-          }
+          Some(existing) =>
+            if existing != parsed {
+              return Err(
+                NetError::ReadError("conflicting Content-Length headers"),
+              )
+            }
         }
       }
     }
@@ -1827,6 +1951,7 @@ fn response_content_length(headers : Headers) -> Result[Option[Int], NetError] {
   Ok(result)
 }
 
+///|
 fn ResponseStream::fail(self : ResponseStream, err : NetError) -> NetError {
   let _ = self.reader.val.stream.close()
   self.error = Some(err)
@@ -1834,6 +1959,7 @@ fn ResponseStream::fail(self : ResponseStream, err : NetError) -> NetError {
   err
 }
 
+///|
 fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
   if self.prepared {
     return Ok(())
@@ -1842,7 +1968,9 @@ fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
   let close_connection = headers_have_token(self.headers, "Connection", "close")
   let keep_alive = headers_have_token(self.headers, "Connection", "keep-alive")
   let close_by_default = self.version == "HTTP/1.0" && !keep_alive
-  self.close_after_body = self.close_after_body || close_connection || close_by_default
+  self.close_after_body = self.close_after_body ||
+    close_connection ||
+    close_by_default
 
   // Validate framing fields even for responses that cannot carry a body, so a
   // malformed Content-Length/Transfer-Encoding is not silently pooled.
@@ -1897,9 +2025,9 @@ fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
     _ => false
   }
   if invalid_bodyless_framing {
-    return Err(self.fail(NetError::ReadError(
-      "invalid framing for bodyless response",
-    )))
+    return Err(
+      self.fail(NetError::ReadError("invalid framing for bodyless response")),
+    )
   }
   // A 304 has no body, so a transfer coding cannot describe a payload we can
   // consume. If the peer nonetheless sends chunked framing after the head,
@@ -1912,7 +2040,10 @@ fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
     }
   }
 
-  if self.head || self.status == 204 || self.status == 205 || self.status == 304 ||
+  if self.head ||
+    self.status == 204 ||
+    self.status == 205 ||
+    self.status == 304 ||
     (self.status >= 100 && self.status < 200) {
     let reusable = !(self.status == 101 || self.close_after_body) &&
       self.reader.val.pending_offset >= self.reader.val.pending.length() &&
@@ -1953,6 +2084,7 @@ fn ResponseStream::prepare(self : ResponseStream) -> Result[Unit, NetError] {
   Ok(())
 }
 
+///|
 fn ResponseStream::complete_if_empty(
   self : ResponseStream,
 ) -> Result[Unit, NetError] {
@@ -1986,6 +2118,7 @@ fn ResponseStream::complete_if_empty(
   }
 }
 
+///|
 /// Whether a non-reusable response must close the transport now. A direct
 /// `H1Codec` caller owns the stream and may have already supplied the next
 /// response in the same read; keeping the stream open lets its shared reader
@@ -1997,6 +2130,7 @@ fn ResponseStream::close_unless_poolsafe(self : ResponseStream) -> Bool {
   self.close_after_body || self.status == 101 || self.on_complete is Some(_)
 }
 
+///|
 fn ResponseStream::finish(self : ResponseStream) -> Unit {
   let reusable = !self.close_after_body &&
     self.reader.val.pending_offset >= self.reader.val.pending.length() &&
@@ -2011,9 +2145,10 @@ fn ResponseStream::finish(self : ResponseStream) -> Unit {
   }
 }
 
+///|
 pub impl Stream for ResponseStream with fn set_body_limit(
   self : ResponseStream,
-  max_body_bytes : Int,
+  max_body_bytes : Int32,
 ) -> Unit {
   let limit = if max_body_bytes < 0 { 0 } else { max_body_bytes }
   if limit > self.max_body_bytes {
@@ -2021,9 +2156,8 @@ pub impl Stream for ResponseStream with fn set_body_limit(
   }
 }
 
-pub impl Stream for ResponseStream with fn read_ready(
-  self : ResponseStream,
-) -> Bool {
+///|
+pub impl Stream for ResponseStream with fn read_ready(self : ResponseStream) -> Bool {
   if !self.is_open {
     return false
   }
@@ -2057,9 +2191,10 @@ pub impl Stream for ResponseStream with fn read_ready(
   }
 }
 
+///|
 pub impl Stream for ResponseStream with fn wait_readable(
   self : ResponseStream,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Bool, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
@@ -2073,7 +2208,11 @@ pub impl Stream for ResponseStream with fn wait_readable(
   self.reader.val.stream.wait_readable(timeout_ms)
 }
 
-pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buffer) -> Result[Int, NetError] {
+///|
+pub impl Stream for ResponseStream with fn read(
+  self : ResponseStream,
+  buf : Buffer,
+) -> Result[Int32, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -2114,7 +2253,9 @@ pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buf
           Err(err) => return Err(self.fail(err))
         }
         if count == 0 {
-          return Err(self.fail(NetError::ReadError("unexpected end of response body")))
+          return Err(
+            self.fail(NetError::ReadError("unexpected end of response body")),
+          )
         }
         self.remaining = self.remaining - count
         self.total_read = self.total_read + count
@@ -2146,7 +2287,7 @@ pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buf
           break
         }
       }
-      BodyChunked => {
+      BodyChunked =>
         match self.chunk_state {
           ChunkSize => {
             let size = match read_chunk_size(self.reader.val) {
@@ -2162,7 +2303,9 @@ pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buf
               break
             }
             if size > self.max_body_bytes - self.total_read {
-              return Err(self.fail(NetError::ReadError("response body too large")))
+              return Err(
+                self.fail(NetError::ReadError("response body too large")),
+              )
             }
             self.remaining = size
             self.chunk_state = ChunkData
@@ -2177,9 +2320,12 @@ pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buf
                 Ok(_) => ()
                 Err(err) => return Err(self.fail(err))
               }
-              if terminator.length() != 2 || terminator[0] != b'\r' ||
+              if terminator.length() != 2 ||
+                terminator[0] != b'\r' ||
                 terminator[1] != b'\n' {
-                return Err(self.fail(NetError::ReadError("invalid chunk terminator")))
+                return Err(
+                  self.fail(NetError::ReadError("invalid chunk terminator")),
+                )
               }
               self.chunk_state = ChunkSize
               if produced > 0 && !self.has_more_input() {
@@ -2197,7 +2343,9 @@ pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buf
               Err(err) => return Err(self.fail(err))
             }
             if count == 0 {
-              return Err(self.fail(NetError::ReadError("unexpected end of chunked body")))
+              return Err(
+                self.fail(NetError::ReadError("unexpected end of chunked body")),
+              )
             }
             self.remaining = self.remaining - count
             self.total_read = self.total_read + count
@@ -2207,13 +2355,16 @@ pub impl Stream for ResponseStream with fn read(self : ResponseStream, buf : Buf
             }
           }
         }
-      }
     }
   }
   Ok(produced)
 }
 
-pub impl Stream for ResponseStream with fn write(self : ResponseStream, buf : Buffer) -> Result[Int, NetError] {
+///|
+pub impl Stream for ResponseStream with fn write(
+  self : ResponseStream,
+  buf : Buffer,
+) -> Result[Int32, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -2225,7 +2376,11 @@ pub impl Stream for ResponseStream with fn write(self : ResponseStream, buf : Bu
   }
 }
 
-pub impl Stream for ResponseStream with fn flush(self : ResponseStream) -> Result[Unit, NetError] {
+///|
+pub impl Stream for ResponseStream with fn flush(self : ResponseStream) -> Result[
+  Unit,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -2235,7 +2390,11 @@ pub impl Stream for ResponseStream with fn flush(self : ResponseStream) -> Resul
   self.reader.val.stream.flush()
 }
 
-pub impl Stream for ResponseStream with fn close(self : ResponseStream) -> Result[Unit, NetError] {
+///|
+pub impl Stream for ResponseStream with fn close(self : ResponseStream) -> Result[
+  Unit,
+  NetError,
+] {
   if !self.is_open {
     return Ok(())
   }
@@ -2253,7 +2412,11 @@ pub impl Stream for ResponseStream with fn close(self : ResponseStream) -> Resul
   }
 }
 
-pub impl Stream for ResponseStream with fn set_timeout(self : ResponseStream, timeout_ms : Int) -> Result[Unit, NetError] {
+///|
+pub impl Stream for ResponseStream with fn set_timeout(
+  self : ResponseStream,
+  timeout_ms : Int32,
+) -> Result[Unit, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -2263,7 +2426,11 @@ pub impl Stream for ResponseStream with fn set_timeout(self : ResponseStream, ti
   self.reader.val.stream.set_timeout(timeout_ms)
 }
 
-pub impl Stream for ResponseStream with fn peer_addr(self : ResponseStream) -> Result[String, NetError] {
+///|
+pub impl Stream for ResponseStream with fn peer_addr(self : ResponseStream) -> Result[
+  String,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -2273,7 +2440,11 @@ pub impl Stream for ResponseStream with fn peer_addr(self : ResponseStream) -> R
   self.reader.val.stream.peer_addr()
 }
 
-pub impl Stream for ResponseStream with fn local_addr(self : ResponseStream) -> Result[String, NetError] {
+///|
+pub impl Stream for ResponseStream with fn local_addr(self : ResponseStream) -> Result[
+  String,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -2283,6 +2454,7 @@ pub impl Stream for ResponseStream with fn local_addr(self : ResponseStream) -> 
   self.reader.val.stream.local_addr()
 }
 
+///|
 /// Encode one request and decode its response, keeping the codec's buffered
 /// reader state for a later exchange on the same stream.
 pub fn H1Codec::request(
@@ -2290,13 +2462,15 @@ pub fn H1Codec::request(
   request : Request,
   absolute_form? : Bool,
 ) -> Result[Response, HttpError] {
-  match self.encode_request(request, absolute_form=absolute_form.unwrap_or(false)) {
+  match
+    self.encode_request(request, absolute_form=absolute_form.unwrap_or(false)) {
     Ok(_) => ()
     Err(err) => return Err(err)
   }
   self.decode_response(head=canonical_http_method(request.verb) == HEAD)
 }
 
+///|
 /// Run HTTP/1.1 exchanges on an already established stream. The codec keeps
 /// bytes read ahead from one response available to the next one, so callers
 /// with a persistent transport can issue sequential requests without losing
@@ -2312,6 +2486,7 @@ pub impl HttpClient for H1Codec with fn request(
   self.decode_response(head=canonical_http_method(request.verb) == HEAD)
 }
 
+///|
 /// Encode one HTTP/1.1 request and decode its response on an already
 /// established stream. This is the HTTP/1.1 counterpart to `h2_request` for
 /// callers that provide their own `Stream` (for example a custom transport or
@@ -2324,11 +2499,12 @@ pub fn h1_request(
   h1_request_with_limit(stream, request, DEFAULT_MAX_BODY_BYTES, absolute_form?)
 }
 
+///|
 /// Like `h1_request`, but cap the response body at `max_body_bytes`.
 pub fn h1_request_with_limit(
   stream : &Stream,
   request : Request,
-  max_body_bytes : Int,
+  max_body_bytes : Int32,
   absolute_form? : Bool,
 ) -> Result[Response, HttpError] {
   let codec = H1Codec::new_with_limit(stream, max_body_bytes)

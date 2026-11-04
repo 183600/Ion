@@ -18,7 +18,8 @@ test "http1 rejects asterisk-form outside OPTIONS" {
   let request = Request::new(GET, url)
   match codec.encode_request(request) {
     Ok(_) => fail("asterisk-form GET was accepted")
-    Err(err) => assert_eq(err, InvalidUrl("Asterisk-form is only valid for OPTIONS"))
+    Err(err) =>
+      assert_eq(err, InvalidUrl("Asterisk-form is only valid for OPTIONS"))
   }
   assert_eq(stream.output.to_bytes().length(), 0)
 }
@@ -38,6 +39,7 @@ test "http2 uses the asterisk-form path for OPTIONS" {
   let rejected = Url::parse("https://example.com").unwrap().with_path("*")
   match h2_request_headers(Request::new(GET, rejected)) {
     Ok(_) => fail("asterisk-form GET was accepted")
-    Err(err) => assert_eq(err, InvalidUrl("Asterisk-form is only valid for OPTIONS"))
+    Err(err) =>
+      assert_eq(err, InvalidUrl("Asterisk-form is only valid for OPTIONS"))
   }
 }

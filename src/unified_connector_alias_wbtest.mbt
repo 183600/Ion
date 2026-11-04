@@ -1,7 +1,7 @@
 ///|
 test "UnifiedConnector is an alias for the pooling Connector" {
   let stream = regression_mock_stream("", 0, 0)
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector : UnifiedConnector = UnifiedConnector::new(
     dialer,
     MockTlsProvider::new("test"),

@@ -1,3 +1,4 @@
+///|
 /// DNS resolver using the UDP transport (RFC 1035).
 ///
 /// This module provides a DNS client that can resolve A (IPv4) and AAAA (IPv6)
@@ -6,13 +7,21 @@
 ///
 /// The resolver supports both blocking and non-blocking operation, configurable
 /// timeouts, and retry logic with exponential backoff.
+const DNS_PORT : Int32 = 53
 
-const DNS_PORT : Int = 53
-const DNS_MAX_MESSAGE_SIZE : Int = 512
-const DNS_DEFAULT_TIMEOUT_MS : Int = 5000
-const DNS_DEFAULT_RETRIES : Int = 3
-const DNS_HEADER_SIZE : Int = 12
+///|
+const DNS_MAX_MESSAGE_SIZE : Int32 = 512
 
+///|
+const DNS_DEFAULT_TIMEOUT_MS : Int32 = 5000
+
+///|
+const DNS_DEFAULT_RETRIES : Int32 = 3
+
+///|
+const DNS_HEADER_SIZE : Int32 = 12
+
+///|
 #derive(Eq, Debug)
 pub enum DnsError {
   TransportError(NetError)
@@ -26,38 +35,43 @@ pub enum DnsError {
   MalformedResponse
 }
 
+///|
 #derive(Eq, Debug)
 pub enum DnsRecordType {
   A
   AAAA
 }
 
-pub fn DnsRecordType::code(typ : DnsRecordType) -> Int {
+///|
+pub fn DnsRecordType::code(typ : DnsRecordType) -> Int32 {
   match typ {
     A => 1
     AAAA => 28
   }
 }
 
+///|
 #derive(Eq, Debug)
 pub struct DnsRecord {
   name : String
   typ : DnsRecordType
-  class : Int
-  ttl : Int
+  class : Int32
+  ttl : Int32
   data : Bytes
 }
 
+///|
 #derive(Eq, Debug)
 pub struct DnsResponse {
-  id : Int
-  response_code : Int
+  id : Int32
+  response_code : Int32
   questions : List[DnsRecord]
   answers : List[DnsRecord]
   authorities : List[DnsRecord]
   additionals : List[DnsRecord]
 }
 
+///|
 fn dns_name_encode(name : String) -> Result[Bytes, DnsError] {
   if name.length() > 255 {
     return Err(InvalidName)
@@ -75,12 +89,16 @@ fn dns_name_encode(name : String) -> Result[Bytes, DnsError] {
   Ok(output.to_bytes())
 }
 
-fn dns_name_decode(data : Bytes, offset : Int) -> Result[(String, Int), DnsError] {
+///|
+fn dns_name_decode(
+  data : Bytes,
+  offset : Int32,
+) -> Result[(String, Int32), DnsError] {
   let mut result = ""
   let mut pos = offset
   let mut jumped = false
   let mut original_pos = offset
-  let visited : Array[Int] = []
+  let visited : Array[Int32] = []
   while true {
     if pos >= data.length() {
       return Err(MalformedResponse)
@@ -120,7 +138,11 @@ fn dns_name_decode(data : Bytes, offset : Int) -> Result[(String, Int), DnsError
   Ok((result, final_pos))
 }
 
-fn dns_build_question(name : String, typ : DnsRecordType) -> Result[Bytes, DnsError] {
+///|
+fn dns_build_question(
+  name : String,
+  typ : DnsRecordType,
+) -> Result[Bytes, DnsError] {
   let encoded = match dns_name_encode(name) {
     Ok(e) => e
     Err(err) => return Err(err)
@@ -135,7 +157,11 @@ fn dns_build_question(name : String, typ : DnsRecordType) -> Result[Bytes, DnsEr
   Ok(output.to_bytes())
 }
 
-fn dns_parse_record(data : Bytes, offset : Int) -> Result[(DnsRecord, Int), DnsError] {
+///|
+fn dns_parse_record(
+  data : Bytes,
+  offset : Int32,
+) -> Result[(DnsRecord, Int32), DnsError] {
   let (name, pos) = match dns_name_decode(data, offset) {
     Ok(r) => r
     Err(err) => return Err(err)
@@ -154,16 +180,19 @@ fn dns_parse_record(data : Bytes, offset : Int) -> Result[(DnsRecord, Int), DnsE
   if rdata_start + rdlength > data.length() {
     return Err(MalformedResponse)
   }
-  let rdata = data.exact_view(start=rdata_start, end=rdata_start + rdlength).to_owned()
+  let rdata = data
+    .exact_view(start=rdata_start, end=rdata_start + rdlength)
+    .to_owned()
   let typ = match typ_code {
     1 => A
     28 => AAAA
     _ => return Err(NotImplemented)
   }
-  let record = DnsRecord::{ name, typ, class, ttl, data: rdata }
+  let record = DnsRecord::{ name, typ, class, ttl, data: rdata, }
   Ok((record, rdata_start + rdlength))
 }
 
+///|
 fn dns_parse_response(data : Bytes) -> Result[DnsResponse, DnsError] {
   if data.length() < DNS_HEADER_SIZE {
     return Err(MalformedResponse)
@@ -180,14 +209,16 @@ fn dns_parse_response(data : Bytes) -> Result[DnsResponse, DnsError] {
     return Err(MalformedResponse)
   }
   if rcode != 0 {
-    return Err(match rcode {
-      1 => ServerFailure
-      2 => ServerFailure
-      3 => NameError
-      4 => NotImplemented
-      5 => Refused
-      _ => ServerFailure
-    })
+    return Err(
+      match rcode {
+        1 => ServerFailure
+        2 => ServerFailure
+        3 => NameError
+        4 => NotImplemented
+        5 => Refused
+        _ => ServerFailure
+      },
+    )
   }
   let mut pos = DNS_HEADER_SIZE
   let questions : Array[DnsRecord] = []
@@ -207,7 +238,7 @@ fn dns_parse_response(data : Bytes) -> Result[DnsResponse, DnsError] {
       28 => AAAA
       _ => return Err(NotImplemented)
     }
-    questions.push(DnsRecord::{ name, typ, class, ttl: 0, data: b"" })
+    questions.push(DnsRecord::{ name, typ, class, ttl: 0, data: b"", })
     pos = next + 4
     i = i + 1
   }
@@ -254,45 +285,85 @@ fn dns_parse_response(data : Bytes) -> Result[DnsResponse, DnsError] {
   })
 }
 
+///|
 pub struct DnsResolver {
   transport : &Datagram
   server : String
-  port : Int
-  timeout_ms : Int
-  retries : Int
+  port : Int32
+  timeout_ms : Int32
+  retries : Int32
 }
 
+///|
 pub fn DnsResolver::new(transport : &Datagram, server : String) -> DnsResolver {
-  DnsResolver::with_options(transport, server, DNS_DEFAULT_TIMEOUT_MS, DNS_DEFAULT_RETRIES)
+  DnsResolver::with_options(
+    transport,
+    server,
+    DNS_DEFAULT_TIMEOUT_MS,
+    DNS_DEFAULT_RETRIES,
+  )
 }
 
+///|
 pub fn DnsResolver::with_options(
   transport : &Datagram,
   server : String,
-  timeout_ms : Int,
-  retries : Int,
+  timeout_ms : Int32,
+  retries : Int32,
 ) -> DnsResolver {
   DnsResolver::{
     transport,
     server,
     port: DNS_PORT,
-    timeout_ms: if timeout_ms < 0 { 0 } else { timeout_ms },
-    retries: if retries < 0 { 0 } else { retries },
+    timeout_ms: if timeout_ms < 0 {
+      0
+    } else {
+      timeout_ms
+    },
+    retries: if retries < 0 {
+      0
+    } else {
+      retries
+    },
   }
 }
 
-pub fn DnsResolver::with_port(self : DnsResolver, port : Int) -> DnsResolver {
-  DnsResolver::{ ..self, port: if port < 1 || port > 65535 { DNS_PORT } else { port } }
+///|
+pub fn DnsResolver::with_port(self : DnsResolver, port : Int32) -> DnsResolver {
+  DnsResolver::{
+    ..self,
+    port: if port < 1 || port > 65535 {
+      DNS_PORT
+    } else {
+      port
+    },
+  }
 }
 
-pub fn DnsResolver::with_timeout(self : DnsResolver, timeout_ms : Int) -> DnsResolver {
-  DnsResolver::{ ..self, timeout_ms: if timeout_ms < 0 { 0 } else { timeout_ms } }
+///|
+pub fn DnsResolver::with_timeout(
+  self : DnsResolver,
+  timeout_ms : Int32,
+) -> DnsResolver {
+  DnsResolver::{
+    ..self,
+    timeout_ms: if timeout_ms < 0 {
+      0
+    } else {
+      timeout_ms
+    },
+  }
 }
 
-pub fn DnsResolver::with_retries(self : DnsResolver, retries : Int) -> DnsResolver {
-  DnsResolver::{ ..self, retries: if retries < 0 { 0 } else { retries } }
+///|
+pub fn DnsResolver::with_retries(
+  self : DnsResolver,
+  retries : Int32,
+) -> DnsResolver {
+  DnsResolver::{ ..self, retries: if retries < 0 { 0 } else { retries }, }
 }
 
+///|
 fn DnsResolver::query_one(
   self : DnsResolver,
   name : String,
@@ -332,7 +403,11 @@ fn DnsResolver::query_one(
       Ok(_) => ()
       Err(err) => return Err(TransportError(err))
     }
-    let send_result = self.transport.send_to(query_bytes, self.server, self.port)
+    let send_result = self.transport.send_to(
+      query_bytes,
+      self.server,
+      self.port,
+    )
     if send_result is Err(err) {
       return Err(TransportError(err))
     }
@@ -349,7 +424,9 @@ fn DnsResolver::query_one(
           continue
         }
         let response_data = buffer.to_bytes()
-        let response_bytes = response_data.exact_view(start=0, end=packet.length).to_owned()
+        let response_bytes = response_data
+          .exact_view(start=0, end=packet.length)
+          .to_owned()
         match dns_parse_response(response_bytes) {
           Ok(response) => {
             if response.id != id {
@@ -387,23 +464,34 @@ fn DnsResolver::query_one(
   Err(Timeout)
 }
 
-pub fn DnsResolver::resolve_a(self : DnsResolver, name : String) -> Result[List[String], DnsError] {
+///|
+pub fn DnsResolver::resolve_a(
+  self : DnsResolver,
+  name : String,
+) -> Result[List[String], DnsError] {
   let results = match self.query_one(name, A) {
     Ok(r) => r
     Err(err) => return Err(err)
   }
   let addresses : Array[String] = []
   for data in results {
-    let ip = (data[0].to_int().to_string() + "." +
-      data[1].to_int().to_string() + "." +
-      data[2].to_int().to_string() + "." +
-      data[3].to_int().to_string())
+    let ip = data[0].to_int().to_string() +
+      "." +
+      data[1].to_int().to_string() +
+      "." +
+      data[2].to_int().to_string() +
+      "." +
+      data[3].to_int().to_string()
     addresses.push(ip)
   }
   Ok(@list.List(addresses))
 }
 
-pub fn DnsResolver::resolve_aaaa(self : DnsResolver, name : String) -> Result[List[String], DnsError] {
+///|
+pub fn DnsResolver::resolve_aaaa(
+  self : DnsResolver,
+  name : String,
+) -> Result[List[String], DnsError] {
   let results = match self.query_one(name, AAAA) {
     Ok(r) => r
     Err(err) => return Err(err)
@@ -422,7 +510,11 @@ pub fn DnsResolver::resolve_aaaa(self : DnsResolver, name : String) -> Result[Li
   Ok(@list.List(addresses))
 }
 
-pub fn DnsResolver::resolve(self : DnsResolver, name : String) -> Result[List[String], DnsError] {
+///|
+pub fn DnsResolver::resolve(
+  self : DnsResolver,
+  name : String,
+) -> Result[List[String], DnsError] {
   let a_results = match self.resolve_a(name) {
     Ok(r) => r
     Err(_) => @list.List([])

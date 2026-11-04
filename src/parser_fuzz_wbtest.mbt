@@ -13,14 +13,15 @@ test "fuzz: random response and URL inputs never panic" {
     let builder = Buffer(size_hint=length)
     for _ in 0..<length {
       seed = fuzz_next(seed)
-      let index = (seed % (alphabet.length()).to_uint64()).to_int()
+      let index = (seed % alphabet.length().to_uint64()).to_int()
       builder.write_byte(alphabet[index].to_uint().to_byte())
     }
     let raw = @utf8.decode_lossy(builder.to_bytes()[:])
     let _ = Url::parse(raw)
     let stream = regression_mock_stream(raw, 0, 0)
     match H1Codec::new(stream).decode_response() {
-      Ok(response) => assert_true(response.status >= 100 && response.status <= 599)
+      Ok(response) =>
+        assert_true(response.status >= 100 && response.status <= 599)
       Err(_) => ()
     }
   }
@@ -40,16 +41,16 @@ test "fuzz: mutated valid responses never panic" {
     for _ in 0..<edits {
       seed = fuzz_next(seed)
       let mode = (seed % 3UL).to_int()
-      let position = ((seed / 7UL) % (chars.length()).to_uint64()).to_int()
+      let position = (seed / 7UL % chars.length().to_uint64()).to_int()
       if mode == 0 && chars.length() > 1 {
         let _ = chars.remove(position)
       } else if mode == 1 {
         seed = fuzz_next(seed)
-        let index = (seed % (mutation_chars.length()).to_uint64()).to_int()
+        let index = (seed % mutation_chars.length().to_uint64()).to_int()
         let _ = chars.insert(position, mutation_chars[index])
       } else if position < chars.length() {
         seed = fuzz_next(seed)
-        let index = (seed % (mutation_chars.length()).to_uint64()).to_int()
+        let index = (seed % mutation_chars.length().to_uint64()).to_int()
         chars[position] = mutation_chars[index]
       }
     }

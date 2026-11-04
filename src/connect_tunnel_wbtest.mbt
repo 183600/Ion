@@ -1,10 +1,11 @@
+///|
 /// Regression tests for proxy CONNECT tunnel handling.
-
 test "CONNECT authority brackets IPvFuture hosts" {
   let url = Url::parse("https://[v1.foo]:8443/").unwrap()
   assert_eq(connect_authority(url), "[v1.foo]:8443")
 }
 
+///|
 test "connect response keeps bytes read past the head" {
   let head = "HTTP/1.1 200 Connection Established\r\n\r\n"
   let tunnel = "\u{16}\u{3}\u{1}\u{0}\u{5}hello"
@@ -13,6 +14,7 @@ test "connect response keeps bytes read past the head" {
   assert_eq(@utf8.decode_lossy(leftover[:]), tunnel)
 }
 
+///|
 test "CONNECT response parsing skips informational responses" {
   let raw = "HTTP/1.1 100 Continue\r\n\r\n" +
     "HTTP/1.1 103 Early Hints\r\nLink: </style.css>\r\n\r\n" +
@@ -22,6 +24,7 @@ test "CONNECT response parsing skips informational responses" {
   assert_eq(@utf8.decode_lossy(leftover[:]), "TUNNEL")
 }
 
+///|
 test "CONNECT response parsing skips informational responses split across reads" {
   let raw = "HTTP/1.1 100 Continue\r\n\r\n" +
     "HTTP/1.1 200 Connection Established\r\n\r\n"
@@ -29,20 +32,20 @@ test "CONNECT response parsing skips informational responses split across reads"
   assert_true(read_connect_response(stream) is Ok(_))
 }
 
+///|
 test "CONNECT response parsing rejects malformed header lines" {
-  for raw in [
-    "HTTP/1.1 200 Connection Established\r\nBadHeader\r\n\r\n",
-    "HTTP/1.1 200 Connection Established\r\n Folded: x\r\n\r\n",
-    "HTTP/1.1 200 Connection Established\r\nBad Name: x\r\n\r\n",
-    "HTTP/1.1 200 Connection Established\r\n: x\r\n\r\n",
-    "HTTP/1.1 200 Connection Established\r\nX-Test: a\rb\r\n\r\n",
-    "HTTP/1.1 200 Conn\u{1}ection Established\r\n\r\n",
-  ] {
+  for
+    raw in [
+      "HTTP/1.1 200 Connection Established\r\nBadHeader\r\n\r\n", "HTTP/1.1 200 Connection Established\r\n Folded: x\r\n\r\n",
+      "HTTP/1.1 200 Connection Established\r\nBad Name: x\r\n\r\n", "HTTP/1.1 200 Connection Established\r\n: x\r\n\r\n",
+      "HTTP/1.1 200 Connection Established\r\nX-Test: a\rb\r\n\r\n", "HTTP/1.1 200 Conn\u{1}ection Established\r\n\r\n",
+    ] {
     let stream = regression_mock_stream(raw, 0, 0)
     assert_true(read_connect_response(stream) is Err(ProtocolError(_)))
   }
 }
 
+///|
 test "CONNECT response parsing rejects framing headers on informational responses" {
   for header in ["Content-Length: 0", "Transfer-Encoding: chunked"] {
     let raw = "HTTP/1.1 100 Continue\r\n" +
@@ -53,6 +56,7 @@ test "CONNECT response parsing rejects framing headers on informational response
   }
 }
 
+///|
 test "prefix stream replays leftover bytes before the underlying stream" {
   let underlying = regression_mock_stream("REST", 0, 0)
   let stream = PrefixStream::new(@utf8.encode("TUNNELDATA"), underlying)
@@ -64,6 +68,7 @@ test "prefix stream replays leftover bytes before the underlying stream" {
   assert_eq(@utf8.decode_lossy(second.to_bytes()[:]), "REST")
 }
 
+///|
 test "prefix stream with empty prefix delegates directly" {
   let underlying = regression_mock_stream("BODY", 0, 0)
   let stream = PrefixStream::new(b"", underlying)
@@ -72,9 +77,10 @@ test "prefix stream with empty prefix delegates directly" {
   assert_eq(@utf8.decode_lossy(buf.to_bytes()[:]), "BODY")
 }
 
+///|
 test "connector preserves bracketed IPvFuture literals when dialing" {
   let stream = regression_mock_stream("", 0, 0)
-  let dialer = RegressionProxyDialer::{ stream, host: "", port: 0 }
+  let dialer = RegressionProxyDialer::{ stream, host: "", port: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let _ = connector.connect(Url::parse("http://[v1.foo]/").unwrap()).unwrap()
   assert_eq(dialer.host, "[v1.foo]")
@@ -89,7 +95,8 @@ test "CONNECT response parsing rejects framing headers on successful responses" 
       "\r\n\r\nTUNNEL"
     let stream = regression_mock_stream(raw, 0, 0)
     match read_connect_response(stream) {
-      Ok(_) => fail("successful CONNECT response with framing headers was accepted")
+      Ok(_) =>
+        fail("successful CONNECT response with framing headers was accepted")
       Err(ProtocolError(message)) =>
         assert_true(message.contains("CONNECT response"))
       Err(_) => fail("unexpected CONNECT response error")

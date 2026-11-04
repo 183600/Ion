@@ -30,7 +30,10 @@ test "with_query_params encodes components and keeps the fragment" {
   assert_eq(updated.query, "q=a+b&sym=%26%3D%2B")
   assert_eq(updated.path, "/path")
   assert_eq(updated.fragment, "frag")
-  assert_eq(updated.to_string(), "http://example.com/path?q=a+b&sym=%26%3D%2B#frag")
+  assert_eq(
+    updated.to_string(),
+    "http://example.com/path?q=a+b&sym=%26%3D%2B#frag",
+  )
   assert_eq(updated.query_params(), [("q", "a b"), ("sym", "&=+")])
 }
 
@@ -54,7 +57,10 @@ test "without_query_param removes every duplicate" {
   assert_eq(updated.fragment, "f")
   assert_eq(updated.to_string(), "http://example.com/?b=%2F#f")
   assert_eq(updated.without_query_param("missing").query, "b=%2F")
-  assert_eq(Url::parse("http://example.com/?a=1").unwrap().without_query_param("a").query, "")
+  assert_eq(
+    Url::parse("http://example.com/?a=1").unwrap().without_query_param("a").query,
+    "",
+  )
 }
 
 ///|
@@ -67,7 +73,8 @@ test "with_query_params with no parameters clears the query" {
 
 ///|
 test "query helpers leave malformed escapes readable" {
-  let url = Url::parse("http://example.com/").unwrap()
+  let url = Url::parse("http://example.com/")
+    .unwrap()
     .with_query("bad=%zz&ok=%41")
   assert_eq(url.query_param("bad"), Some("%zz"))
   assert_eq(url.query_param("ok"), Some("A"))

@@ -2,9 +2,10 @@
 test "total connection cap reuses an idle connection" {
   let stream = regression_mock_stream("", 1, 0)
   let streams : Array[&Stream] = [stream]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
-  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-    .with_max_connections(1)
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_max_connections(
+    1,
+  )
   let first = Url::parse("http://first.example/").unwrap()
   let second = Url::parse("http://first.example/other").unwrap()
   let _ = connector.connect(first).unwrap()
@@ -19,9 +20,10 @@ test "total connection cap retires idle sockets for a new origin" {
   let first = regression_mock_stream("", 1, 0)
   let second = regression_mock_stream("", 1, 0)
   let streams : Array[&Stream] = [first, second]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
-  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-    .with_max_connections(1)
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_max_connections(
+    1,
+  )
   let first_url = Url::parse("http://first.example/").unwrap()
   let second_url = Url::parse("http://second.example/").unwrap()
   let _ = connector.connect(first_url).unwrap()
@@ -37,9 +39,10 @@ test "total connection cap refuses when every connection is active" {
   let first = regression_mock_stream("", 1, 0)
   let second = regression_mock_stream("", 1, 0)
   let streams : Array[&Stream] = [first, second]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
-  let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-    .with_max_connections(1)
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
+  let connector = Connector::new(dialer, MockTlsProvider::new("test")).with_max_connections(
+    1,
+  )
   let first_url = Url::parse("http://first.example/").unwrap()
   let second_url = Url::parse("http://second.example/").unwrap()
   let (_stream, lease) = connector.checkout(first_url).unwrap()
@@ -60,7 +63,7 @@ test "lowering the total connection cap evicts idle sockets" {
   let first = regression_mock_stream("", 1, 0)
   let second = regression_mock_stream("", 1, 0)
   let streams : Array[&Stream] = [first, second]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
   let first_url = Url::parse("http://first.example/").unwrap()
   let second_url = Url::parse("http://second.example/").unwrap()
@@ -77,7 +80,7 @@ test "lowering the total connection cap evicts idle sockets" {
 test "client total connection cap builder owns an independent pool" {
   let stream = regression_mock_stream("", 1, 0)
   let streams : Array[&Stream] = [stream]
-  let dialer = RegressionQueueDialer::{ streams, index: 0 }
+  let dialer = RegressionQueueDialer::{ streams, index: 0, }
   let client = UnifiedClient::{
     connector: Connector::new(dialer, MockTlsProvider::new("test")),
     options: ClientOptions::new(),

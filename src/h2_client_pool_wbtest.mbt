@@ -24,7 +24,7 @@ test "http2 header-list rejection preserves the pooled session" {
   ])
   let stream = h2_frame_mock_stream(input, 0)
   let dialer = RegressionMockDialer::{ stream, count: 0, }
-  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2") }
+  let provider = H2NegotiatingTlsProvider::{ protocol: Some("h2"), }
   let client = UnifiedClient::with_transport(
     dialer,
     provider,
@@ -37,8 +37,9 @@ test "http2 header-list rejection preserves the pooled session" {
   while oversized_value.length() < 200 {
     oversized_value = oversized_value + "a"
   }
-  let oversized = Request::new(GET, Url::parse(url).unwrap())
-    .with_header("x-oversized", oversized_value)
+  let oversized = Request::new(GET, Url::parse(url).unwrap()).with_header(
+    "x-oversized", oversized_value,
+  )
   match client.request(oversized) {
     Ok(_) => fail("oversized HTTP/2 request header list was accepted")
     Err(err) =>

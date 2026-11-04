@@ -1,6 +1,6 @@
+///|
 /// SOCKS5 proxy support: URL parsing, handshake, authentication, and routing.
-
-fn socks5_test_stream(input : Bytes, max_read : Int) -> RegressionMockStream {
+fn socks5_test_stream(input : Bytes, max_read : Int32) -> RegressionMockStream {
   RegressionMockStream::{
     input,
     offset: 0,
@@ -12,7 +12,8 @@ fn socks5_test_stream(input : Bytes, max_read : Int) -> RegressionMockStream {
   }
 }
 
-fn socks5_test_bytes(values : Array[Int]) -> Bytes {
+///|
+fn socks5_test_bytes(values : Array[Int32]) -> Bytes {
   let output = Buffer(size_hint=values.length())
   for value in values {
     output.write_byte(value.to_byte())
@@ -20,7 +21,8 @@ fn socks5_test_bytes(values : Array[Int]) -> Bytes {
   output.to_bytes()
 }
 
-fn socks5_expected_request(host : String, port : Int) -> Bytes {
+///|
+fn socks5_expected_request(host : String, port : Int32) -> Bytes {
   let output = Buffer(size_hint=host.length() + 8)
   output.write_byte(5)
   output.write_byte(1)
@@ -34,6 +36,7 @@ fn socks5_expected_request(host : String, port : Int) -> Bytes {
   output.to_bytes()
 }
 
+///|
 test "SOCKS5 URL parsing applies the default port and decodes credentials" {
   let proxy = Proxy::new_socks5("socks5://user:pa%3Ass@proxy.example").unwrap()
   assert_true(proxy.is_socks5())
@@ -46,7 +49,10 @@ test "SOCKS5 URL parsing applies the default port and decodes credentials" {
   let explicit = Proxy::new_socks5("socks5h://[2001:db8::1]:1081").unwrap()
   assert_eq(explicit.authority(), "[2001:db8::1]:1081")
   assert_true(Proxy::new_socks5("http://proxy.example") is Err(_))
-  assert_eq(Proxy::new_socks5("socks5://proxy.example:").unwrap().authority(), "proxy.example:1080")
+  assert_eq(
+    Proxy::new_socks5("socks5://proxy.example:").unwrap().authority(),
+    "proxy.example:1080",
+  )
   assert_true(Proxy::new_socks5("socks5://proxy.example/path") is Err(_))
   assert_true(Proxy::new_socks5("socks5://proxy.example?x") is Err(_))
   assert_true(Proxy::new("socks5://proxy.example:1080") is Err(_))
@@ -55,39 +61,34 @@ test "SOCKS5 URL parsing applies the default port and decodes credentials" {
   assert_true(Proxy::parse("proxy.example:3128") is Ok(_))
 }
 
+///|
 test "SOCKS5 credentials must fit the one-byte length fields" {
-  assert_true(Proxy::new_socks5("socks5://user@proxy.example") is Err(InvalidUrl(_)))
   assert_true(
-    Proxy::new_socks5_with_auth("proxy.example", 1080, "", "pass") is
-    Err(InvalidUrl(_)),
+    Proxy::new_socks5("socks5://user@proxy.example") is Err(InvalidUrl(_)),
   )
   assert_true(
-    Proxy::new_socks5_with_auth("proxy.example", 1080, "user", "") is
-    Err(InvalidUrl(_)),
+    Proxy::new_socks5_with_auth("proxy.example", 1080, "", "pass")
+    is Err(InvalidUrl(_)),
+  )
+  assert_true(
+    Proxy::new_socks5_with_auth("proxy.example", 1080, "user", "")
+    is Err(InvalidUrl(_)),
   )
   let too_long = "a".repeat(256)
   assert_true(
-    Proxy::new_socks5_with_auth("proxy.example", 1080, too_long, "pass") is
-    Err(InvalidUrl(_)),
+    Proxy::new_socks5_with_auth("proxy.example", 1080, too_long, "pass")
+    is Err(InvalidUrl(_)),
   )
   assert_true(
     Proxy::new_socks5_with_auth("proxy.example", 1080, "user", "pass") is Ok(_),
   )
 }
 
+///|
 test "SOCKS5 no-auth handshake sends the target and returns early bytes" {
-  let server = socks5_test_bytes([
-    5, 0,
-    5, 0, 0, 1, 127, 0, 0, 1, 0x1f, 0x90,
-  ])
+  let server = socks5_test_bytes([5, 0, 5, 0, 0, 1, 127, 0, 0, 1, 0x1f, 0x90])
   let stream = socks5_test_stream(server, 0)
-  let leftover = socks5_connect(
-    stream,
-    "example.com",
-    80,
-    false,
-    None,
-  ).unwrap()
+  let leftover = socks5_connect(stream, "example.com", 80, false, None).unwrap()
   assert_eq(leftover, b"")
   let expected = Buffer(size_hint=32)
   expected.write_bytes(socks5_test_bytes([5, 1, 0]))
@@ -95,6 +96,7 @@ test "SOCKS5 no-auth handshake sends the target and returns early bytes" {
   assert_eq(stream.output.to_bytes(), expected.to_bytes())
 }
 
+///|
 test "SOCKS5 handshake preserves bytes read past the reply" {
   let server = Buffer(size_hint=32)
   server.write_bytes(socks5_test_bytes([5, 0, 5, 0, 0, 1, 127, 0, 0, 1, 0, 80]))
@@ -104,6 +106,7 @@ test "SOCKS5 handshake preserves bytes read past the reply" {
   assert_eq(leftover, b"HTTP/1.1 200 OK\r\n\r\n")
 }
 
+///|
 test "SOCKS5 username/password authentication is sent when selected" {
   let server = Buffer(size_hint=32)
   server.write_bytes(socks5_test_bytes([5, 2, 1, 0]))
@@ -128,6 +131,7 @@ test "SOCKS5 username/password authentication is sent when selected" {
   assert_eq(stream.output.to_bytes(), expected.to_bytes())
 }
 
+///|
 test "SOCKS5 rejects a username/password request when no credentials exist" {
   let stream = socks5_test_stream(socks5_test_bytes([5, 2]), 0)
   match socks5_connect(stream, "example.com", 80, false, None) {
@@ -136,31 +140,31 @@ test "SOCKS5 rejects a username/password request when no credentials exist" {
   }
 }
 
+///|
 test "SOCKS5 rejects all-unsupported authentication methods" {
   let stream = socks5_test_stream(socks5_test_bytes([5, 0xff]), 0)
   match socks5_connect(stream, "example.com", 80, false, None) {
-    Err(ProtocolError(message)) => assert_true(message.contains("authentication"))
+    Err(ProtocolError(message)) =>
+      assert_true(message.contains("authentication"))
     _ => abort("expected SOCKS5 method rejection")
   }
 }
 
+///|
 test "SOCKS5 authentication failure is reported without leaking the reply" {
   let server = Buffer(size_hint=16)
   server.write_bytes(socks5_test_bytes([5, 2]))
   server.write_bytes(socks5_test_bytes([1, 1]))
   let stream = socks5_test_stream(server.to_bytes(), 0)
-  match socks5_connect(
-    stream,
-    "example.com",
-    80,
-    false,
-    Some((b"user", b"pass")),
-  ) {
-    Err(ProtocolError(message)) => assert_true(message.contains("authentication failed"))
+  match
+    socks5_connect(stream, "example.com", 80, false, Some((b"user", b"pass"))) {
+    Err(ProtocolError(message)) =>
+      assert_true(message.contains("authentication failed"))
     _ => abort("expected SOCKS5 authentication failure")
   }
 }
 
+///|
 test "SOCKS5 reply codes map to connection errors" {
   let stream = socks5_test_stream(
     socks5_test_bytes([5, 0, 5, 5, 0, 1, 0, 0, 0, 0, 0, 0]),
@@ -181,23 +185,26 @@ test "SOCKS5 reply codes map to connection errors" {
   }
 }
 
+///|
 test "SOCKS5 encodes IPv4 targets as binary addresses" {
-  let server = socks5_test_bytes([5, 0, 5, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+  let server = socks5_test_bytes([
+    5, 0, 5, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ])
   let stream = socks5_test_stream(server, 0)
   let _ = socks5_connect(stream, "127.0.0.1", 8080, false, None).unwrap()
   let expected = socks5_test_bytes([
-    5, 1, 0,
-    5, 1, 0, 1, 127, 0, 0, 1, 0x1f, 0x90,
+    5, 1, 0, 5, 1, 0, 1, 127, 0, 0, 1, 0x1f, 0x90,
   ])
   assert_eq(stream.output.to_bytes(), expected)
 }
 
+///|
 test "SOCKS5 routes plain HTTP through the tunnel without absolute-form" {
   let server = Buffer(size_hint=128)
   server.write_bytes(socks5_test_bytes([5, 0, 5, 0, 0, 1, 127, 0, 0, 1, 0, 80]))
   server.write_bytes(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
   let stream = socks5_test_stream(server.to_bytes(), 0)
-  let dialer = RegressionProxyDialer::{ stream, host: "", port: 0 }
+  let dialer = RegressionProxyDialer::{ stream, host: "", port: 0, }
   let proxy = Proxy::new_socks5("socks5://proxy.example:1080").unwrap()
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
     .with_proxy(proxy)
@@ -219,12 +226,15 @@ test "SOCKS5 routes plain HTTP through the tunnel without absolute-form" {
   assert_false(wire.contains("Proxy-Authorization"))
 }
 
+///|
 test "SOCKS5 routes HTTPS through the tunnel before TLS" {
   let server = Buffer(size_hint=128)
-  server.write_bytes(socks5_test_bytes([5, 0, 5, 0, 0, 1, 127, 0, 0, 1, 0, 443]))
+  server.write_bytes(
+    socks5_test_bytes([5, 0, 5, 0, 0, 1, 127, 0, 0, 1, 0, 443]),
+  )
   server.write_bytes(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
   let stream = socks5_test_stream(server.to_bytes(), 0)
-  let dialer = RegressionProxyDialer::{ stream, host: "", port: 0 }
+  let dialer = RegressionProxyDialer::{ stream, host: "", port: 0, }
   let proxy = Proxy::new_socks5("socks5://proxy.example:1080").unwrap()
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
     .with_proxy(proxy)
@@ -242,6 +252,7 @@ test "SOCKS5 routes HTTPS through the tunnel before TLS" {
   assert_false(wire.contains("CONNECT "))
 }
 
+///|
 test "SOCKS5 encodes IPv6 targets as binary addresses" {
   let server = Buffer(size_hint=24)
   server.write_bytes(socks5_test_bytes([5, 0, 5, 0, 0, 4]))
@@ -253,14 +264,13 @@ test "SOCKS5 encodes IPv6 targets as binary addresses" {
   let stream = socks5_test_stream(server.to_bytes(), 0)
   let _ = socks5_connect(stream, "2001:db8::1", 443, true, None).unwrap()
   let expected = socks5_test_bytes([
-    5, 1, 0,
-    5, 1, 0, 4,
-    0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-    0x01, 0xbb,
+    5, 1, 0, 5, 1, 0, 4, 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    1, 0x01, 0xbb,
   ])
   assert_eq(stream.output.to_bytes(), expected)
 }
 
+///|
 test "SOCKS5 rejects IPv6 zone identifiers it cannot encode" {
   let output = Buffer(size_hint=24)
   match socks5_append_target(output, "fe80::1%25eth0", 80, true) {
@@ -270,13 +280,9 @@ test "SOCKS5 rejects IPv6 zone identifiers it cannot encode" {
   assert_eq(output.to_bytes(), b"")
 }
 
+///|
 test "SOCKS5 builder normalizes bracketed IPv6 proxy and target hosts" {
-  let proxy = Proxy::new_socks5_with_auth(
-    "[2001:db8::1]",
-    1080,
-    "user",
-    "pass",
-  ).unwrap()
+  let proxy = Proxy::new_socks5_with_auth("[2001:db8::1]", 1080, "user", "pass").unwrap()
   assert_eq(proxy.url.host, "2001:db8::1")
   assert_true(proxy.url.bracketed)
   assert_eq(proxy.authority(), "[2001:db8::1]:1080")
@@ -285,12 +291,12 @@ test "SOCKS5 builder normalizes bracketed IPv6 proxy and target hosts" {
   assert_eq(
     output.to_bytes(),
     socks5_test_bytes([
-      4, 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-      0x01, 0xbb,
+      4, 0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0x01, 0xbb,
     ]),
   )
 }
 
+///|
 test "SOCKS5 credentials are used by the client without adding proxy headers" {
   let server = Buffer(size_hint=128)
   server.write_bytes(socks5_test_bytes([5, 2]))
@@ -298,7 +304,7 @@ test "SOCKS5 credentials are used by the client without adding proxy headers" {
   server.write_bytes(socks5_test_bytes([5, 0, 0, 1, 127, 0, 0, 1, 0, 80]))
   server.write_bytes(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
   let stream = socks5_test_stream(server.to_bytes(), 0)
-  let dialer = RegressionProxyDialer::{ stream, host: "", port: 0 }
+  let dialer = RegressionProxyDialer::{ stream, host: "", port: 0, }
   let proxy = Proxy::new_socks5("socks5://user:pass@proxy.example:1080").unwrap()
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
     .with_proxy(proxy)
@@ -317,6 +323,7 @@ test "SOCKS5 credentials are used by the client without adding proxy headers" {
   assert_true(wire.contains("GET / HTTP/1.1\r\n"))
 }
 
+///|
 test "SOCKS5 successful reply requires a zero reserved byte" {
   let stream = socks5_test_stream(
     socks5_test_bytes([5, 0, 5, 0, 1, 1, 127, 0, 0, 1, 0, 80]),

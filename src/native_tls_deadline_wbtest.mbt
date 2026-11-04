@@ -1,21 +1,24 @@
+///|
 #cfg(target="native")
 struct DripTlsUnderlying {
-  mut delivered : Int
+  mut delivered : Int32
 }
 
+///|
 #cfg(target="native")
-fn drip_wait_ms(milliseconds : Int) -> Unit {
+fn drip_wait_ms(milliseconds : Int32) -> Unit {
   let deadline = @env.now() + milliseconds.to_uint64()
   while @env.now() < deadline {
     ()
   }
 }
 
+///|
 #cfg(target="native")
 pub impl Stream for DripTlsUnderlying with fn read(
   self : DripTlsUnderlying,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   if self.delivered >= 16 {
     return Ok(0)
   }
@@ -25,49 +28,57 @@ pub impl Stream for DripTlsUnderlying with fn read(
   Ok(1)
 }
 
+///|
 #cfg(target="native")
 pub impl Stream for DripTlsUnderlying with fn get_timeout(
   self : DripTlsUnderlying,
-) -> Int {
+) -> Int32 {
   let _ = self
   1
 }
 
+///|
 #cfg(target="native")
 pub impl Stream for DripTlsUnderlying with fn write(
   self : DripTlsUnderlying,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   let _ = self
   Ok(buf.length())
 }
 
+///|
 #cfg(target="native")
-pub impl Stream for DripTlsUnderlying with fn flush(
-  self : DripTlsUnderlying,
-) -> Result[Unit, NetError] {
+pub impl Stream for DripTlsUnderlying with fn flush(self : DripTlsUnderlying) -> Result[
+  Unit,
+  NetError,
+] {
   let _ = self
   Ok(())
 }
 
+///|
 #cfg(target="native")
-pub impl Stream for DripTlsUnderlying with fn close(
-  self : DripTlsUnderlying,
-) -> Result[Unit, NetError] {
+pub impl Stream for DripTlsUnderlying with fn close(self : DripTlsUnderlying) -> Result[
+  Unit,
+  NetError,
+] {
   let _ = self
   Ok(())
 }
 
+///|
 #cfg(target="native")
 pub impl Stream for DripTlsUnderlying with fn set_timeout(
   self : DripTlsUnderlying,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Unit, NetError] {
   let _ = self
   let _ = timeout_ms
   Ok(())
 }
 
+///|
 #cfg(target="native")
 pub impl Stream for DripTlsUnderlying with fn peer_addr(
   self : DripTlsUnderlying,
@@ -76,6 +87,7 @@ pub impl Stream for DripTlsUnderlying with fn peer_addr(
   Ok("mock:0")
 }
 
+///|
 #cfg(target="native")
 pub impl Stream for DripTlsUnderlying with fn local_addr(
   self : DripTlsUnderlying,
@@ -84,6 +96,7 @@ pub impl Stream for DripTlsUnderlying with fn local_addr(
   Ok("mock:0")
 }
 
+///|
 /// A peer that sends one byte at a time keeps making progress, so an idle-step
 /// cap alone never fires. The transport's connection timeout must still bound
 /// the handshake.
@@ -92,7 +105,7 @@ test "native TLS handshake respects the transport deadline" {
   let provider = OpenSslTlsProvider::new()
   let config = TlsConfig::new("example.com").with_verify_mode(SkipVerification)
   let ctx = provider.new_client(config).unwrap()
-  let stream : &Stream = DripTlsUnderlying::{ delivered: 0 }
+  let stream : &Stream = DripTlsUnderlying::{ delivered: 0, }
   match ctx.connect(stream) {
     Err(Timeout) => ()
     Err(err) => abort("expected Timeout, got " + @debug.to_string(err))

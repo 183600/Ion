@@ -1,4 +1,5 @@
-fn deflate_test_decode(compressed : Bytes, limit : Int) -> Bytes {
+///|
+fn deflate_test_decode(compressed : Bytes, limit : Int32) -> Bytes {
   let marker = b"\x00\x00\xff\xff\x01\x00\x00\xff\xff"
   let framed = Buffer(size_hint=compressed.length() + marker.length())
   framed.write_bytes(compressed)
@@ -56,8 +57,9 @@ test "websocket compresses outgoing messages when negotiated" {
   let wire = stream.output.to_bytes()
   assert_true((wire[0].to_int() & 0x40) != 0)
   assert_true(wire.length() < @utf8.encode(text).length())
-  let peer = WebSocket::new(ws_test_stream(wire), Server)
-    .with_permessage_deflate(true)
+  let peer = WebSocket::new(ws_test_stream(wire), Server).with_permessage_deflate(
+    true,
+  )
   assert_eq(peer.read_message().unwrap(), Text(text))
 }
 

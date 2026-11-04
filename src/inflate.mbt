@@ -1,3 +1,4 @@
+///|
 /// Pure MoonBit DEFLATE (RFC 1951), zlib (RFC 1950) and gzip (RFC 1952)
 /// decompression. Used to decode HTTP responses with a `Content-Encoding`
 /// of `gzip` or `deflate` without pulling in a native zlib dependency.
@@ -5,57 +6,75 @@
 /// This is a straightforward, allocation-light `inflate` implementation: it
 /// handles stored, fixed-Huffman and dynamic-Huffman blocks, LZ77
 /// back-references and the standard window size.
+const INFLATE_MAX_BITS : Int32 = 15
 
-const INFLATE_MAX_BITS : Int = 15
-const INFLATE_MAX_LIT_CODES : Int = 288
-const INFLATE_MAX_DIST_CODES : Int = 32
-const INFLATE_MAX_DYNAMIC_LIT_CODES : Int = 286
-const INFLATE_MAX_DYNAMIC_DIST_CODES : Int = 30
-const INFLATE_MAX_CL_CODES : Int = 19
+///|
+const INFLATE_MAX_LIT_CODES : Int32 = 288
 
-let inflate_length_base : Array[Int] = [
-  3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67,
-  83, 99, 115, 131, 163, 195, 227, 258,
+///|
+const INFLATE_MAX_DIST_CODES : Int32 = 32
+
+///|
+const INFLATE_MAX_DYNAMIC_LIT_CODES : Int32 = 286
+
+///|
+const INFLATE_MAX_DYNAMIC_DIST_CODES : Int32 = 30
+
+///|
+const INFLATE_MAX_CL_CODES : Int32 = 19
+
+///|
+let inflate_length_base : Array[Int32] = [
+  3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83,
+  99, 115, 131, 163, 195, 227, 258,
 ]
 
-let inflate_length_extra : Array[Int] = [
-  0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5,
-  5, 5, 0,
+///|
+let inflate_length_extra : Array[Int32] = [
+  0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5,
+  5, 0,
 ]
 
-let inflate_dist_base : Array[Int] = [
+///|
+let inflate_dist_base : Array[Int32] = [
   1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769,
   1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
 ]
 
-let inflate_dist_extra : Array[Int] = [
-  0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11,
-  11, 12, 12, 13, 13,
+///|
+let inflate_dist_extra : Array[Int32] = [
+  0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11,
+  12, 12, 13, 13,
 ]
 
-let inflate_cl_order : Array[Int] = [
+///|
+let inflate_cl_order : Array[Int32] = [
   16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
 ]
 
+///|
 fn inflate_error(message : String) -> HttpError {
   ProtocolError("deflate error: " + message)
 }
 
+///|
 struct BitReader {
   // A view avoids copying the remaining gzip payload once per member. This is
   // important for concatenated members: materializing `data[cursor:]` for each
   // one would make decoding quadratic in the input size.
   data : BytesView
-  mut pos : Int
-  mut bit_buf : Int
-  mut bit_count : Int
+  mut pos : Int32
+  mut bit_buf : Int32
+  mut bit_count : Int32
 }
 
+///|
 fn BitReader::new(data : BytesView) -> BitReader {
-  BitReader::{ data, pos: 0, bit_buf: 0, bit_count: 0 }
+  BitReader::{ data, pos: 0, bit_buf: 0, bit_count: 0, }
 }
 
-fn BitReader::bits(self : BitReader, count : Int) -> Result[Int, HttpError] {
+///|
+fn BitReader::bits(self : BitReader, count : Int32) -> Result[Int32, HttpError] {
   if count == 0 {
     return Ok(0)
   }
@@ -66,7 +85,8 @@ fn BitReader::bits(self : BitReader, count : Int) -> Result[Int, HttpError] {
     if self.pos >= self.data.length() {
       return Err(inflate_error("unexpected end of input"))
     }
-    self.bit_buf = self.bit_buf | (self.data[self.pos].to_int() << self.bit_count)
+    self.bit_buf = self.bit_buf |
+      (self.data[self.pos].to_int() << self.bit_count)
     self.pos = self.pos + 1
     self.bit_count = self.bit_count + 8
   }
@@ -76,22 +96,29 @@ fn BitReader::bits(self : BitReader, count : Int) -> Result[Int, HttpError] {
   Ok(value)
 }
 
+///|
 fn BitReader::align_byte(self : BitReader) -> Unit {
   let drop = self.bit_count % 8
   self.bit_buf = self.bit_buf >> drop
   self.bit_count = self.bit_count - drop
 }
 
+///|
 struct Huffman {
-  counts : Array[Int]
-  symbols : Array[Int]
-  left : Int
-  max_len : Int
+  counts : Array[Int32]
+  symbols : Array[Int32]
+  left : Int32
+  max_len : Int32
 }
 
+///|
 /// Build a canonical Huffman decoding table from a list of code lengths.
-fn Huffman::build(lengths : Array[Int], max_symbols : Int) -> Result[Huffman, HttpError] {
-  if max_symbols < 1 || max_symbols > INFLATE_MAX_LIT_CODES + INFLATE_MAX_DIST_CODES {
+fn Huffman::build(
+  lengths : Array[Int32],
+  max_symbols : Int32,
+) -> Result[Huffman, HttpError] {
+  if max_symbols < 1 ||
+    max_symbols > INFLATE_MAX_LIT_CODES + INFLATE_MAX_DIST_CODES {
     return Err(inflate_error("max_symbols out of range"))
   }
   let counts = Array::make(INFLATE_MAX_BITS + 1, 0)
@@ -107,7 +134,7 @@ fn Huffman::build(lengths : Array[Int], max_symbols : Int) -> Result[Huffman, Ht
   if counts[0] == lengths.length() {
     // No codes at all: only valid for the distance tree of a literal-only block.
     let symbols = Array::make(max_symbols, 0)
-    return Ok(Huffman::{ counts, symbols, left: 0, max_len: 0 })
+    return Ok(Huffman::{ counts, symbols, left: 0, max_len: 0, })
   }
   // Check for an over-subscribed or incomplete set of lengths. `left` is
   // reported to the caller so it can apply the DEFLATE rules for incomplete
@@ -147,18 +174,21 @@ fn Huffman::build(lengths : Array[Int], max_symbols : Int) -> Result[Huffman, Ht
     let l = lengths[i]
     if l != 0 {
       if offsets[l] >= index {
-        return Err(inflate_error("symbol offset overflow at index " + i.to_string()))
+        return Err(
+          inflate_error("symbol offset overflow at index " + i.to_string()),
+        )
       }
       symbols[offsets[l]] = i
       offsets[l] = offsets[l] + 1
     }
     i = i + 1
   }
-  Ok(Huffman::{ counts, symbols, left, max_len })
+  Ok(Huffman::{ counts, symbols, left, max_len, })
 }
 
+///|
 /// Decode one symbol using the canonical code table (puff-style walk).
-fn Huffman::decode(self : Huffman, br : BitReader) -> Result[Int, HttpError] {
+fn Huffman::decode(self : Huffman, br : BitReader) -> Result[Int32, HttpError] {
   let mut code = 0
   let mut first = 0
   let mut index = 0
@@ -181,6 +211,7 @@ fn Huffman::decode(self : Huffman, br : BitReader) -> Result[Int, HttpError] {
   Err(inflate_error("invalid Huffman code"))
 }
 
+///|
 fn fixed_literal_table() -> Result[Huffman, HttpError] {
   let lengths = Array::make(INFLATE_MAX_LIT_CODES, 0)
   let mut i = 0
@@ -203,14 +234,14 @@ fn fixed_literal_table() -> Result[Huffman, HttpError] {
   Huffman::build(lengths, INFLATE_MAX_LIT_CODES)
 }
 
+///|
 fn fixed_distance_table() -> Result[Huffman, HttpError] {
   let lengths = Array::make(INFLATE_MAX_DIST_CODES, 5)
   Huffman::build(lengths, INFLATE_MAX_DIST_CODES)
 }
 
-fn read_dynamic_tables(
-  br : BitReader,
-) -> Result[(Huffman, Huffman), HttpError] {
+///|
+fn read_dynamic_tables(br : BitReader) -> Result[(Huffman, Huffman), HttpError] {
   let hlit = match br.bits(5) {
     Ok(v) => v + 257
     Err(err) => return Err(err)
@@ -223,7 +254,8 @@ fn read_dynamic_tables(
     Ok(v) => v + 4
     Err(err) => return Err(err)
   }
-  if hlit > INFLATE_MAX_DYNAMIC_LIT_CODES || hdist > INFLATE_MAX_DYNAMIC_DIST_CODES {
+  if hlit > INFLATE_MAX_DYNAMIC_LIT_CODES ||
+    hdist > INFLATE_MAX_DYNAMIC_DIST_CODES {
     return Err(inflate_error("too many length or distance symbols"))
   }
   let cl_lengths = Array::make(INFLATE_MAX_CL_CODES, 0)
@@ -344,13 +376,14 @@ fn read_dynamic_tables(
   Ok((lit_table, dist_table))
 }
 
+///|
 fn inflate_codes_with_window(
   br : BitReader,
   out : Array[Byte],
   lit : Huffman,
   dist : Huffman,
-  max_bytes : Int,
-  max_distance : Int,
+  max_bytes : Int32,
+  max_distance : Int32,
 ) -> Result[Unit, HttpError] {
   while true {
     let symbol = match lit.decode(br) {
@@ -407,10 +440,11 @@ fn inflate_codes_with_window(
   Ok(())
 }
 
+///|
 fn inflate_stored(
   br : BitReader,
   out : Array[Byte],
-  max_bytes : Int,
+  max_bytes : Int32,
 ) -> Result[Unit, HttpError] {
   br.align_byte()
   let len = match br.bits(16) {
@@ -439,18 +473,23 @@ fn inflate_stored(
   Ok(())
 }
 
+///|
 /// Inflate a raw DEFLATE stream (no zlib/gzip wrapper) and report how many
 /// input bytes were consumed. Decoding stops at the end of the final block, so
 /// trailing bytes (e.g. the next gzip member) are left untouched.
-fn inflate_raw_consume(data : BytesView, max_bytes : Int) -> Result[(Bytes, Int), HttpError] {
+fn inflate_raw_consume(
+  data : BytesView,
+  max_bytes : Int32,
+) -> Result[(Bytes, Int32), HttpError] {
   inflate_raw_consume_with_window(data, max_bytes, 32768)
 }
 
+///|
 fn inflate_raw_consume_with_window(
   data : BytesView,
-  max_bytes : Int,
-  max_distance : Int,
-) -> Result[(Bytes, Int), HttpError] {
+  max_bytes : Int32,
+  max_distance : Int32,
+) -> Result[(Bytes, Int32), HttpError] {
   let br = BitReader::new(data)
   let out = Array::make(0, b'\x00')
   let mut is_last = false
@@ -478,7 +517,8 @@ fn inflate_raw_consume_with_window(
         Ok(table) => table
         Err(err) => return Err(err)
       }
-      match inflate_codes_with_window(br, out, lit, dist, max_bytes, max_distance) {
+      match
+        inflate_codes_with_window(br, out, lit, dist, max_bytes, max_distance) {
         Ok(_) => ()
         Err(err) => return Err(err)
       }
@@ -487,7 +527,8 @@ fn inflate_raw_consume_with_window(
         Ok(tables) => tables
         Err(err) => return Err(err)
       }
-      match inflate_codes_with_window(br, out, lit, dist, max_bytes, max_distance) {
+      match
+        inflate_codes_with_window(br, out, lit, dist, max_bytes, max_distance) {
         Ok(_) => ()
         Err(err) => return Err(err)
       }
@@ -500,15 +541,17 @@ fn inflate_raw_consume_with_window(
   Ok((@buffer.from_array(out[:]).to_bytes(), br.pos))
 }
 
+///|
 /// Inflate a raw DEFLATE stream (no zlib/gzip wrapper).
-fn inflate_raw(data : BytesView, max_bytes : Int) -> Result[Bytes, HttpError] {
+fn inflate_raw(data : BytesView, max_bytes : Int32) -> Result[Bytes, HttpError] {
   match inflate_raw_consume(data, max_bytes) {
     Ok((bytes, _)) => Ok(bytes)
     Err(err) => Err(err)
   }
 }
 
-fn adler32(data : Bytes) -> Int {
+///|
+fn adler32(data : Bytes) -> Int32 {
   let mut a = 1
   let mut b = 0
   let mut i = 0
@@ -520,7 +563,8 @@ fn adler32(data : Bytes) -> Int {
   (b << 16) | a
 }
 
-fn crc32(data : Bytes) -> Int {
+///|
+fn crc32(data : Bytes) -> Int32 {
   let mut crc = 0xFFFFFFFF
   let mut i = 0
   while i < data.length() {
@@ -541,7 +585,8 @@ fn crc32(data : Bytes) -> Int {
   crc ^ 0xFFFFFFFF
 }
 
-fn read_le32(data : Bytes, offset : Int) -> Int {
+///|
+fn read_le32(data : Bytes, offset : Int32) -> Int32 {
   let b0 = data[offset].to_int()
   let b1 = data[offset + 1].to_int()
   let b2 = data[offset + 2].to_int()
@@ -549,7 +594,8 @@ fn read_le32(data : Bytes, offset : Int) -> Int {
   b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
 }
 
-fn read_be32(data : BytesView, offset : Int) -> Int {
+///|
+fn read_be32(data : BytesView, offset : Int32) -> Int32 {
   let b0 = data[offset].to_int()
   let b1 = data[offset + 1].to_int()
   let b2 = data[offset + 2].to_int()
@@ -557,20 +603,25 @@ fn read_be32(data : BytesView, offset : Int) -> Int {
   (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
 }
 
+///|
 fn has_zlib_header(data : Bytes) -> Bool {
   if data.length() < 2 {
     false
   } else {
     let cmf = data[0].to_int()
     let flg = data[1].to_int()
-    (cmf & 0x0F) == 8 && (cmf >> 4) <= 7 && ((cmf << 8) | flg) % 31 == 0
+    (cmf & 0x0F) == 8 && cmf >> 4 <= 7 && ((cmf << 8) | flg) % 31 == 0
   }
 }
 
+///|
 /// Decode a zlib (RFC 1950) header and its DEFLATE body, reporting how many
 /// body bytes were consumed. The Adler-32 trailer is deliberately left to the
 /// caller so that a wrapper failure can be distinguished from a body failure.
-fn inflate_zlib_body(data : Bytes, max_bytes : Int) -> Result[(Bytes, Int), HttpError] {
+fn inflate_zlib_body(
+  data : Bytes,
+  max_bytes : Int32,
+) -> Result[(Bytes, Int32), HttpError] {
   if data.length() < 2 {
     return Err(inflate_error("truncated zlib header"))
   }
@@ -579,7 +630,7 @@ fn inflate_zlib_body(data : Bytes, max_bytes : Int) -> Result[(Bytes, Int), Http
   if (cmf & 0x0F) != 8 {
     return Err(inflate_error("invalid zlib compression method"))
   }
-  if (cmf >> 4) > 7 {
+  if cmf >> 4 > 7 {
     return Err(inflate_error("invalid zlib window size"))
   }
   if ((cmf << 8) | flg) % 31 != 0 {
@@ -597,10 +648,11 @@ fn inflate_zlib_body(data : Bytes, max_bytes : Int) -> Result[(Bytes, Int), Http
   inflate_raw_consume_with_window(body, max_bytes, window_size)
 }
 
+///|
 fn verify_zlib_trailer(
   data : Bytes,
   inflated : Bytes,
-  consumed : Int,
+  consumed : Int32,
 ) -> Result[Unit, HttpError] {
   let body = data.exact_view(start=2)
   let expected = adler32(inflated)
@@ -615,8 +667,9 @@ fn verify_zlib_trailer(
   Ok(())
 }
 
+///|
 /// Decompress a zlib (RFC 1950) wrapped DEFLATE stream.
-fn inflate_zlib(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
+fn inflate_zlib(data : Bytes, max_bytes : Int32) -> Result[Bytes, HttpError] {
   let (inflated, consumed) = match inflate_zlib_body(data, max_bytes) {
     Ok(result) => result
     Err(err) => return Err(err)
@@ -627,10 +680,11 @@ fn inflate_zlib(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
   }
 }
 
+///|
 /// Decompress a gzip (RFC 1952) stream. A gzip payload may contain several
 /// concatenated members (e.g. output of `cat a.gz b.gz`); each member is
 /// verified against its own trailer and the decoded contents are concatenated.
-fn inflate_gzip(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
+fn inflate_gzip(data : Bytes, max_bytes : Int32) -> Result[Bytes, HttpError] {
   let output = Array::make(0, b'\x00')
   let mut offset = 0
   let mut members = 0
@@ -646,7 +700,9 @@ fn inflate_gzip(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
         offset = padding
         break
       } else {
-        return Err(inflate_error("gzip trailing non-zero data after zero padding"))
+        return Err(
+          inflate_error("gzip trailing non-zero data after zero padding"),
+        )
       }
     }
     if data.length() - offset < 18 {
@@ -685,8 +741,10 @@ fn inflate_gzip(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
       if cursor + 2 > data.length() {
         return Err(inflate_error("truncated gzip header CRC"))
       }
-      let stored_header_crc = data[cursor].to_int() | (data[cursor + 1].to_int() << 8)
-      let computed_header_crc = crc32(data[header_start:cursor].to_bytes()) & 0xFFFF
+      let stored_header_crc = data[cursor].to_int() |
+        (data[cursor + 1].to_int() << 8)
+      let computed_header_crc = crc32(data[header_start:cursor].to_bytes()) &
+        0xFFFF
       if computed_header_crc != stored_header_crc {
         return Err(inflate_error("gzip header CRC mismatch"))
       }
@@ -699,10 +757,11 @@ fn inflate_gzip(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
     // number of consumed bytes to locate this member's trailer. Pass only the
     // remaining output budget so a multi-member compression bomb cannot decode
     // (and allocate) another full `max_bytes` before the cumulative check.
-    let (inflated, consumed) = match inflate_raw_consume(
-      data.exact_view(start=cursor),
-      max_bytes - output.length(),
-    ) {
+    let (inflated, consumed) = match
+      inflate_raw_consume(
+        data.exact_view(start=cursor),
+        max_bytes - output.length(),
+      ) {
       Ok(result) => result
       Err(err) => return Err(err)
     }
@@ -735,7 +794,8 @@ fn inflate_gzip(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
   Ok(@buffer.from_array(output[:]).to_bytes())
 }
 
-fn skip_cstring(data : Bytes, offset : Int) -> Int {
+///|
+fn skip_cstring(data : Bytes, offset : Int32) -> Int32 {
   let mut i = offset
   while i < data.length() && data[i].to_int() != 0 {
     i = i + 1
@@ -743,18 +803,23 @@ fn skip_cstring(data : Bytes, offset : Int) -> Int {
   i + 1
 }
 
+///|
 /// Decompress a bare DEFLATE stream (RFC 1951) without accepting a zlib or
 /// gzip wrapper. WebSocket `permessage-deflate` payloads use this form.
-pub fn inflate_deflate(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
+pub fn inflate_deflate(
+  data : Bytes,
+  max_bytes : Int32,
+) -> Result[Bytes, HttpError] {
   let limit = if max_bytes < 0 { 0 } else { max_bytes }
   inflate_raw(data, limit)
 }
 
+///|
 /// Decompress a raw DEFLATE payload. Accepts an optional zlib wrapper: if a
 /// valid zlib header is present it is validated and the Adler-32 trailer is
 /// checked, otherwise the data is treated as a bare DEFLATE stream (some
 /// servers send `Content-Encoding: deflate` without the zlib wrapper).
-pub fn inflate(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
+pub fn inflate(data : Bytes, max_bytes : Int32) -> Result[Bytes, HttpError] {
   let limit = if max_bytes < 0 { 0 } else { max_bytes }
   if has_zlib_header(data) {
     let flg = data[1].to_int()
@@ -793,12 +858,14 @@ pub fn inflate(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
   inflate_raw(data, limit)
 }
 
+///|
 /// Decompress a gzip payload.
-pub fn gunzip(data : Bytes, max_bytes : Int) -> Result[Bytes, HttpError] {
+pub fn gunzip(data : Bytes, max_bytes : Int32) -> Result[Bytes, HttpError] {
   let limit = if max_bytes < 0 { 0 } else { max_bytes }
   inflate_gzip(data, limit)
 }
 
+///|
 /// Whether `decode_content_encoding` understands this coding (ignoring case
 /// and surrounding whitespace). Used to validate declared codings even when
 /// the body itself is empty.
@@ -809,13 +876,14 @@ pub fn content_coding_supported(encoding : String) -> Bool {
   }
 }
 
+///|
 /// Decode a response body according to a single `Content-Encoding` value.
 /// Unknown or unsupported encodings return an error; `identity` (or empty)
 /// returns the payload unchanged.
 pub fn decode_content_encoding(
   encoding : String,
   data : Bytes,
-  max_bytes : Int,
+  max_bytes : Int32,
 ) -> Result[Bytes, HttpError] {
   let normalized = encoding.trim().to_lower()
   let limit = if max_bytes < 0 { 0 } else { max_bytes }

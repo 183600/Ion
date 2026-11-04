@@ -1,11 +1,12 @@
 ///|
 struct JsonMockStream {
   input : Bytes
-  mut offset : Int
+  mut offset : Int32
   output : Buffer
   mut is_open : Bool
 }
 
+///|
 fn json_mock_stream(input : String) -> JsonMockStream {
   json_mock_stream_bytes(@utf8.encode(input))
 }
@@ -20,7 +21,11 @@ fn json_mock_stream_bytes(input : Bytes) -> JsonMockStream {
   }
 }
 
-pub impl Stream for JsonMockStream with fn read(self : JsonMockStream, buf : Buffer) -> Result[Int, NetError] {
+///|
+pub impl Stream for JsonMockStream with fn read(
+  self : JsonMockStream,
+  buf : Buffer,
+) -> Result[Int32, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -34,7 +39,11 @@ pub impl Stream for JsonMockStream with fn read(self : JsonMockStream, buf : Buf
   Ok(available)
 }
 
-pub impl Stream for JsonMockStream with fn write(self : JsonMockStream, buf : Buffer) -> Result[Int, NetError] {
+///|
+pub impl Stream for JsonMockStream with fn write(
+  self : JsonMockStream,
+  buf : Buffer,
+) -> Result[Int32, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -47,42 +56,67 @@ pub impl Stream for JsonMockStream with fn write(self : JsonMockStream, buf : Bu
   Ok(data.length())
 }
 
-pub impl Stream for JsonMockStream with fn flush(self : JsonMockStream) -> Result[Unit, NetError] {
+///|
+pub impl Stream for JsonMockStream with fn flush(self : JsonMockStream) -> Result[
+  Unit,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   Ok(())
 }
 
-pub impl Stream for JsonMockStream with fn close(self : JsonMockStream) -> Result[Unit, NetError] {
+///|
+pub impl Stream for JsonMockStream with fn close(self : JsonMockStream) -> Result[
+  Unit,
+  NetError,
+] {
   self.is_open = false
   Ok(())
 }
 
-pub impl Stream for JsonMockStream with fn set_timeout(self : JsonMockStream, _timeout_ms : Int) -> Result[Unit, NetError] {
+///|
+pub impl Stream for JsonMockStream with fn set_timeout(
+  self : JsonMockStream,
+  _timeout_ms : Int32,
+) -> Result[Unit, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   Ok(())
 }
 
-pub impl Stream for JsonMockStream with fn peer_addr(self : JsonMockStream) -> Result[String, NetError] {
+///|
+pub impl Stream for JsonMockStream with fn peer_addr(self : JsonMockStream) -> Result[
+  String,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   Ok("json-mock:0")
 }
 
-pub impl Stream for JsonMockStream with fn local_addr(_self : JsonMockStream) -> Result[String, NetError] {
+///|
+pub impl Stream for JsonMockStream with fn local_addr(_self : JsonMockStream) -> Result[
+  String,
+  NetError,
+] {
   Ok("json-mock:0")
 }
 
 ///|
 fn json_response(body : String) -> Response {
   let stream = json_mock_stream(body)
-  Response::new(200, Headers::new().add("Content-Type", "application/json"), stream)
+  Response::new(
+    200,
+    Headers::new().add("Content-Type", "application/json"),
+    stream,
+  )
 }
 
+///|
 /// Build a gzip member that stores `payload` in a single uncompressed
 /// DEFLATE block, so the JSON helpers can be exercised against an encoded
 /// response body.
@@ -139,7 +173,8 @@ test "Response json parses the decoded body" {
 test "Response json rejects malformed documents" {
   let response = json_response("not json")
   match response.json() {
-    Err(ProtocolError(message)) => assert_true(message.has_prefix("invalid JSON"))
+    Err(ProtocolError(message)) =>
+      assert_true(message.has_prefix("invalid JSON"))
     _ => fail("expected a protocol error")
   }
 }
@@ -159,12 +194,16 @@ test "Response json decodes gzip encoded bodies" {
     Headers::new().add("Content-Encoding", "gzip"),
     stream,
   )
-  assert_eq(response.json().unwrap().value("ok").unwrap().as_number(), Some(1.0))
+  assert_eq(
+    response.json().unwrap().value("ok").unwrap().as_number(),
+    Some(1.0),
+  )
 }
 
 ///|
 test "Request with_json sets the content type and body" {
-  let request = Request::from_url(POST, "http://example.com/api").unwrap()
+  let request = Request::from_url(POST, "http://example.com/api")
+    .unwrap()
     .with_json(parse_json("{\"a\":1}").unwrap())
   assert_eq(request.get_header("Content-Type"), Some("application/json"))
   assert_eq(@utf8.decode_lossy(request.body.unwrap()[:]), "{\"a\":1}")
@@ -172,7 +211,8 @@ test "Request with_json sets the content type and body" {
 
 ///|
 test "Request with_json keeps an explicit content type" {
-  let request = Request::from_url(POST, "http://example.com/api").unwrap()
+  let request = Request::from_url(POST, "http://example.com/api")
+    .unwrap()
     .with_header("Content-Type", "application/vnd.api+json")
     .with_json_text("{}")
   assert_eq(
@@ -183,7 +223,8 @@ test "Request with_json keeps an explicit content type" {
 
 ///|
 test "Request with_json_value serializes any JSON value" {
-  let request = Request::from_url(POST, "http://example.com/api").unwrap()
+  let request = Request::from_url(POST, "http://example.com/api")
+    .unwrap()
     .with_json_value(["a", "b"])
   assert_eq(@utf8.decode_lossy(request.body.unwrap()[:]), "[\"a\",\"b\"]")
 }
@@ -193,12 +234,19 @@ test "post_json sends a JSON body and parses the response" {
   let stream = json_mock_stream(
     "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 13\r\n\r\n{\"result\":42}",
   )
-  let dialer = RegressionMockDialer::{ stream, count: 0 }
+  let dialer = RegressionMockDialer::{ stream, count: 0, }
   let connector = Connector::new(dialer, MockTlsProvider::new("test"))
-  let client = UnifiedClient::{ connector, options: ClientOptions::new(), redirect_count: 0 }
+  let client = UnifiedClient::{
+    connector,
+    options: ClientOptions::new(),
+    redirect_count: 0,
+  }
   let response = client
     .post_json("http://example.com/api", parse_json("{\"q\":1}").unwrap())
     .unwrap()
-  assert_eq(response.json().unwrap().value("result").unwrap().as_number(), Some(42.0))
+  assert_eq(
+    response.json().unwrap().value("result").unwrap().as_number(),
+    Some(42.0),
+  )
   assert_eq(dialer.count, 1)
 }

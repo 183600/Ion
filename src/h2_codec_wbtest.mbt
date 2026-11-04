@@ -5,7 +5,7 @@ struct H2FrameMockStream {
   output : Buffer
   max_read : Int32
   mut is_open : Bool
-  mut timeout_calls : Int
+  mut timeout_calls : Int32
 }
 
 ///|

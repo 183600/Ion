@@ -1,3 +1,4 @@
+///|
 /// SOCKS5 client handshake (RFC 1928) and username/password authentication
 /// (RFC 1929).
 ///
@@ -5,20 +6,36 @@
 /// any bytes that were read past the final reply. Those bytes belong to the
 /// tunnelled protocol and must be replayed before reading from the socket
 /// again, exactly like the leftovers from an HTTP `CONNECT` response.
+const SOCKS5_VERSION : Int32 = 5
 
-const SOCKS5_VERSION : Int = 5
-const SOCKS5_AUTH_VERSION : Int = 1
-const SOCKS5_AUTH_NONE : Int = 0
-const SOCKS5_AUTH_USERNAME_PASSWORD : Int = 2
-const SOCKS5_AUTH_UNACCEPTABLE : Int = 0xff
+///|
+const SOCKS5_AUTH_VERSION : Int32 = 1
 
-const SOCKS5_CMD_CONNECT : Int = 1
-const SOCKS5_ATYP_IPV4 : Int = 1
-const SOCKS5_ATYP_DOMAIN : Int = 3
-const SOCKS5_ATYP_IPV6 : Int = 4
+///|
+const SOCKS5_AUTH_NONE : Int32 = 0
 
-const SOCKS5_REPLY_SUCCEEDED : Int = 0
+///|
+const SOCKS5_AUTH_USERNAME_PASSWORD : Int32 = 2
 
+///|
+const SOCKS5_AUTH_UNACCEPTABLE : Int32 = 0xff
+
+///|
+const SOCKS5_CMD_CONNECT : Int32 = 1
+
+///|
+const SOCKS5_ATYP_IPV4 : Int32 = 1
+
+///|
+const SOCKS5_ATYP_DOMAIN : Int32 = 3
+
+///|
+const SOCKS5_ATYP_IPV6 : Int32 = 4
+
+///|
+const SOCKS5_REPLY_SUCCEEDED : Int32 = 0
+
+///|
 /// Validate the byte-oriented credentials used by the SOCKS5 username/password
 /// sub-negotiation. RFC 1929 length prefixes are one octet and the protocol
 /// does not allow an empty user name or password.
@@ -35,6 +52,7 @@ fn socks5_credentials_valid(
   Ok(())
 }
 
+///|
 /// A buffered reader for the fixed-size SOCKS5 reply fields. A single socket
 /// read can return more than one field (or the first tunnelled bytes), so the
 /// reader keeps the excess rather than losing data that belongs to the
@@ -42,13 +60,15 @@ fn socks5_credentials_valid(
 struct Socks5Reader {
   stream : &Stream
   mut pending : Bytes
-  mut offset : Int
+  mut offset : Int32
 }
 
+///|
 fn Socks5Reader::new(stream : &Stream) -> Socks5Reader {
-  Socks5Reader::{ stream, pending: b"", offset: 0 }
+  Socks5Reader::{ stream, pending: b"", offset: 0, }
 }
 
+///|
 fn Socks5Reader::fill(self : Socks5Reader) -> Result[Unit, HttpError] {
   let buffer = Buffer(size_hint=512)
   let count = match self.stream.read(buffer) {
@@ -59,9 +79,13 @@ fn Socks5Reader::fill(self : Socks5Reader) -> Result[Unit, HttpError] {
     return Err(NetworkError(ReadError("invalid SOCKS5 read count")))
   }
   if count == 0 {
-    return Err(NetworkError(ConnectionFailed(
-      "SOCKS5 proxy closed the connection during the handshake",
-    )))
+    return Err(
+      NetworkError(
+        ConnectionFailed(
+          "SOCKS5 proxy closed the connection during the handshake",
+        ),
+      ),
+    )
   }
   let data = buffer.to_bytes()
   if data.length() == 0 {
@@ -72,9 +96,10 @@ fn Socks5Reader::fill(self : Socks5Reader) -> Result[Unit, HttpError] {
   Ok(())
 }
 
+///|
 fn Socks5Reader::read_exact(
   self : Socks5Reader,
-  length : Int,
+  length : Int32,
 ) -> Result[Bytes, HttpError] {
   let output = Buffer(size_hint=length)
   while output.length() < length {
@@ -87,16 +112,16 @@ fn Socks5Reader::read_exact(
     let available = self.pending.length() - self.offset
     let remaining = length - output.length()
     let take = if available < remaining { available } else { remaining }
-    output.write_bytes(self.pending.exact_view(
-      start=self.offset,
-      end=self.offset + take,
-    ))
+    output.write_bytes(
+      self.pending.exact_view(start=self.offset, end=self.offset + take),
+    )
     self.offset = self.offset + take
   }
   Ok(output.to_bytes())
 }
 
-fn Socks5Reader::read_byte(self : Socks5Reader) -> Result[Int, HttpError] {
+///|
+fn Socks5Reader::read_byte(self : Socks5Reader) -> Result[Int32, HttpError] {
   let byte = match self.read_exact(1) {
     Ok(value) => value
     Err(err) => return Err(err)
@@ -104,14 +129,18 @@ fn Socks5Reader::read_byte(self : Socks5Reader) -> Result[Int, HttpError] {
   Ok(byte[0].to_int())
 }
 
+///|
 fn Socks5Reader::leftover(self : Socks5Reader) -> Bytes {
   if self.offset >= self.pending.length() {
     b""
   } else {
-    self.pending.exact_view(start=self.offset, end=self.pending.length()).to_owned()
+    self.pending
+    .exact_view(start=self.offset, end=self.pending.length())
+    .to_owned()
   }
 }
 
+///|
 fn socks5_send(stream : &Stream, data : Bytes) -> Result[Unit, HttpError] {
   match write_all(stream, data) {
     Ok(_) => ()
@@ -123,11 +152,13 @@ fn socks5_send(stream : &Stream, data : Bytes) -> Result[Unit, HttpError] {
   }
 }
 
-fn socks5_append_port(output : Buffer, port : Int) -> Unit {
+///|
+fn socks5_append_port(output : Buffer, port : Int32) -> Unit {
   output.write_byte(((port >> 8) & 0xff).to_byte())
   output.write_byte((port & 0xff).to_byte())
 }
 
+///|
 /// Append the destination address in the form the proxy understands. Callers
 /// choose whether a domain name is resolved locally (`socks5`) or passed
 /// through for the proxy to resolve (`socks5h`); IPv4 and IPv6 literals always
@@ -135,7 +166,7 @@ fn socks5_append_port(output : Buffer, port : Int) -> Unit {
 fn socks5_append_target(
   output : Buffer,
   host : String,
-  port : Int,
+  port : Int32,
   bracketed : Bool,
 ) -> Result[Unit, HttpError] {
   if port < 1 || port > 65535 {
@@ -182,13 +213,20 @@ fn socks5_append_target(
   Ok(())
 }
 
-fn socks5_reply_error(code : Int) -> HttpError {
+///|
+fn socks5_reply_error(code : Int32) -> HttpError {
   match code {
-    1 => NetworkError(ConnectionFailed("SOCKS5 proxy reported a general failure"))
+    1 =>
+      NetworkError(ConnectionFailed("SOCKS5 proxy reported a general failure"))
     2 => NetworkError(ConnectionFailed("SOCKS5 proxy denied the connection"))
-    3 => NetworkError(ConnectionFailed("SOCKS5 proxy reported network unreachable"))
-    4 => NetworkError(ConnectionFailed("SOCKS5 proxy reported host unreachable"))
-    5 => NetworkError(ConnectionFailed("SOCKS5 proxy reported connection refused"))
+    3 =>
+      NetworkError(
+        ConnectionFailed("SOCKS5 proxy reported network unreachable"),
+      )
+    4 =>
+      NetworkError(ConnectionFailed("SOCKS5 proxy reported host unreachable"))
+    5 =>
+      NetworkError(ConnectionFailed("SOCKS5 proxy reported connection refused"))
     6 => NetworkError(ConnectionFailed("SOCKS5 proxy reported TTL expired"))
     7 => ProtocolError("SOCKS5 proxy does not support CONNECT")
     8 => ProtocolError("SOCKS5 proxy does not support the target address type")
@@ -196,9 +234,10 @@ fn socks5_reply_error(code : Int) -> HttpError {
   }
 }
 
+///|
 fn socks5_discard_bound_address(
   reader : Socks5Reader,
-  address_type : Int,
+  address_type : Int32,
 ) -> Result[Unit, HttpError] {
   if address_type == SOCKS5_ATYP_IPV4 {
     match reader.read_exact(4) {
@@ -231,13 +270,14 @@ fn socks5_discard_bound_address(
   }
 }
 
+///|
 /// Establish a SOCKS5 CONNECT tunnel to `host:port` on an already-connected
 /// proxy stream. Returns any bytes read past the reply, which the caller must
 /// replay into the tunnel.
 fn socks5_connect(
   stream : &Stream,
   host : String,
-  port : Int,
+  port : Int32,
   bracketed : Bool,
   credentials : (Bytes, Bytes)?,
 ) -> Result[Bytes, HttpError] {
@@ -273,11 +313,12 @@ fn socks5_connect(
   } else if selected_method == SOCKS5_AUTH_USERNAME_PASSWORD {
     let (username, password) = match credentials {
       Some(credentials) => credentials
-      None => {
-        return Err(ProtocolError(
-          "SOCKS5 proxy requires username/password authentication",
-        ))
-      }
+      None =>
+        return Err(
+          ProtocolError(
+            "SOCKS5 proxy requires username/password authentication",
+          ),
+        )
     }
     match socks5_credentials_valid(username, password) {
       Ok(_) => ()
@@ -301,13 +342,15 @@ fn socks5_connect(
       return Err(ProtocolError("SOCKS5 proxy authentication failed"))
     }
   } else if selected_method == SOCKS5_AUTH_UNACCEPTABLE {
-    return Err(ProtocolError(
-      "SOCKS5 proxy rejected all offered authentication methods",
-    ))
+    return Err(
+      ProtocolError("SOCKS5 proxy rejected all offered authentication methods"),
+    )
   } else {
-    return Err(ProtocolError(
-      "SOCKS5 proxy selected an unsupported authentication method",
-    ))
+    return Err(
+      ProtocolError(
+        "SOCKS5 proxy selected an unsupported authentication method",
+      ),
+    )
   }
 
   let request = Buffer(size_hint=host.length() + 8)

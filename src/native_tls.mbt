@@ -1,74 +1,131 @@
+///|
 /// Native TLS client provider backed by OpenSSL.
-
 type NativeTlsHandle
 
+///|
 #borrow(server_name, alpn, roots, certificate, private_key)
 extern "C" fn feather_tls_new(
   server_name : Bytes,
   alpn : Bytes,
-  alpn_length : Int,
-  verify : Int,
-  min_version : Int,
+  alpn_length : Int32,
+  verify : Int32,
+  min_version : Int32,
   roots : Bytes,
-  roots_length : Int,
+  roots_length : Int32,
   certificate : Bytes,
-  certificate_length : Int,
+  certificate_length : Int32,
   private_key : Bytes,
-  private_key_length : Int,
+  private_key_length : Int32,
 ) -> NativeTlsHandle = "feather_tls_new"
 
+///|
 #borrow(tls)
-extern "C" fn feather_tls_ready(tls : NativeTlsHandle) -> Int = "feather_tls_ready"
+extern "C" fn feather_tls_ready(tls : NativeTlsHandle) -> Int32 = "feather_tls_ready"
 
+///|
 #borrow(tls)
-extern "C" fn feather_tls_capture_keylog(tls : NativeTlsHandle, enabled : Int) -> Int = "feather_tls_capture_keylog"
+extern "C" fn feather_tls_capture_keylog(
+  tls : NativeTlsHandle,
+  enabled : Int32,
+) -> Int32 = "feather_tls_capture_keylog"
 
+///|
 #borrow(tls, buffer)
-extern "C" fn feather_tls_drain_keylog(tls : NativeTlsHandle, buffer : Bytes, capacity : Int) -> Int = "feather_tls_drain_keylog"
+extern "C" fn feather_tls_drain_keylog(
+  tls : NativeTlsHandle,
+  buffer : Bytes,
+  capacity : Int32,
+) -> Int32 = "feather_tls_drain_keylog"
 
+///|
 #borrow(tls)
-extern "C" fn feather_tls_handshake(tls : NativeTlsHandle) -> Int = "feather_tls_handshake"
+extern "C" fn feather_tls_handshake(tls : NativeTlsHandle) -> Int32 = "feather_tls_handshake"
 
+///|
 #borrow(tls, buffer)
-extern "C" fn feather_tls_read(tls : NativeTlsHandle, buffer : Bytes, capacity : Int) -> Int = "feather_tls_read"
+extern "C" fn feather_tls_read(
+  tls : NativeTlsHandle,
+  buffer : Bytes,
+  capacity : Int32,
+) -> Int32 = "feather_tls_read"
 
+///|
 #borrow(tls)
-extern "C" fn feather_tls_pending(tls : NativeTlsHandle) -> Int = "feather_tls_pending"
+extern "C" fn feather_tls_pending(tls : NativeTlsHandle) -> Int32 = "feather_tls_pending"
 
+///|
 #borrow(tls)
-extern "C" fn feather_tls_buffered_input(tls : NativeTlsHandle) -> Int = "feather_tls_buffered_input"
+extern "C" fn feather_tls_buffered_input(tls : NativeTlsHandle) -> Int32 = "feather_tls_buffered_input"
 
+///|
 #borrow(tls, buffer)
-extern "C" fn feather_tls_write(tls : NativeTlsHandle, buffer : Bytes, offset : Int, length : Int) -> Int = "feather_tls_write"
+extern "C" fn feather_tls_write(
+  tls : NativeTlsHandle,
+  buffer : Bytes,
+  offset : Int32,
+  length : Int32,
+) -> Int32 = "feather_tls_write"
 
+///|
 #borrow(tls, buffer)
-extern "C" fn feather_tls_receive_pending(tls : NativeTlsHandle, buffer : Bytes, capacity : Int) -> Int = "feather_tls_receive_pending"
+extern "C" fn feather_tls_receive_pending(
+  tls : NativeTlsHandle,
+  buffer : Bytes,
+  capacity : Int32,
+) -> Int32 = "feather_tls_receive_pending"
 
+///|
 #borrow(tls)
-extern "C" fn feather_tls_consume_pending(tls : NativeTlsHandle, count : Int) -> Int = "feather_tls_consume_pending"
+extern "C" fn feather_tls_consume_pending(
+  tls : NativeTlsHandle,
+  count : Int32,
+) -> Int32 = "feather_tls_consume_pending"
 
+///|
 #borrow(tls, buffer)
-extern "C" fn feather_tls_send_input(tls : NativeTlsHandle, buffer : Bytes, length : Int) -> Int = "feather_tls_send_input"
+extern "C" fn feather_tls_send_input(
+  tls : NativeTlsHandle,
+  buffer : Bytes,
+  length : Int32,
+) -> Int32 = "feather_tls_send_input"
 
+///|
 #borrow(tls)
-extern "C" fn feather_tls_shutdown(tls : NativeTlsHandle) -> Int = "feather_tls_shutdown"
+extern "C" fn feather_tls_shutdown(tls : NativeTlsHandle) -> Int32 = "feather_tls_shutdown"
 
+///|
 #borrow(tls)
-extern "C" fn feather_tls_verify_error(tls : NativeTlsHandle) -> Int = "feather_tls_verify_error"
+extern "C" fn feather_tls_verify_error(tls : NativeTlsHandle) -> Int32 = "feather_tls_verify_error"
 
+///|
 #borrow(tls, buffer)
-extern "C" fn feather_tls_alpn(tls : NativeTlsHandle, buffer : Bytes, capacity : Int) -> Int = "feather_tls_alpn"
+extern "C" fn feather_tls_alpn(
+  tls : NativeTlsHandle,
+  buffer : Bytes,
+  capacity : Int32,
+) -> Int32 = "feather_tls_alpn"
 
+///|
 #borrow(tls, buffer)
-extern "C" fn feather_tls_last_error_message(tls : NativeTlsHandle, buffer : Bytes, capacity : Int) -> Int = "feather_tls_last_error_message"
+extern "C" fn feather_tls_last_error_message(
+  tls : NativeTlsHandle,
+  buffer : Bytes,
+  capacity : Int32,
+) -> Int32 = "feather_tls_last_error_message"
 
-const NATIVE_TLS_BUFFER_SIZE : Int = 16384
+///|
+const NATIVE_TLS_BUFFER_SIZE : Int32 = 16384
 // A handshake may legitimately need more I/O steps than there are bytes in a
 // single read (slow or byte-fragmented peers). The idle cap catches a peer
 // that never makes progress; the total cap bounds the whole exchange.
-const NATIVE_TLS_HANDSHAKE_IDLE_STEPS : Int = 64
-const NATIVE_TLS_HANDSHAKE_TOTAL_STEPS : Int = 65536
 
+///|
+const NATIVE_TLS_HANDSHAKE_IDLE_STEPS : Int32 = 64
+
+///|
+const NATIVE_TLS_HANDSHAKE_TOTAL_STEPS : Int32 = 65536
+
+///|
 fn native_tls_error_message(tls : NativeTlsHandle) -> String {
   let buffer = Bytes::new(512)
   let length = feather_tls_last_error_message(tls, buffer, 512)
@@ -78,6 +135,7 @@ fn native_tls_error_message(tls : NativeTlsHandle) -> String {
   @utf8.decode_lossy(buffer.exact_view(start=0, end=length))
 }
 
+///|
 fn native_tls_handshake_error(tls : NativeTlsHandle) -> TlsError {
   let message = native_tls_error_message(tls)
   if feather_tls_verify_error(tls) != 0 {
@@ -86,6 +144,7 @@ fn native_tls_handshake_error(tls : NativeTlsHandle) -> TlsError {
   HandshakeFailed(message)
 }
 
+///|
 fn native_tls_alpn_bytes(alpn : List[String]) -> Bytes {
   let buffer = Buffer(size_hint=64)
   for protocol in alpn {
@@ -99,6 +158,7 @@ fn native_tls_alpn_bytes(alpn : List[String]) -> Bytes {
   buffer.to_bytes()
 }
 
+///|
 fn native_tls_root_bytes(store : RootStore) -> Bytes {
   let buffer = Buffer(size_hint=4096)
   for certificate in store.certificates {
@@ -108,12 +168,10 @@ fn native_tls_root_bytes(store : RootStore) -> Bytes {
   buffer.to_bytes()
 }
 
+///|
 /// Forward any captured TLS key material to the configured key-log sink. This
 /// is a debugging aid only; it never affects the handshake or I/O result.
-fn native_tls_drain_keylog(
-  tls : NativeTlsHandle,
-  sink : &KeyLogSink?,
-) -> Unit {
+fn native_tls_drain_keylog(tls : NativeTlsHandle, sink : &KeyLogSink?) -> Unit {
   let sink = match sink {
     Some(sink) => sink
     None => return
@@ -140,6 +198,7 @@ fn native_tls_drain_keylog(
   }
 }
 
+///|
 enum NativeTlsIo {
   TlsIoData
   TlsIoClosed
@@ -147,10 +206,8 @@ enum NativeTlsIo {
   TlsIoFailure(String)
 }
 
-fn native_tls_flush(
-  tls : NativeTlsHandle,
-  underlying : &Stream,
-) -> NativeTlsIo {
+///|
+fn native_tls_flush(tls : NativeTlsHandle, underlying : &Stream) -> NativeTlsIo {
   let buffer = Bytes::new(NATIVE_TLS_BUFFER_SIZE)
   while true {
     let count = feather_tls_receive_pending(tls, buffer, NATIVE_TLS_BUFFER_SIZE)
@@ -189,7 +246,7 @@ fn native_tls_flush(
           let _ = feather_tls_consume_pending(tls, consumed)
           written = written + consumed
         }
-        Err(err) => {
+        Err(err) =>
           // Only the bytes confirmed by successful transport writes have been
           // consumed. The retained tail is returned by the next pending read.
           return match err {
@@ -197,25 +254,23 @@ fn native_tls_flush(
             Closed => TlsIoClosed
             _ => TlsIoFailure("TLS write failed")
           }
-        }
       }
     }
   }
   TlsIoFailure("TLS flush did not converge")
 }
 
-fn native_tls_feed(
-  tls : NativeTlsHandle,
-  underlying : &Stream,
-) -> NativeTlsIo {
+///|
+fn native_tls_feed(tls : NativeTlsHandle, underlying : &Stream) -> NativeTlsIo {
   let buffer = Buffer(size_hint=4096)
   let count = match underlying.read(buffer) {
     Ok(count) => count
-    Err(err) => match err {
-      Timeout => return TlsIoTimeout
-      Closed => return TlsIoClosed
-      _ => return TlsIoFailure("TLS read failed")
-    }
+    Err(err) =>
+      match err {
+        Timeout => return TlsIoTimeout
+        Closed => return TlsIoClosed
+        _ => return TlsIoFailure("TLS read failed")
+      }
   }
   if count <= 0 {
     return TlsIoClosed
@@ -231,6 +286,7 @@ fn native_tls_feed(
   TlsIoData
 }
 
+///|
 fn native_tls_flush_error(result : NativeTlsIo) -> TlsError {
   match result {
     TlsIoTimeout => Timeout
@@ -240,6 +296,7 @@ fn native_tls_flush_error(result : NativeTlsIo) -> TlsError {
   }
 }
 
+///|
 fn native_tls_feed_error(result : NativeTlsIo) -> TlsError {
   match result {
     TlsIoTimeout => Timeout
@@ -249,18 +306,20 @@ fn native_tls_feed_error(result : NativeTlsIo) -> TlsError {
   }
 }
 
+///|
 /// A TLS stream backed by OpenSSL.
 pub struct NativeTlsStream {
   tls : NativeTlsHandle
   underlying : &Stream
-  key_log : Option[&KeyLogSink]
+  key_log : &KeyLogSink?
   mut is_open : Bool
 }
 
+///|
 pub impl Stream for NativeTlsStream with fn read(
   self : NativeTlsStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -305,6 +364,7 @@ pub impl Stream for NativeTlsStream with fn read(
   Err(NetError::ReadError("TLS read did not converge"))
 }
 
+///|
 /// Pull encrypted bytes that the transport already reports as readable into
 /// OpenSSL and ask whether application data is now available. Post-handshake
 /// records such as TLS 1.3 session tickets also make the raw socket readable;
@@ -330,9 +390,8 @@ fn NativeTlsStream::drain_available(
   Ok(false)
 }
 
-pub impl Stream for NativeTlsStream with fn read_ready(
-  self : NativeTlsStream,
-) -> Bool {
+///|
+pub impl Stream for NativeTlsStream with fn read_ready(self : NativeTlsStream) -> Bool {
   if !self.is_open {
     return false
   }
@@ -343,6 +402,7 @@ pub impl Stream for NativeTlsStream with fn read_ready(
   }
 }
 
+///|
 pub impl Stream for NativeTlsStream with fn has_buffered_input(
   self : NativeTlsStream,
 ) -> Bool {
@@ -363,9 +423,10 @@ pub impl Stream for NativeTlsStream with fn has_buffered_input(
   }
 }
 
+///|
 pub impl Stream for NativeTlsStream with fn wait_readable(
   self : NativeTlsStream,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Bool, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
@@ -386,17 +447,23 @@ pub impl Stream for NativeTlsStream with fn wait_readable(
   }
 }
 
+///|
 pub impl Stream for NativeTlsStream with fn write(
   self : NativeTlsStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   let data = buf.to_bytes()
   let mut offset = 0
   while offset < data.length() {
-    let count = feather_tls_write(self.tls, data, offset, data.length() - offset)
+    let count = feather_tls_write(
+      self.tls,
+      data,
+      offset,
+      data.length() - offset,
+    )
     native_tls_drain_keylog(self.tls, self.key_log)
     if count > 0 {
       offset = offset + count
@@ -435,9 +502,11 @@ pub impl Stream for NativeTlsStream with fn write(
   Ok(offset)
 }
 
-pub impl Stream for NativeTlsStream with fn flush(
-  self : NativeTlsStream,
-) -> Result[Unit, NetError] {
+///|
+pub impl Stream for NativeTlsStream with fn flush(self : NativeTlsStream) -> Result[
+  Unit,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -452,9 +521,11 @@ pub impl Stream for NativeTlsStream with fn flush(
   }
 }
 
-pub impl Stream for NativeTlsStream with fn close(
-  self : NativeTlsStream,
-) -> Result[Unit, NetError] {
+///|
+pub impl Stream for NativeTlsStream with fn close(self : NativeTlsStream) -> Result[
+  Unit,
+  NetError,
+] {
   if !self.is_open {
     return Ok(())
   }
@@ -464,18 +535,16 @@ pub impl Stream for NativeTlsStream with fn close(
   self.underlying.close()
 }
 
-pub impl Stream for NativeTlsStream with fn is_alive(
-  self : NativeTlsStream,
-) -> Bool {
+///|
+pub impl Stream for NativeTlsStream with fn is_alive(self : NativeTlsStream) -> Bool {
   if !self.is_open {
     return false
   }
   self.underlying.is_alive()
 }
 
-pub impl Stream for NativeTlsStream with fn get_timeout(
-  self : NativeTlsStream,
-) -> Int {
+///|
+pub impl Stream for NativeTlsStream with fn get_timeout(self : NativeTlsStream) -> Int32 {
   if !self.is_open {
     0
   } else {
@@ -483,9 +552,10 @@ pub impl Stream for NativeTlsStream with fn get_timeout(
   }
 }
 
+///|
 pub impl Stream for NativeTlsStream with fn set_timeout(
   self : NativeTlsStream,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Unit, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
@@ -493,24 +563,29 @@ pub impl Stream for NativeTlsStream with fn set_timeout(
   self.underlying.set_timeout(timeout_ms)
 }
 
-pub impl Stream for NativeTlsStream with fn peer_addr(
-  self : NativeTlsStream,
-) -> Result[String, NetError] {
+///|
+pub impl Stream for NativeTlsStream with fn peer_addr(self : NativeTlsStream) -> Result[
+  String,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   self.underlying.peer_addr()
 }
 
-pub impl Stream for NativeTlsStream with fn local_addr(
-  self : NativeTlsStream,
-) -> Result[String, NetError] {
+///|
+pub impl Stream for NativeTlsStream with fn local_addr(self : NativeTlsStream) -> Result[
+  String,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   self.underlying.local_addr()
 }
 
+///|
 /// TLS client context that performs real OpenSSL handshakes.
 pub struct OpenSslTlsClientCtx {
   config : TlsConfig
@@ -518,18 +593,21 @@ pub struct OpenSslTlsClientCtx {
   mut negotiated_alpn : String?
 }
 
+///|
 pub impl TlsClientCtx for OpenSslTlsClientCtx with fn server_name(
   self : OpenSslTlsClientCtx,
 ) -> String {
   self.config.server_name
 }
 
+///|
 pub impl TlsClientCtx for OpenSslTlsClientCtx with fn negotiated_alpn(
   self : OpenSslTlsClientCtx,
 ) -> String? {
   self.negotiated_alpn
 }
 
+///|
 pub impl TlsClientCtx for OpenSslTlsClientCtx with fn connect(
   self : OpenSslTlsClientCtx,
   underlying : &Stream,
@@ -590,7 +668,7 @@ pub impl TlsClientCtx for OpenSslTlsClientCtx with fn connect(
   let mut total_steps = 0
   let mut idle_steps = 0
   while total_steps < NATIVE_TLS_HANDSHAKE_TOTAL_STEPS &&
-    idle_steps < NATIVE_TLS_HANDSHAKE_IDLE_STEPS {
+        idle_steps < NATIVE_TLS_HANDSHAKE_IDLE_STEPS {
     if handshake_deadline > 0UL && @env.now() >= handshake_deadline {
       return Err(Timeout)
     }
@@ -610,7 +688,7 @@ pub impl TlsClientCtx for OpenSslTlsClientCtx with fn connect(
         )
       }
       self.is_connected = true
-      let stream = NativeTlsStream::{ tls, underlying, key_log, is_open: true }
+      let stream = NativeTlsStream::{ tls, underlying, key_log, is_open: true, }
       return Ok(stream)
     }
     if status == 0 {
@@ -639,13 +717,16 @@ pub impl TlsClientCtx for OpenSslTlsClientCtx with fn connect(
   Err(HandshakeFailed("TLS handshake did not converge"))
 }
 
+///|
 /// TLS provider that uses OpenSSL for native builds.
 pub struct OpenSslTlsProvider {}
 
+///|
 pub fn OpenSslTlsProvider::new() -> OpenSslTlsProvider {
-  OpenSslTlsProvider::{}
+  OpenSslTlsProvider::{ }
 }
 
+///|
 pub impl TlsProvider for OpenSslTlsProvider with fn new_client(
   self : OpenSslTlsProvider,
   config : TlsConfig,

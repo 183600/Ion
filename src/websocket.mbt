@@ -1,3 +1,4 @@
+///|
 /// RFC 6455 WebSocket framing on top of a switched protocol stream.
 ///
 /// The HTTP handshake is intentionally composable: `websocket_handshake_request`
@@ -5,17 +6,30 @@
 /// and `websocket_connect` validates the resulting 101/2xx response. The
 /// resulting `WebSocket` only owns the byte stream, so it works with direct
 /// HTTP/1.1 upgrades, HTTP/2 extended CONNECT, and custom transports alike.
+const WS_OPCODE_CONTINUATION : Int32 = 0
 
-const WS_OPCODE_CONTINUATION : Int = 0
-const WS_OPCODE_TEXT : Int = 1
-const WS_OPCODE_BINARY : Int = 2
-const WS_OPCODE_CLOSE : Int = 8
-const WS_OPCODE_PING : Int = 9
-const WS_OPCODE_PONG : Int = 10
+///|
+const WS_OPCODE_TEXT : Int32 = 1
 
-const WS_DEFAULT_MAX_FRAME_BYTES : Int = 16777216
-const WS_DEFAULT_MAX_MESSAGE_BYTES : Int = 67108864
+///|
+const WS_OPCODE_BINARY : Int32 = 2
 
+///|
+const WS_OPCODE_CLOSE : Int32 = 8
+
+///|
+const WS_OPCODE_PING : Int32 = 9
+
+///|
+const WS_OPCODE_PONG : Int32 = 10
+
+///|
+const WS_DEFAULT_MAX_FRAME_BYTES : Int32 = 16777216
+
+///|
+const WS_DEFAULT_MAX_MESSAGE_BYTES : Int32 = 67108864
+
+///|
 /// Which endpoint this side of the connection is. Client frames are masked on
 /// the wire; server frames must not be.
 #derive(Eq, Debug)
@@ -24,6 +38,7 @@ pub enum WebSocketRole {
   Server
 }
 
+///|
 /// One decoded WebSocket message or control frame.
 #derive(Eq, Debug)
 pub enum WebSocketMessage {
@@ -33,53 +48,70 @@ pub enum WebSocketMessage {
   Pong(Bytes)
   /// Close status and UTF-8 reason. A close frame without a status code is
   /// represented as code 1005 and an empty reason.
-  Close(Int, String)
+  Close(Int32, String)
 }
 
+///|
 /// One WebSocket frame. `opcode` is the wire opcode (0, 1, 2, 8, 9, or 10).
 #derive(Eq, Debug)
 pub struct WebSocketFrame {
   fin : Bool
-  opcode : Int
+  opcode : Int32
   payload : Bytes
 }
 
+///|
 pub fn WebSocketFrame::text(payload : String) -> WebSocketFrame {
-  WebSocketFrame::{ fin: true, opcode: WS_OPCODE_TEXT, payload: @utf8.encode(payload) }
+  WebSocketFrame::{
+    fin: true,
+    opcode: WS_OPCODE_TEXT,
+    payload: @utf8.encode(payload),
+  }
 }
 
+///|
 pub fn WebSocketFrame::binary(payload : Bytes) -> WebSocketFrame {
-  WebSocketFrame::{ fin: true, opcode: WS_OPCODE_BINARY, payload }
+  WebSocketFrame::{ fin: true, opcode: WS_OPCODE_BINARY, payload, }
 }
 
+///|
 pub fn WebSocketFrame::ping(payload : Bytes) -> WebSocketFrame {
-  WebSocketFrame::{ fin: true, opcode: WS_OPCODE_PING, payload }
+  WebSocketFrame::{ fin: true, opcode: WS_OPCODE_PING, payload, }
 }
 
+///|
 pub fn WebSocketFrame::pong(payload : Bytes) -> WebSocketFrame {
-  WebSocketFrame::{ fin: true, opcode: WS_OPCODE_PONG, payload }
+  WebSocketFrame::{ fin: true, opcode: WS_OPCODE_PONG, payload, }
 }
 
-fn ws_is_control(opcode : Int) -> Bool {
+///|
+fn ws_is_control(opcode : Int32) -> Bool {
   opcode >= WS_OPCODE_CLOSE
 }
 
-fn ws_valid_opcode(opcode : Int) -> Bool {
-  opcode == WS_OPCODE_CONTINUATION || opcode == WS_OPCODE_TEXT ||
-  opcode == WS_OPCODE_BINARY || opcode == WS_OPCODE_CLOSE ||
-  opcode == WS_OPCODE_PING || opcode == WS_OPCODE_PONG
+///|
+fn ws_valid_opcode(opcode : Int32) -> Bool {
+  opcode == WS_OPCODE_CONTINUATION ||
+  opcode == WS_OPCODE_TEXT ||
+  opcode == WS_OPCODE_BINARY ||
+  opcode == WS_OPCODE_CLOSE ||
+  opcode == WS_OPCODE_PING ||
+  opcode == WS_OPCODE_PONG
 }
 
-fn ws_valid_close_code(code : Int) -> Bool {
+///|
+fn ws_valid_close_code(code : Int32) -> Bool {
   (code >= 1000 && code <= 1003) ||
   (code >= 1007 && code <= 1014) ||
   (code >= 3000 && code <= 4999)
 }
 
-fn ws_rotl(value : Int64, bits : Int) -> Int64 {
+///|
+fn ws_rotl(value : Int64, bits : Int32) -> Int64 {
   ((value << bits) | (value >> (32 - bits))) & 0xFFFFFFFFL
 }
 
+///|
 /// SHA-1 of the UTF-8 octets of `value`, returned as 20 bytes.
 ///
 /// WebSocket's `Sec-WebSocket-Accept` value needs SHA-1, not a general-purpose
@@ -121,7 +153,9 @@ fn ws_sha1(value : String) -> Bytes {
     index = 16
     while index < 80 {
       words[index] = ws_rotl(
-        words[index - 3] ^ words[index - 8] ^ words[index - 14] ^
+        words[index - 3] ^
+        words[index - 8] ^
+        words[index - 14] ^
         words[index - 16],
         1,
       )
@@ -170,11 +204,13 @@ fn ws_sha1(value : String) -> Bytes {
   output.to_bytes()
 }
 
+///|
 /// Compute the `Sec-WebSocket-Accept` value for a client key.
 pub fn websocket_accept_key(key : String) -> String {
   @base64.encode(ws_sha1(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
 }
 
+///|
 /// Generate a fresh RFC 6455 `Sec-WebSocket-Key` from the platform entropy
 /// source. Returns `None` when the target cannot provide secure random bytes;
 /// callers must not substitute a weak generator, because peers use the nonce
@@ -191,16 +227,16 @@ pub fn websocket_generate_key() -> String? {
   }
 }
 
+///|
 fn valid_websocket_key(key : String) -> Bool {
   // RFC 6455 section 4.1 requires a base64-encoded 16-byte nonce. Decode at
   // the wire boundary and require the canonical padded encoding so a
   // malformed or predictable key cannot be sent.
-  let decoded = try @base64.decode(key) catch {
-    _ => return false
-  }
+  let decoded = @base64.decode(key) catch { _ => return false }
   decoded.length() == 16 && @base64.encode(decoded) == key
 }
 
+///|
 /// RFC 6455 section 4.1: `Sec-WebSocket-Protocol` is a non-empty `1#token`
 /// list and the offered subprotocols must be unique. Reject invalid elements
 /// before joining them so a comma or whitespace cannot turn one array element
@@ -224,6 +260,7 @@ fn valid_websocket_subprotocols(protocols : Array[String]) -> Bool {
   true
 }
 
+///|
 /// Build the HTTP request that starts a WebSocket handshake. `url` must use
 /// `ws`, `wss`, `http`, or `https`; the latter two are accepted so the same
 /// function works with a `UnifiedClient` that already parsed the target.
@@ -249,17 +286,20 @@ pub fn websocket_handshake_request(
     .with_header("Sec-WebSocket-Version", "13")
     .with_header("Sec-WebSocket-Key", key)
   if protocols.length() > 0 {
-    request = request.with_header("Sec-WebSocket-Protocol", protocols.join(", "))
+    request = request.with_header(
+      "Sec-WebSocket-Protocol",
+      protocols.join(", "),
+    )
   }
   if permessage_deflate.unwrap_or(false) {
     request = request.with_header(
-      "Sec-WebSocket-Extensions",
-      "permessage-deflate; client_no_context_takeover; server_no_context_takeover",
+      "Sec-WebSocket-Extensions", "permessage-deflate; client_no_context_takeover; server_no_context_takeover",
     )
   }
   Ok(request)
 }
 
+///|
 fn normalize_websocket_url(value : String) -> Result[Url, HttpError] {
   let lower = value.to_lower()
   if lower.has_prefix("ws://") {
@@ -274,7 +314,12 @@ fn normalize_websocket_url(value : String) -> Result[Url, HttpError] {
   Err(InvalidUrl("WebSocket URL must use ws, wss, http, or https"))
 }
 
-fn websocket_header_has_token(headers : Headers, name : String, token : String) -> Bool {
+///|
+fn websocket_header_has_token(
+  headers : Headers,
+  name : String,
+  token : String,
+) -> Bool {
   let target = token.to_lower()
   for value in headers.get_all(name) {
     for part in split_header_list(value) {
@@ -286,6 +331,7 @@ fn websocket_header_has_token(headers : Headers, name : String, token : String) 
   false
 }
 
+///|
 /// Validate the server's `Sec-WebSocket-Extensions` selection for a client
 /// that offered `permessage-deflate`. Returns `false` when the server declined
 /// the offer and `true` when the extension is active.
@@ -306,14 +352,11 @@ fn ws_valid_window_bits(value : String) -> Bool {
   if text.get_char(0) == Some('0') || !is_decimal_digits(text) {
     return false
   }
-  let parsed = try {
-    @string.parse_int(text[:])
-  } catch {
-    _ => return false
-  }
+  let parsed = @string.parse_int(text[:]) catch { _ => return false }
   parsed >= 8 && parsed <= 15
 }
 
+///|
 fn ws_negotiate_permessage_deflate(
   headers : Headers,
 ) -> Result[Bool, HttpError] {
@@ -337,8 +380,7 @@ fn ws_negotiate_permessage_deflate(
     return Err(ProtocolError("Invalid Sec-WebSocket-Extensions"))
   }
   let fields = selected[0].split(";").collect()
-  if fields.length() == 0 ||
-    fields[0].trim().to_lower() != "permessage-deflate" {
+  if fields.length() == 0 || fields[0].trim().to_lower() != "permessage-deflate" {
     return Err(ProtocolError("Invalid Sec-WebSocket-Extensions"))
   }
   let mut server_no_context_takeover = false
@@ -388,6 +430,7 @@ fn ws_negotiate_permessage_deflate(
   Ok(true)
 }
 
+///|
 /// Perform a WebSocket handshake through any `HttpClient` and return the
 /// switched byte stream as a client-side `WebSocket`.
 ///
@@ -408,12 +451,13 @@ pub fn websocket_connect(
   permessage_deflate? : Bool,
 ) -> Result[WebSocket, HttpError] {
   let deflate_requested = permessage_deflate.unwrap_or(false)
-  let request = match websocket_handshake_request(
-    url,
-    key,
-    protocols,
-    permessage_deflate=deflate_requested,
-  ) {
+  let request = match
+    websocket_handshake_request(
+      url,
+      key,
+      protocols,
+      permessage_deflate=deflate_requested,
+    ) {
     Ok(request) => request
     Err(err) => return Err(err)
   }
@@ -440,8 +484,10 @@ pub fn websocket_connect(
     true
   }
   let upgrade_ok = !h1 ||
-    (websocket_header_has_token(response.headers, "Upgrade", "websocket") &&
-      websocket_header_has_token(response.headers, "Connection", "upgrade"))
+    (
+      websocket_header_has_token(response.headers, "Upgrade", "websocket") &&
+      websocket_header_has_token(response.headers, "Connection", "upgrade")
+    )
   // A server must only select extensions the client offered (RFC 6455
   // section 4.1). Validate the selection before creating the frame parser so
   // an unsupported payload encoding is never accepted.
@@ -480,16 +526,17 @@ pub fn websocket_connect(
   Ok(socket)
 }
 
+///|
 /// One WebSocket connection over an already-switched stream.
 pub struct WebSocket {
   priv stream : &Stream
   priv role : WebSocketRole
-  priv mut max_frame_bytes : Int
-  priv mut max_message_bytes : Int
+  priv mut max_frame_bytes : Int32
+  priv mut max_message_bytes : Int32
   priv mut pending : Bytes
-  priv mut pending_offset : Int
+  priv mut pending_offset : Int32
   priv mut fragments : Buffer
-  priv mut fragment_opcode : Int
+  priv mut fragment_opcode : Int32
   priv mut fragment_active : Bool
   priv mut fragment_compressed : Bool
   priv mut frame_compressed : Bool
@@ -499,6 +546,7 @@ pub struct WebSocket {
   priv mut close_sent : Bool
 }
 
+///|
 /// Wrap a switched stream. The caller is responsible for completing the HTTP
 /// handshake first; `websocket_connect` does that when a `HttpClient` is used.
 pub fn WebSocket::new(stream : &Stream, role : WebSocketRole) -> WebSocket {
@@ -524,33 +572,42 @@ pub fn WebSocket::new(stream : &Stream, role : WebSocketRole) -> WebSocket {
   }
 }
 
+///|
 /// Wrap a stream as the client endpoint.
 pub fn WebSocket::client(stream : &Stream) -> WebSocket {
   WebSocket::new(stream, Client)
 }
 
+///|
 /// Wrap a stream as the server endpoint (for tests, proxies, or server-side
 /// MoonBit applications).
 pub fn WebSocket::server(stream : &Stream) -> WebSocket {
   WebSocket::new(stream, Server)
 }
 
+///|
 pub fn WebSocket::with_max_frame_bytes(
   self : WebSocket,
-  max_frame_bytes : Int,
+  max_frame_bytes : Int32,
 ) -> WebSocket {
   self.max_frame_bytes = if max_frame_bytes < 1 { 1 } else { max_frame_bytes }
   self
 }
 
+///|
 pub fn WebSocket::with_max_message_bytes(
   self : WebSocket,
-  max_message_bytes : Int,
+  max_message_bytes : Int32,
 ) -> WebSocket {
-  self.max_message_bytes = if max_message_bytes < 1 { 1 } else { max_message_bytes }
+  self.max_message_bytes = if max_message_bytes < 1 {
+    1
+  } else {
+    max_message_bytes
+  }
   self
 }
 
+///|
 /// Enable or disable RFC 7692 `permessage-deflate` for a manually wrapped
 /// stream. The handshake must already have negotiated
 /// `server_no_context_takeover` (as `websocket_connect` requires). Complete
@@ -564,21 +621,25 @@ pub fn WebSocket::with_permessage_deflate(
   self
 }
 
+///|
 pub fn WebSocket::permessage_deflate(self : WebSocket) -> Bool {
   self.permessage_deflate
 }
 
+///|
 pub fn WebSocket::role(self : WebSocket) -> WebSocketRole {
   self.role
 }
 
+///|
 pub fn WebSocket::is_open(self : WebSocket) -> Bool {
   self.is_open
 }
 
+///|
 fn WebSocket::read_exact(
   self : WebSocket,
-  length : Int,
+  length : Int32,
 ) -> Result[Bytes, HttpError] {
   if length < 0 {
     return Err(ProtocolError("Invalid WebSocket read length"))
@@ -589,10 +650,12 @@ fn WebSocket::read_exact(
       let available = self.pending.length() - self.pending_offset
       let remaining = length - output.length()
       let take = if available < remaining { available } else { remaining }
-      output.write_bytes(self.pending.exact_view(
-        start=self.pending_offset,
-        end=self.pending_offset + take,
-      ))
+      output.write_bytes(
+        self.pending.exact_view(
+          start=self.pending_offset,
+          end=self.pending_offset + take,
+        ),
+      )
       self.pending_offset = self.pending_offset + take
       continue
     }
@@ -618,6 +681,7 @@ fn WebSocket::read_exact(
   Ok(output.to_bytes())
 }
 
+///|
 fn WebSocket::next_mask(self : WebSocket) -> Bytes {
   let mut value = self.mask_state
   if value == 0UL {
@@ -635,6 +699,7 @@ fn WebSocket::next_mask(self : WebSocket) -> Bytes {
   bytes.to_bytes()
 }
 
+///|
 fn ws_apply_mask(payload : Bytes, mask : Bytes) -> Bytes {
   let output = Buffer(size_hint=payload.length())
   let mut index = 0
@@ -647,6 +712,7 @@ fn ws_apply_mask(payload : Bytes, mask : Bytes) -> Bytes {
   output.to_bytes()
 }
 
+///|
 fn ws_write_all(stream : &Stream, data : Bytes) -> Result[Unit, HttpError] {
   match write_all(stream, data) {
     Ok(_) => Ok(())
@@ -654,6 +720,7 @@ fn ws_write_all(stream : &Stream, data : Bytes) -> Result[Unit, HttpError] {
   }
 }
 
+///|
 /// Encode and send one frame. Client frames are masked automatically.
 pub fn WebSocket::send_frame(
   self : WebSocket,
@@ -670,8 +737,7 @@ pub fn WebSocket::send_frame(
   if !ws_valid_opcode(frame.opcode) {
     return Err(InvalidHeader("WebSocket opcode"))
   }
-  if ws_is_control(frame.opcode) &&
-    (!frame.fin || frame.payload.length() > 125) {
+  if ws_is_control(frame.opcode) && (!frame.fin || frame.payload.length() > 125) {
     return Err(InvalidHeader("Invalid WebSocket control frame"))
   }
   // RFC 6455 section 5.5.1 requires a Close payload to be either empty or a
@@ -714,21 +780,13 @@ pub fn WebSocket::send_frame(
     return Err(ProtocolError("WebSocket frame too large"))
   }
   let masked = self.role == Client
-  let mask = if masked {
-    self.next_mask()
-  } else {
-    b""
-  }
-  let payload = if masked {
-    ws_apply_mask(outgoing, mask)
-  } else {
-    outgoing
-  }
+  let mask = if masked { self.next_mask() } else { b"" }
+  let payload = if masked { ws_apply_mask(outgoing, mask) } else { outgoing }
   let header = Buffer(size_hint=14)
   header.write_byte(
     ((if frame.fin { 0x80 } else { 0x00 }) |
-      (if compressed { 0x40 } else { 0x00 }) |
-      frame.opcode).to_byte(),
+    (if compressed { 0x40 } else { 0x00 }) |
+    frame.opcode).to_byte(),
   )
   let length = payload.length()
   let mask_bit = if masked { 0x80 } else { 0x00 }
@@ -742,7 +800,9 @@ pub fn WebSocket::send_frame(
     header.write_byte((mask_bit | 127).to_byte())
     let mut shift = 56
     while shift >= 0 {
-      header.write_byte(((length.to_int64() >> shift) & 0xFFL).to_int().to_byte())
+      header.write_byte(
+        ((length.to_int64() >> shift) & 0xFFL).to_int().to_byte(),
+      )
       shift = shift - 8
     }
   }
@@ -772,6 +832,7 @@ pub fn WebSocket::send_frame(
   }
 }
 
+///|
 pub fn WebSocket::send_text(
   self : WebSocket,
   text : String,
@@ -787,6 +848,7 @@ pub fn WebSocket::send_text(
   })
 }
 
+///|
 pub fn WebSocket::send_binary(
   self : WebSocket,
   data : Bytes,
@@ -797,6 +859,7 @@ pub fn WebSocket::send_binary(
   self.send_frame(WebSocketFrame::binary(data))
 }
 
+///|
 pub fn WebSocket::send_ping(
   self : WebSocket,
   payload : Bytes,
@@ -807,6 +870,7 @@ pub fn WebSocket::send_ping(
   self.send_frame(WebSocketFrame::ping(payload))
 }
 
+///|
 pub fn WebSocket::send_pong(
   self : WebSocket,
   payload : Bytes,
@@ -817,11 +881,12 @@ pub fn WebSocket::send_pong(
   self.send_frame(WebSocketFrame::pong(payload))
 }
 
+///|
 /// Send a close frame. The reason is UTF-8 and, together with the two status
 /// bytes, must fit in a control frame.
 pub fn WebSocket::send_close(
   self : WebSocket,
-  code : Int,
+  code : Int32,
   reason : String,
 ) -> Result[Unit, HttpError] {
   if !ws_valid_close_code(code) {
@@ -835,11 +900,12 @@ pub fn WebSocket::send_close(
   payload.write_byte(((code >> 8) & 0xFF).to_byte())
   payload.write_byte((code & 0xFF).to_byte())
   payload.write_bytes(reason_bytes)
-  match self.send_frame(WebSocketFrame::{
-    fin: true,
-    opcode: WS_OPCODE_CLOSE,
-    payload: payload.to_bytes(),
-  }) {
+  match
+    self.send_frame(WebSocketFrame::{
+      fin: true,
+      opcode: WS_OPCODE_CLOSE,
+      payload: payload.to_bytes(),
+    }) {
     Ok(_) => {
       self.close_sent = true
       Ok(())
@@ -848,6 +914,7 @@ pub fn WebSocket::send_close(
   }
 }
 
+///|
 fn WebSocket::read_frame_unchecked(
   self : WebSocket,
 ) -> Result[WebSocketFrame, HttpError] {
@@ -880,7 +947,7 @@ fn WebSocket::read_frame_unchecked(
   }
   let masked = (second & 0x80) != 0
   let length_marker = second & 0x7F
-  let length : Int = if length_marker <= 125 {
+  let length : Int32 = if length_marker <= 125 {
     length_marker
   } else if length_marker == 126 {
     let extended = match self.read_exact(2) {
@@ -946,14 +1013,11 @@ fn WebSocket::read_frame_unchecked(
         return Err(ProtocolError("Client WebSocket frame must be masked"))
       }
   }
-  let payload = if masked {
-    ws_apply_mask(payload, mask)
-  } else {
-    payload
-  }
-  Ok(WebSocketFrame::{ fin, opcode, payload })
+  let payload = if masked { ws_apply_mask(payload, mask) } else { payload }
+  Ok(WebSocketFrame::{ fin, opcode, payload, })
 }
 
+///|
 /// Read one frame without interpreting fragmentation. Most callers should use
 /// `read_message`, which assembles fragmented text/binary messages.
 pub fn WebSocket::read_frame(
@@ -965,16 +1029,16 @@ pub fn WebSocket::read_frame(
   self.read_frame_unchecked()
 }
 
+///|
 fn decode_websocket_message(
-  opcode : Int,
+  opcode : Int32,
   payload : Bytes,
 ) -> Result[WebSocketMessage, HttpError] {
   match opcode {
     WS_OPCODE_TEXT => {
-      let text = try {
-        @utf8.decode(payload[:])
-      } catch {
-        _ => return Err(ProtocolError("Invalid UTF-8 in WebSocket text message"))
+      let text = @utf8.decode(payload[:]) catch {
+        _ =>
+          return Err(ProtocolError("Invalid UTF-8 in WebSocket text message"))
       }
       Ok(Text(text))
     }
@@ -983,6 +1047,7 @@ fn decode_websocket_message(
   }
 }
 
+///|
 fn WebSocket::decompress_message(
   self : WebSocket,
   payload : Bytes,
@@ -1006,6 +1071,7 @@ fn WebSocket::decompress_message(
   }
 }
 
+///|
 fn decode_close_message(payload : Bytes) -> Result[WebSocketMessage, HttpError] {
   if payload.length() == 0 {
     return Ok(Close(1005, ""))
@@ -1017,14 +1083,13 @@ fn decode_close_message(payload : Bytes) -> Result[WebSocketMessage, HttpError] 
   if !ws_valid_close_code(code) {
     return Err(ProtocolError("Invalid WebSocket close code"))
   }
-  let reason = try {
-    @utf8.decode(payload.exact_view(start=2, end=payload.length()))
-  } catch {
+  let reason = @utf8.decode(payload.exact_view(start=2, end=payload.length())) catch {
     _ => return Err(ProtocolError("Invalid UTF-8 in WebSocket close reason"))
   }
   Ok(Close(code, reason))
 }
 
+///|
 /// Read the next complete data message, returning control frames as they
 /// arrive. Fragmented messages are reassembled; a Ping/Pong/Close received
 /// between fragments is returned without discarding the partial message.
@@ -1104,11 +1169,12 @@ pub fn WebSocket::read_message(
         // the transport. This completes the closing handshake without leaving
         // the socket open for later frames.
         if !self.close_sent {
-          let _ = match self.send_frame(WebSocketFrame::{
-            fin: true,
-            opcode: WS_OPCODE_CLOSE,
-            payload: frame.payload,
-          }) {
+          let _ = match
+            self.send_frame(WebSocketFrame::{
+              fin: true,
+              opcode: WS_OPCODE_CLOSE,
+              payload: frame.payload,
+            }) {
             Ok(_) => Ok(())
             Err(err) => Err(err)
           }
@@ -1134,6 +1200,7 @@ pub fn WebSocket::read_message(
   Err(ProtocolError("WebSocket read did not converge"))
 }
 
+///|
 /// Send a close frame (when one has not been sent yet) and close the
 /// underlying stream. A close frame without a status is used because 1005 is
 /// reserved and must never appear on the wire.

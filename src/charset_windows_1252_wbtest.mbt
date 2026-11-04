@@ -1,3 +1,4 @@
+///|
 test "windows-1252 maps undefined byte positions to replacement characters" {
   let response = charset_text_response(
     "text/plain; charset=windows-1252",

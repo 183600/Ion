@@ -36,12 +36,14 @@ test "native streams reject invalid targets without dialing" {
   let missing = NativeTcpStream::new("127.0.0.1", 1)
   assert_true(missing.read(Buffer()) is Err(Closed))
 }
+
 ///|
 #cfg(target="native")
 test "native DNS failures are classified as invalid addresses" {
   assert_true(native_tcp_address_error(10002) is InvalidAddress(_))
   assert_true(native_tcp_address_error(10110) is InvalidAddress(_))
 }
+
 ///|
 #cfg(target="native")
 test "native TCP I/O errors report reset connections as closed" {
@@ -50,6 +52,7 @@ test "native TCP I/O errors report reset connections as closed" {
   assert_true(native_tcp_error(32, "TCP write") is Closed)
   assert_true(native_tcp_address_error(104) is ConnectionFailed(_))
 }
+
 ///|
 #cfg(target="native")
 test "native dial hosts strip IPv6 brackets" {
@@ -69,9 +72,9 @@ test "native dial hosts strip IPv6 brackets" {
 #borrow(host)
 extern "C" fn feather_tcp_connect_nul_probe(
   host : Bytes,
-  port : Int,
-  timeout_ms : Int,
-) -> Int = "feather_tcp_connect"
+  port : Int32,
+  timeout_ms : Int32,
+) -> Int32 = "feather_tcp_connect"
 
 ///|
 #cfg(target="native")
@@ -79,8 +82,8 @@ extern "C" fn feather_tcp_connect_nul_probe(
 extern "C" fn feather_tcp_resolve_nul_probe(
   host : Bytes,
   output : Bytes,
-  capacity : Int,
-) -> Int = "feather_tcp_resolve"
+  capacity : Int32,
+) -> Int32 = "feather_tcp_resolve"
 
 ///|
 #cfg(target="native")
@@ -88,8 +91,8 @@ extern "C" fn feather_tcp_resolve_nul_probe(
 extern "C" fn feather_read_file_nul_probe(
   path : Bytes,
   output : Bytes,
-  capacity : Int,
-) -> Int = "feather_read_file"
+  capacity : Int32,
+) -> Int32 = "feather_read_file"
 
 ///|
 #cfg(target="native")
@@ -97,8 +100,8 @@ extern "C" fn feather_read_file_nul_probe(
 extern "C" fn feather_tcp_resolve_capacity_probe(
   host : Bytes,
   output : Bytes,
-  capacity : Int,
-) -> Int = "feather_tcp_resolve"
+  capacity : Int32,
+) -> Int32 = "feather_tcp_resolve"
 
 ///|
 #cfg(target="native")
@@ -106,26 +109,26 @@ extern "C" fn feather_tcp_resolve_capacity_probe(
 extern "C" fn feather_read_file_capacity_probe(
   path : Bytes,
   output : Bytes,
-  capacity : Int,
-) -> Int = "feather_read_file"
+  capacity : Int32,
+) -> Int32 = "feather_read_file"
 
 ///|
 #cfg(target="native")
 #borrow(output)
 extern "C" fn feather_tcp_peer_addr_probe(
-  fd : Int,
+  fd : Int32,
   output : Bytes,
-  capacity : Int,
-) -> Int = "feather_tcp_peer_addr"
+  capacity : Int32,
+) -> Int32 = "feather_tcp_peer_addr"
 
 ///|
 #cfg(target="native")
 #borrow(output)
 extern "C" fn feather_tcp_local_addr_probe(
-  fd : Int,
+  fd : Int32,
   output : Bytes,
-  capacity : Int,
-) -> Int = "feather_tcp_local_addr"
+  capacity : Int32,
+) -> Int32 = "feather_tcp_local_addr"
 
 ///|
 #cfg(target="native")
@@ -165,8 +168,8 @@ test "native TCP FFI rejects embedded NUL bytes" {
 extern "C" fn feather_tls_sni_name(
   tls : NativeTlsHandle,
   buffer : Bytes,
-  capacity : Int,
-) -> Int = "feather_tls_sni_name"
+  capacity : Int32,
+) -> Int32 = "feather_tls_sni_name"
 
 ///|
 #cfg(target="native")
@@ -189,23 +192,14 @@ test "native TLS rejects an invalid CA bundle" {
 #cfg(target="native")
 test "native TLS sends SNI only for host names" {
   let hostname = @utf8.encode("example.com")
-  let tls = feather_tls_new(
-    hostname,
-    b"",
-    0,
-    0,
-    0,
-    b"",
-    0,
-    b"",
-    0,
-    b"",
-    0,
-  )
+  let tls = feather_tls_new(hostname, b"", 0, 0, 0, b"", 0, b"", 0, b"", 0)
   assert_eq(feather_tls_ready(tls), 1)
   let buffer = Bytes::new(128)
   let length = feather_tls_sni_name(tls, buffer, 128)
-  assert_eq(@utf8.decode_lossy(buffer.exact_view(start=0, end=length)), "example.com")
+  assert_eq(
+    @utf8.decode_lossy(buffer.exact_view(start=0, end=length)),
+    "example.com",
+  )
 
   let dotted = feather_tls_new(
     @utf8.encode("example.com."),
@@ -222,9 +216,13 @@ test "native TLS sends SNI only for host names" {
   )
   assert_eq(feather_tls_ready(dotted), 1)
   let length = feather_tls_sni_name(dotted, buffer, 128)
-  assert_eq(@utf8.decode_lossy(buffer.exact_view(start=0, end=length)), "example.com")
+  assert_eq(
+    @utf8.decode_lossy(buffer.exact_view(start=0, end=length)),
+    "example.com",
+  )
 
-  for address in ["127.0.0.1", "127.0.0.1.", "[::1]", "fe80::1%eth0", "[v1.foo]"] {
+  for
+    address in ["127.0.0.1", "127.0.0.1.", "[::1]", "fe80::1%eth0", "[v1.foo]"] {
     let tls = feather_tls_new(
       @utf8.encode(address),
       b"",
@@ -290,7 +288,7 @@ struct ClosedTlsUnderlying {}
 pub impl Stream for ClosedTlsUnderlying with fn read(
   self : ClosedTlsUnderlying,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   let _ = self
   let _ = buf
   Err(NetError::Closed)
@@ -301,7 +299,7 @@ pub impl Stream for ClosedTlsUnderlying with fn read(
 pub impl Stream for ClosedTlsUnderlying with fn write(
   self : ClosedTlsUnderlying,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   let _ = self
   let _ = buf
   Err(NetError::Closed)
@@ -329,7 +327,7 @@ pub impl Stream for ClosedTlsUnderlying with fn close(
 #cfg(target="native")
 pub impl Stream for ClosedTlsUnderlying with fn set_timeout(
   self : ClosedTlsUnderlying,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Unit, NetError] {
   let _ = self
   let _ = timeout_ms
@@ -370,8 +368,8 @@ fn closed_tls_stream() -> NativeTlsStream {
     b"",
     0,
   )
-  let underlying : &Stream = ClosedTlsUnderlying::{}
-  NativeTlsStream::{ tls, underlying, key_log: None, is_open: true }
+  let underlying : &Stream = ClosedTlsUnderlying::{ }
+  NativeTlsStream::{ tls, underlying, key_log: None, is_open: true, }
 }
 
 ///|
@@ -391,8 +389,8 @@ test "native TLS I/O reports a closed transport as Closed" {
 #cfg(target="native")
 struct RecordingUnderlying {
   mut output : Bytes
-  mut read_calls : Int
-  mut flush_calls : Int
+  mut read_calls : Int32
+  mut flush_calls : Int32
 }
 
 ///|
@@ -400,7 +398,7 @@ struct RecordingUnderlying {
 pub impl Stream for RecordingUnderlying with fn read(
   self : RecordingUnderlying,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   let _ = buf
   self.read_calls = self.read_calls + 1
   Err(NetError::Timeout)
@@ -411,7 +409,7 @@ pub impl Stream for RecordingUnderlying with fn read(
 pub impl Stream for RecordingUnderlying with fn write(
   self : RecordingUnderlying,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   let data = buf.to_bytes()
   let combined = Buffer(size_hint=self.output.length() + data.length())
   combined.write_bytes(self.output)
@@ -442,7 +440,7 @@ pub impl Stream for RecordingUnderlying with fn close(
 #cfg(target="native")
 pub impl Stream for RecordingUnderlying with fn set_timeout(
   self : RecordingUnderlying,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Unit, NetError] {
   let _ = self
   let _ = timeout_ms
@@ -489,7 +487,12 @@ test "native TLS writes flush handshake records before reading on WANT_READ" {
     read_calls: 0,
     flush_calls: 0,
   }
-  let stream = NativeTlsStream::{ tls, underlying, key_log: None, is_open: true }
+  let stream = NativeTlsStream::{
+    tls,
+    underlying,
+    key_log: None,
+    is_open: true,
+  }
   let data = Buffer(size_hint=5)
   data.write_bytes(b"hello")
   assert_true(stream.write(data) is Err(NetError::Timeout))

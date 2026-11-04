@@ -19,11 +19,9 @@ test "websocket handshake rejects invalid subprotocol offers" {
 ///|
 test "websocket handshake accepts valid subprotocol offers" {
   let key = "dGhlIHNhbXBsZSBub25jZQ=="
-  let request = websocket_handshake_request(
-    "ws://example.com/chat",
-    key,
-    ["chat", "superchat.v2"],
-  ).unwrap()
+  let request = websocket_handshake_request("ws://example.com/chat", key, [
+    "chat", "superchat.v2",
+  ]).unwrap()
   assert_eq(
     request.get_header("Sec-WebSocket-Protocol"),
     Some("chat, superchat.v2"),

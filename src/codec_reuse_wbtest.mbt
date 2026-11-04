@@ -1,10 +1,10 @@
+///|
 /// A codec reused for sequential keep-alive exchanges must share the bytes it
 /// buffered while reading a response head with the body stream. Otherwise the
 /// next decode starts inside the previous body.
-
 struct CodecReuseStream {
   chunks : Array[Bytes]
-  mut index : Int
+  mut index : Int32
   output : Buffer
   mut is_open : Bool
   // Simulates bytes that the transport already buffered outside the codec's
@@ -12,6 +12,7 @@ struct CodecReuseStream {
   mut buffered_input : Bool
 }
 
+///|
 fn codec_reuse_stream(chunks : Array[String]) -> CodecReuseStream {
   let encoded : Array[Bytes] = []
   for chunk in chunks {
@@ -26,10 +27,11 @@ fn codec_reuse_stream(chunks : Array[String]) -> CodecReuseStream {
   }
 }
 
+///|
 pub impl Stream for CodecReuseStream with fn read(
   self : CodecReuseStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -42,10 +44,11 @@ pub impl Stream for CodecReuseStream with fn read(
   Ok(chunk.length())
 }
 
+///|
 pub impl Stream for CodecReuseStream with fn write(
   self : CodecReuseStream,
   buf : Buffer,
-) -> Result[Int, NetError] {
+) -> Result[Int32, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -53,25 +56,30 @@ pub impl Stream for CodecReuseStream with fn write(
   Ok(buf.length())
 }
 
-pub impl Stream for CodecReuseStream with fn flush(
-  self : CodecReuseStream,
-) -> Result[Unit, NetError] {
+///|
+pub impl Stream for CodecReuseStream with fn flush(self : CodecReuseStream) -> Result[
+  Unit,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   Ok(())
 }
 
-pub impl Stream for CodecReuseStream with fn close(
-  self : CodecReuseStream,
-) -> Result[Unit, NetError] {
+///|
+pub impl Stream for CodecReuseStream with fn close(self : CodecReuseStream) -> Result[
+  Unit,
+  NetError,
+] {
   self.is_open = false
   Ok(())
 }
 
+///|
 pub impl Stream for CodecReuseStream with fn set_timeout(
   self : CodecReuseStream,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Unit, NetError] {
   let _ = timeout_ms
   if !self.is_open {
@@ -80,34 +88,39 @@ pub impl Stream for CodecReuseStream with fn set_timeout(
   Ok(())
 }
 
-pub impl Stream for CodecReuseStream with fn peer_addr(
-  self : CodecReuseStream,
-) -> Result[String, NetError] {
+///|
+pub impl Stream for CodecReuseStream with fn peer_addr(self : CodecReuseStream) -> Result[
+  String,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   Ok("mock:0")
 }
 
-pub impl Stream for CodecReuseStream with fn local_addr(
-  self : CodecReuseStream,
-) -> Result[String, NetError] {
+///|
+pub impl Stream for CodecReuseStream with fn local_addr(self : CodecReuseStream) -> Result[
+  String,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   Ok("mock:0")
 }
 
+///|
 pub impl Stream for CodecReuseStream with fn has_buffered_input(
   self : CodecReuseStream,
 ) -> Bool {
   self.is_open && self.buffered_input
 }
 
+///|
 test "H1Codec reuses buffered bytes after a fixed-length response body" {
   let stream = codec_reuse_stream([
-    "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\none",
-    "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\ntwo",
+    "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\none", "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\ntwo",
   ])
   let codec = H1Codec::new(stream)
   let url = Url::parse("http://example.com/").unwrap()
@@ -118,14 +131,14 @@ test "H1Codec reuses buffered bytes after a fixed-length response body" {
   assert_eq(codec.decode_response().unwrap().read_body().unwrap(), b"two")
 }
 
+///|
 test "H1Codec does not pool a response while the transport still has input" {
   let stream = codec_reuse_stream(["HTTP/1.1 204 No Content\r\n\r\n"])
   stream.buffered_input = true
   let mut released : Bool? = None
-  let codec = H1Codec::new_with_completion(
-    stream,
-    fn(reusable) { released = Some(reusable) },
-  )
+  let codec = H1Codec::new_with_completion(stream, fn(reusable) {
+    released = Some(reusable)
+  })
   let url = Url::parse("http://example.com/").unwrap()
   assert_true(codec.encode_request(Request::new(GET, url)) is Ok(_))
   let response = codec.decode_response().unwrap()
@@ -134,6 +147,7 @@ test "H1Codec does not pool a response while the transport still has input" {
   assert_false(stream.is_open)
 }
 
+///|
 test "H1Codec reuses buffered bytes after a chunked response body" {
   let stream = codec_reuse_stream([
     "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n3\r\none\r\n0\r\n\r\n",

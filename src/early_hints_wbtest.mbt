@@ -1,3 +1,4 @@
+///|
 fn early_hints_h1_response(raw : String) -> Response {
   let stream : &Stream = AutoDecompressMockStream::{
     input: @utf8.encode(raw),
@@ -7,6 +8,7 @@ fn early_hints_h1_response(raw : String) -> Response {
   H1Codec::new(stream).decode_response().unwrap()
 }
 
+///|
 test "HTTP/1.1 responses expose informational headers in wire order" {
   let response = early_hints_h1_response(
     "HTTP/1.1 103 Early Hints\r\nLink: </style.css>; rel=preload\r\n\r\n" +
@@ -25,6 +27,7 @@ test "HTTP/1.1 responses expose informational headers in wire order" {
   assert_eq(response.read_body().unwrap(), b"ok")
 }
 
+///|
 test "responses without informational headers expose an empty hint list" {
   let response = early_hints_h1_response(
     "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n",
@@ -32,6 +35,7 @@ test "responses without informational headers expose an empty hint list" {
   assert_eq(response.early_hints().length(), 0)
 }
 
+///|
 test "HTTP/2 responses expose informational headers alongside final headers" {
   let informational = hpack_encode([
     (":status", "103"),
