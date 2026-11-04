@@ -1,19 +1,21 @@
+///|
 /// Unified HTTP/HTTPS client
 pub struct UnifiedClient {
   connector : Connector
   options : ClientOptions
-  mut redirect_count : Int
+  mut redirect_count : Int32
 }
 
+///|
 /// Client options
 #derive(Eq, Debug)
 pub struct ClientOptions {
   user_agent : String
-  timeout_ms : Int
-  connect_timeout_ms : Int
+  timeout_ms : Int32
+  connect_timeout_ms : Int32
   follow_redirects : Bool
-  max_redirects : Int
-  max_response_body_bytes : Int
+  max_redirects : Int32
+  max_response_body_bytes : Int32
   http2 : Bool
   http2_prior_knowledge : Bool
   /// Consume HTTP/2 response bodies lazily instead of buffering the complete
@@ -30,6 +32,7 @@ pub struct ClientOptions {
   default_headers : Headers
 }
 
+///|
 pub fn ClientOptions::new() -> ClientOptions {
   ClientOptions::{
     user_agent: "Feather/0.1.0",
@@ -46,37 +49,76 @@ pub fn ClientOptions::new() -> ClientOptions {
   }
 }
 
-pub fn ClientOptions::with_user_agent(self : ClientOptions, user_agent : String) -> ClientOptions {
-  ClientOptions::{ ..self, user_agent }
+///|
+pub fn ClientOptions::with_user_agent(
+  self : ClientOptions,
+  user_agent : String,
+) -> ClientOptions {
+  ClientOptions::{ ..self, user_agent, }
 }
 
-pub fn ClientOptions::with_timeout(self : ClientOptions, timeout_ms : Int) -> ClientOptions {
-  ClientOptions::{ ..self, timeout_ms: if timeout_ms < 0 { 0 } else { timeout_ms } }
+///|
+pub fn ClientOptions::with_timeout(
+  self : ClientOptions,
+  timeout_ms : Int32,
+) -> ClientOptions {
+  ClientOptions::{
+    ..self,
+    timeout_ms: if timeout_ms < 0 {
+      0
+    } else {
+      timeout_ms
+    },
+  }
 }
 
+///|
 /// Bound dialing and the TLS handshake separately from the response exchange.
 /// A value below 1 keeps using the request timeout for connection setup.
 pub fn ClientOptions::with_connect_timeout(
   self : ClientOptions,
-  connect_timeout_ms : Int,
+  connect_timeout_ms : Int32,
 ) -> ClientOptions {
   ClientOptions::{
     ..self,
-    connect_timeout_ms: if connect_timeout_ms < 0 { 0 } else { connect_timeout_ms },
+    connect_timeout_ms: if connect_timeout_ms < 0 {
+      0
+    } else {
+      connect_timeout_ms
+    },
   }
 }
 
-pub fn ClientOptions::with_follow_redirects(self : ClientOptions, follow_redirects : Bool) -> ClientOptions {
-  ClientOptions::{ ..self, follow_redirects }
+///|
+pub fn ClientOptions::with_follow_redirects(
+  self : ClientOptions,
+  follow_redirects : Bool,
+) -> ClientOptions {
+  ClientOptions::{ ..self, follow_redirects, }
 }
 
-pub fn ClientOptions::with_max_redirects(self : ClientOptions, max_redirects : Int) -> ClientOptions {
-  ClientOptions::{ ..self, max_redirects: if max_redirects < 0 { 0 } else { max_redirects } }
+///|
+pub fn ClientOptions::with_max_redirects(
+  self : ClientOptions,
+  max_redirects : Int32,
+) -> ClientOptions {
+  ClientOptions::{
+    ..self,
+    max_redirects: if max_redirects < 0 {
+      0
+    } else {
+      max_redirects
+    },
+  }
 }
 
+///|
 /// Enable or disable HTTP/2 negotiation through ALPN. Enabled by default.
 /// Disabling HTTP/2 also disables cleartext prior knowledge.
-pub fn ClientOptions::with_http2(self : ClientOptions, enabled : Bool) -> ClientOptions {
+pub fn ClientOptions::with_http2(
+  self : ClientOptions,
+  enabled : Bool,
+) -> ClientOptions {
   ClientOptions::{
     ..self,
     http2: enabled,
@@ -84,6 +126,7 @@ pub fn ClientOptions::with_http2(self : ClientOptions, enabled : Bool) -> Client
   }
 }
 
+///|
 /// Use HTTP/2 for cleartext `http://` origins without ALPN (prior knowledge).
 /// Enabling this also enables the normal HTTP/2 policy for HTTPS.
 pub fn ClientOptions::with_http2_prior_knowledge(
@@ -97,6 +140,7 @@ pub fn ClientOptions::with_http2_prior_knowledge(
   }
 }
 
+///|
 /// Consume HTTP/2 response bodies lazily. When enabled, `request` returns as
 /// soon as the response head arrives and DATA frames are read by the caller.
 /// Uploads, trailers, CONNECT and upgrade requests keep the buffered path.
@@ -104,9 +148,10 @@ pub fn ClientOptions::with_http2_streaming(
   self : ClientOptions,
   enabled : Bool,
 ) -> ClientOptions {
-  ClientOptions::{ ..self, http2_streaming: enabled }
+  ClientOptions::{ ..self, http2_streaming: enabled, }
 }
 
+///|
 /// Decode gzip and deflate response bodies automatically when callers use
 /// `Response::read_body` or `Response::copy_body_to`. `Response::text` always
 /// decodes, and `Response::read_body_with_limit` continues to return the raw
@@ -115,26 +160,33 @@ pub fn ClientOptions::with_auto_decompress(
   self : ClientOptions,
   enabled : Bool,
 ) -> ClientOptions {
-  ClientOptions::{ ..self, auto_decompress: enabled }
+  ClientOptions::{ ..self, auto_decompress: enabled, }
 }
 
+///|
 /// Whether known response body codings are decoded automatically.
 pub fn ClientOptions::auto_decompress(self : ClientOptions) -> Bool {
   self.auto_decompress
 }
 
+///|
 /// Cap the number of body bytes read from a single response. A value below 1 is
 /// clamped to 0, which rejects any non-empty body.
 pub fn ClientOptions::with_max_response_body_bytes(
   self : ClientOptions,
-  max_response_body_bytes : Int,
+  max_response_body_bytes : Int32,
 ) -> ClientOptions {
   ClientOptions::{
     ..self,
-    max_response_body_bytes: if max_response_body_bytes < 0 { 0 } else { max_response_body_bytes },
+    max_response_body_bytes: if max_response_body_bytes < 0 {
+      0
+    } else {
+      max_response_body_bytes
+    },
   }
 }
 
+///|
 /// Add a header applied to every top-level request that does not already set
 /// that field. Request-specific headers always win.
 pub fn ClientOptions::with_default_header(
@@ -148,39 +200,46 @@ pub fn ClientOptions::with_default_header(
   }
 }
 
+///|
 /// Replace the default headers applied to top-level requests.
 pub fn ClientOptions::with_default_headers(
   self : ClientOptions,
   headers : Headers,
 ) -> ClientOptions {
-  ClientOptions::{ ..self, default_headers: headers }
+  ClientOptions::{ ..self, default_headers: headers, }
 }
 
+///|
 /// The headers applied to top-level requests that do not set them.
 pub fn ClientOptions::default_headers(self : ClientOptions) -> Headers {
   self.default_headers
 }
 
+///|
 #cfg(target="native")
-fn default_client_dialer(timeout_ms : Int) -> NativeTcpDialer {
+fn default_client_dialer(timeout_ms : Int32) -> NativeTcpDialer {
   NativeTcpDialer::with_timeout(timeout_ms)
 }
 
+///|
 #cfg(not(target="native"))
-fn default_client_dialer(timeout_ms : Int) -> UnavailableTcpDialer {
+fn default_client_dialer(timeout_ms : Int32) -> UnavailableTcpDialer {
   UnavailableTcpDialer::with_timeout(timeout_ms)
 }
 
+///|
 #cfg(target="native")
 fn default_client_tls_provider() -> OpenSslTlsProvider {
   OpenSslTlsProvider::new()
 }
 
+///|
 #cfg(not(target="native"))
 fn default_client_tls_provider() -> UnavailableTlsProvider {
   UnavailableTlsProvider::new()
 }
 
+///|
 /// Create a new UnifiedClient with default options
 pub fn UnifiedClient::new() -> UnifiedClient {
   let options = ClientOptions::new()
@@ -192,13 +251,10 @@ pub fn UnifiedClient::new() -> UnifiedClient {
     .with_http2(options.http2)
     .with_http2_prior_knowledge(options.http2_prior_knowledge)
 
-  UnifiedClient::{
-    connector,
-    options,
-    redirect_count: 0,
-  }
+  UnifiedClient::{ connector, options, redirect_count: 0, }
 }
 
+///|
 /// Create a new UnifiedClient with custom options
 pub fn UnifiedClient::with_options(options : ClientOptions) -> UnifiedClient {
   let dialer = default_client_dialer(options.timeout_ms)
@@ -209,50 +265,60 @@ pub fn UnifiedClient::with_options(options : ClientOptions) -> UnifiedClient {
     .with_http2(options.http2)
     .with_http2_prior_knowledge(options.http2_prior_knowledge)
 
-  UnifiedClient::{
-    connector,
-    options,
-    redirect_count: 0,
-  }
+  UnifiedClient::{ connector, options, redirect_count: 0, }
 }
 
+///|
 /// A copy of the options currently used by this client.
 pub fn UnifiedClient::client_options(self : UnifiedClient) -> ClientOptions {
   self.options
 }
 
+///|
 /// Change the per-request timeout used when a request does not override it.
 /// This also bounds future dials and TLS handshakes unless a separate
 /// connect timeout is configured.
-pub fn UnifiedClient::with_timeout(self : UnifiedClient, timeout_ms : Int) -> UnifiedClient {
+pub fn UnifiedClient::with_timeout(
+  self : UnifiedClient,
+  timeout_ms : Int32,
+) -> UnifiedClient {
   let timeout_ms = if timeout_ms < 0 { 0 } else { timeout_ms }
-  let connector = Connector::{ ..self.connector.detached(), timeout_ms }
+  let connector = Connector::{ ..self.connector.detached(), timeout_ms, }
   UnifiedClient::{
     // Keep the derived client independent from the source, including its
     // connection pool, like the other client builders. The connector applies
     // this timeout before each dial.
     connector,
-    options: ClientOptions::{ ..self.options, timeout_ms },
+    options: ClientOptions::{ ..self.options, timeout_ms, },
     redirect_count: 0,
   }
 }
 
+///|
 /// Bound dialing and the TLS handshake without shortening the response
 /// exchange timeout. A value below 1 makes connection setup follow the
 /// request timeout.
 pub fn UnifiedClient::with_connect_timeout(
   self : UnifiedClient,
-  connect_timeout_ms : Int,
+  connect_timeout_ms : Int32,
 ) -> UnifiedClient {
-  let connect_timeout_ms = if connect_timeout_ms < 0 { 0 } else { connect_timeout_ms }
-  let connector = Connector::{ ..self.connector.detached(), connect_timeout_ms }
+  let connect_timeout_ms = if connect_timeout_ms < 0 {
+    0
+  } else {
+    connect_timeout_ms
+  }
+  let connector = Connector::{
+    ..self.connector.detached(),
+    connect_timeout_ms,
+  }
   UnifiedClient::{
     connector,
-    options: ClientOptions::{ ..self.options, connect_timeout_ms },
+    options: ClientOptions::{ ..self.options, connect_timeout_ms, },
     redirect_count: 0,
   }
 }
 
+///|
 /// Set the User-Agent sent on requests that do not supply one.
 pub fn UnifiedClient::with_user_agent(
   self : UnifiedClient,
@@ -260,11 +326,12 @@ pub fn UnifiedClient::with_user_agent(
 ) -> UnifiedClient {
   UnifiedClient::{
     connector: self.connector.detached(),
-    options: ClientOptions::{ ..self.options, user_agent },
+    options: ClientOptions::{ ..self.options, user_agent, },
     redirect_count: 0,
   }
 }
 
+///|
 /// Add a header applied to every top-level request that does not already set
 /// that field. A request-specific header always takes precedence.
 pub fn UnifiedClient::with_default_header(
@@ -279,6 +346,7 @@ pub fn UnifiedClient::with_default_header(
   }
 }
 
+///|
 /// Replace the default headers applied to top-level requests.
 pub fn UnifiedClient::with_default_headers(
   self : UnifiedClient,
@@ -291,6 +359,7 @@ pub fn UnifiedClient::with_default_headers(
   }
 }
 
+///|
 /// Enable or disable following redirects for this client.
 pub fn UnifiedClient::with_follow_redirects(
   self : UnifiedClient,
@@ -298,30 +367,36 @@ pub fn UnifiedClient::with_follow_redirects(
 ) -> UnifiedClient {
   UnifiedClient::{
     connector: self.connector.detached(),
-    options: ClientOptions::{ ..self.options, follow_redirects },
+    options: ClientOptions::{ ..self.options, follow_redirects, },
     redirect_count: 0,
   }
 }
 
+///|
 /// Change the maximum number of redirects followed for one request.
 pub fn UnifiedClient::with_max_redirects(
   self : UnifiedClient,
-  max_redirects : Int,
+  max_redirects : Int32,
 ) -> UnifiedClient {
   UnifiedClient::{
     connector: self.connector.detached(),
     options: ClientOptions::{
       ..self.options,
-      max_redirects: if max_redirects < 0 { 0 } else { max_redirects },
+      max_redirects: if max_redirects < 0 {
+        0
+      } else {
+        max_redirects
+      },
     },
     redirect_count: 0,
   }
 }
 
+///|
 /// Change the maximum response body size for this client.
 pub fn UnifiedClient::with_max_response_body_bytes(
   self : UnifiedClient,
-  max_response_body_bytes : Int,
+  max_response_body_bytes : Int32,
 ) -> UnifiedClient {
   UnifiedClient::{
     connector: self.connector.detached(),
@@ -337,10 +412,14 @@ pub fn UnifiedClient::with_max_response_body_bytes(
   }
 }
 
+///|
 /// Enable or disable HTTP/2 negotiation through ALPN. The derived client gets
 /// a fresh pool, so connections negotiated under the source client's policy
 /// are neither reused nor closed by this builder.
-pub fn UnifiedClient::with_http2(self : UnifiedClient, enabled : Bool) -> UnifiedClient {
+pub fn UnifiedClient::with_http2(
+  self : UnifiedClient,
+  enabled : Bool,
+) -> UnifiedClient {
   UnifiedClient::{
     connector: self.connector.detached().with_http2(enabled),
     options: self.options.with_http2(enabled),
@@ -348,6 +427,7 @@ pub fn UnifiedClient::with_http2(self : UnifiedClient, enabled : Bool) -> Unifie
   }
 }
 
+///|
 /// Use HTTP/2 for cleartext `http://` origins without ALPN (prior knowledge).
 /// This is opt-in: an HTTP/1.1-only server will reject the HTTP/2 preface.
 /// HTTPS requests continue to negotiate `h2` through ALPN.
@@ -362,6 +442,7 @@ pub fn UnifiedClient::with_http2_prior_knowledge(
   }
 }
 
+///|
 /// Consume HTTP/2 response bodies lazily instead of buffering them. This only
 /// affects bodyless requests; uploads and tunnels retain the buffered path.
 pub fn UnifiedClient::with_http2_streaming(
@@ -375,6 +456,7 @@ pub fn UnifiedClient::with_http2_streaming(
   }
 }
 
+///|
 /// Decode gzip/deflate response bodies automatically for `read_body` and
 /// `copy_body_to`. Tunnels and switched protocols are left untouched.
 pub fn UnifiedClient::with_auto_decompress(
@@ -388,6 +470,7 @@ pub fn UnifiedClient::with_auto_decompress(
   }
 }
 
+///|
 /// Build a client with an explicit dialer and TLS provider.
 pub fn UnifiedClient::with_transport(
   dialer : &Dialer,
@@ -396,111 +479,110 @@ pub fn UnifiedClient::with_transport(
 ) -> UnifiedClient {
   UnifiedClient::{
     connector: Connector::new(dialer, tls_provider)
-      .with_timeout(options.timeout_ms)
-      .with_connect_timeout(options.connect_timeout_ms)
-      .with_http2(options.http2)
-      .with_http2_prior_knowledge(options.http2_prior_knowledge),
+    .with_timeout(options.timeout_ms)
+    .with_connect_timeout(options.connect_timeout_ms)
+    .with_http2(options.http2)
+    .with_http2_prior_knowledge(options.http2_prior_knowledge),
     options,
     redirect_count: 0,
   }
 }
 
+///|
 /// Close every pooled connection owned by this client.
-pub fn UnifiedClient::close_all(self : UnifiedClient) -> Result[Unit, HttpError] {
+pub fn UnifiedClient::close_all(
+  self : UnifiedClient,
+) -> Result[Unit, HttpError] {
   self.connector.close_all()
 }
 
+///|
 /// Close only idle pooled connections, leaving checked-out response or tunnel
 /// streams untouched.
-pub fn UnifiedClient::close_idle(self : UnifiedClient) -> Result[Unit, HttpError] {
+pub fn UnifiedClient::close_idle(
+  self : UnifiedClient,
+) -> Result[Unit, HttpError] {
   self.connector.close_idle()
 }
 
+///|
 /// Number of idle connections currently retained for reuse.
-pub fn UnifiedClient::idle_connection_count(self : UnifiedClient) -> Int {
+pub fn UnifiedClient::idle_connection_count(self : UnifiedClient) -> Int32 {
   self.connector.idle_connection_count()
 }
 
+///|
 /// Number of connections currently checked out by this client.
-pub fn UnifiedClient::active_connection_count(self : UnifiedClient) -> Int {
+pub fn UnifiedClient::active_connection_count(self : UnifiedClient) -> Int32 {
   self.connector.active_connection_count()
 }
 
+///|
 /// Total number of live connections owned by this client.
-pub fn UnifiedClient::connection_count(self : UnifiedClient) -> Int {
+pub fn UnifiedClient::connection_count(self : UnifiedClient) -> Int32 {
   self.connector.connection_count()
 }
 
+///|
 /// Cap the number of simultaneously open connections per host. A value below 1
 /// means unlimited (the default).
 pub fn UnifiedClient::with_max_connections_per_host(
   self : UnifiedClient,
-  max_connections : Int,
+  max_connections : Int32,
 ) -> UnifiedClient {
-   // A value below 1 means unlimited connections per host (the default).
-  let connector = self.connector.detached().with_max_connections_per_host(max_connections)
-  UnifiedClient::{
-    connector,
-    options: self.options,
-    redirect_count: 0,
-  }
+  // A value below 1 means unlimited connections per host (the default).
+  let connector = self.connector
+    .detached()
+    .with_max_connections_per_host(max_connections)
+  UnifiedClient::{ connector, options: self.options, redirect_count: 0, }
 }
 
+///|
 /// Cap the total number of live connections this client may own across every
 /// origin. A value below 1 means unlimited. The derived client gets an
 /// independent pool, so the source client's connections are left untouched.
 pub fn UnifiedClient::with_max_connections(
   self : UnifiedClient,
-  max_connections : Int,
-   // A value below 1 means unlimited connections across all origins (the default).
+  max_connections : Int32,
+  // A value below 1 means unlimited connections across all origins (the default).
 ) -> UnifiedClient {
-  let connector = self.connector.detached().with_max_connections(max_connections)
-  UnifiedClient::{
-    connector,
-    options: self.options,
-    redirect_count: 0,
-  }
+  let connector = self.connector
+    .detached()
+    .with_max_connections(max_connections)
+  UnifiedClient::{ connector, options: self.options, redirect_count: 0, }
 }
 
+///|
 /// Discard pooled connections idle for longer than `idle_timeout_ms`. A value
 /// below 1 disables idle eviction.
 pub fn UnifiedClient::with_idle_timeout(
   self : UnifiedClient,
-  idle_timeout_ms : Int,
+  idle_timeout_ms : Int32,
 ) -> UnifiedClient {
   let connector = self.connector.detached().with_idle_timeout(idle_timeout_ms)
-  UnifiedClient::{
-    connector,
-    options: self.options,
-    redirect_count: 0,
-  }
+  UnifiedClient::{ connector, options: self.options, redirect_count: 0, }
 }
 
+///|
 /// Cap the number of idle (keep-alive) connections retained per host.
 pub fn UnifiedClient::with_max_idle_per_host(
   self : UnifiedClient,
-  max_idle : Int,
+  max_idle : Int32,
 ) -> UnifiedClient {
   let connector = self.connector.detached().with_max_idle_per_host(max_idle)
-  UnifiedClient::{
-    connector,
-    options: self.options,
-    redirect_count: 0,
-  }
+  UnifiedClient::{ connector, options: self.options, redirect_count: 0, }
 }
 
+///|
 /// Enable the built-in cookie jar. Cookies set by responses are stored and
 /// replayed on later requests that match their domain, path and security
 /// attributes.
 pub fn UnifiedClient::with_cookies(self : UnifiedClient) -> UnifiedClient {
   let connector = self.connector.detached().with_cookies(true)
-  UnifiedClient::{
-    connector,
-    options: self.options,
-    redirect_count: 0,
-  }
+  UnifiedClient::{ connector, options: self.options, redirect_count: 0, }
 }
 
+///|
 /// Replace the cookie jar and enable cookie handling.
 pub fn UnifiedClient::with_cookie_jar(
   self : UnifiedClient,
@@ -511,18 +593,16 @@ pub fn UnifiedClient::with_cookie_jar(
     cookies_enabled: true,
     cookie_jar: @ref.Ref(jar),
   }
-  UnifiedClient::{
-    connector,
-    options: self.options,
-    redirect_count: 0,
-  }
+  UnifiedClient::{ connector, options: self.options, redirect_count: 0, }
 }
 
+///|
 /// The client's cookie jar.
 pub fn UnifiedClient::cookie_jar(self : UnifiedClient) -> CookieJar {
   self.connector.cookie_jar()
 }
 
+///|
 /// Replace the TLS configuration used for HTTPS connections.
 pub fn UnifiedClient::with_tls_config(
   self : UnifiedClient,
@@ -535,11 +615,15 @@ pub fn UnifiedClient::with_tls_config(
   }
 }
 
+///|
 /// Route HTTP requests through a forward proxy and tunnel HTTPS requests with
 /// `CONNECT` (or route both schemes through a SOCKS5 proxy). Connections made
 /// under the previous routing cannot be reused, so the derived client gets a
 /// fresh pool; the source client's pool is left untouched.
-pub fn UnifiedClient::with_proxy(self : UnifiedClient, proxy : Proxy) -> UnifiedClient {
+pub fn UnifiedClient::with_proxy(
+  self : UnifiedClient,
+  proxy : Proxy,
+) -> UnifiedClient {
   UnifiedClient::{
     connector: self.connector.detached().with_proxy(proxy),
     options: self.options,
@@ -547,6 +631,7 @@ pub fn UnifiedClient::with_proxy(self : UnifiedClient, proxy : Proxy) -> Unified
   }
 }
 
+///|
 /// Send requests for matching hosts directly instead of through the proxy.
 /// See `Connector::with_proxy_bypass` for the supported pattern syntax. The
 /// derived client owns a fresh pool, so changing routing does not close the
@@ -562,6 +647,27 @@ pub fn UnifiedClient::with_proxy_bypass(
   }
 }
 
+///|
+/// Wrap this client with an RFC 9111 compliant HTTP cache. The cache stores
+/// `GET` responses with explicit freshness (e.g. `Cache-Control: max-age`) or
+/// validators (`ETag`, `Last-Modified`), revalidates stale entries with
+/// `If-None-Match`/`If-Modified-Since`, and automatically invalidates cached
+/// entries on unsafe methods (`POST`, `PUT`, etc.). The cache is in-memory and
+/// subject to configurable size limits.
+pub fn UnifiedClient::with_cache(self : UnifiedClient) -> CachedClient {
+  CachedClient::new(self)
+}
+
+///|
+/// Wrap this client with a custom HTTP cache instance.
+pub fn UnifiedClient::with_cache_instance(
+  self : UnifiedClient,
+  cache : HttpCache,
+) -> CachedClient {
+  CachedClient::new(self).with_cache(cache)
+}
+
+///|
 /// Route requests through the proxy described by `url` (`http://`, `https://`,
 /// `socks5://`, or `socks5h://` `[user:password@]host[:port]`). A bare
 /// `host[:port]` value selects an HTTP proxy, matching the convention used by
@@ -577,18 +683,28 @@ pub fn UnifiedClient::with_proxy_url(
   Ok(self.with_proxy(proxy))
 }
 
-pub impl HttpClient for UnifiedClient with fn request(self : UnifiedClient, req : Request) -> Result[Response, HttpError] {
+///|
+pub impl HttpClient for UnifiedClient with fn request(
+  self : UnifiedClient,
+  req : Request,
+) -> Result[Response, HttpError] {
   self.redirect_count = 0
   self.do_request(req)
 }
 
+///|
 extend UnifiedClient with HttpClient::{request}
 
+///|
 fn normalize_path_and_suffix(target : String) -> String {
   normalize_url_path(target)
 }
 
-fn resolve_redirect_url(base : Url, location : String) -> Result[Url, HttpError] {
+///|
+fn resolve_redirect_url(
+  base : Url,
+  location : String,
+) -> Result[Url, HttpError] {
   let joined = match base.join(location) {
     Ok(url) => url
     Err(err) => return Err(err)
@@ -608,48 +724,44 @@ fn resolve_redirect_url(base : Url, location : String) -> Result[Url, HttpError]
   Ok(joined.with_path(path))
 }
 
+///|
 /// Whether two URLs address the same resource for request purposes. Fragments
 /// are client-side only, so a redirect that changes nothing but the fragment
 /// must not trigger another HTTP request.
 fn same_request_target(first : Url, second : Url) -> Bool {
   first.scheme.to_lower() == second.scheme.to_lower() &&
   lowercase_host_preserving_zone(first.host) ==
-    lowercase_host_preserving_zone(second.host) &&
+  lowercase_host_preserving_zone(second.host) &&
   first.bracketed == second.bracketed &&
   first.port == second.port &&
   first.path == second.path &&
   first.query == second.query
 }
 
-fn redirect_method(status : Int, verb : HttpMethod) -> (HttpMethod, Bool) {
+///|
+fn redirect_method(status : Int32, verb : HttpMethod) -> (HttpMethod, Bool) {
   // Returns the method for the next request and whether the body is kept.
   let verb = canonical_http_method(verb)
   match status {
-    303 =>
-      if verb == HEAD {
-        (HEAD, false)
-      } else {
-        (GET, false)
-      }
-    301 | 302 =>
-      if verb == POST {
-        (GET, false)
-      } else {
-        (verb, true)
-      }
+    303 => if verb == HEAD { (HEAD, false) } else { (GET, false) }
+    301 | 302 => if verb == POST { (GET, false) } else { (verb, true) }
     300 | 307 | 308 => (verb, true)
     _ => (verb, true)
   }
 }
 
+///|
 /// Drop fields that describe a request body when a redirect changes the
 /// method/body semantics and the payload is no longer sent.
 fn without_request_content(headers : Headers) -> Headers {
   let mut result = headers
   for header in headers.iter() {
     let name = header.name.to_lower()
-    if name.has_prefix("content-") || name == "transfer-encoding" ||
-      name == "digest" || name == "repr-digest" || name == "expect" ||
+    if name.has_prefix("content-") ||
+      name == "transfer-encoding" ||
+      name == "digest" ||
+      name == "repr-digest" ||
+      name == "expect" ||
       name == "trailer" {
       result = result.remove(header.name)
     }
@@ -657,22 +769,25 @@ fn without_request_content(headers : Headers) -> Headers {
   result
 }
 
+///|
 fn drain_response(response : Response) -> Result[Unit, HttpError] {
   while true {
     let buf = Buffer(size_hint=4096)
     match response.body.read(buf) {
       Ok(0) => return Ok(())
-      Ok(count) => {
-if count < 0 {
-                return Err(http_error_from_net(NetError::ReadError("invalid read count")))
-            }
-      }
+      Ok(count) =>
+        if count < 0 {
+          return Err(
+            http_error_from_net(NetError::ReadError("invalid read count")),
+          )
+        }
       Err(err) => return Err(http_error_from_net(err))
     }
   }
   Ok(())
 }
 
+///|
 /// Errors raised while validating a request locally, before any bytes reach
 /// the wire. They do not make an already-open connection unusable.
 fn request_error_is_local(err : HttpError) -> Bool {
@@ -695,6 +810,7 @@ fn request_error_is_local(err : HttpError) -> Bool {
   }
 }
 
+///|
 /// A REFUSED_STREAM reset guarantees that the server did not process the
 /// request, so it is safe to retry even on a freshly opened connection.
 fn request_error_is_refused(err : HttpError) -> Bool {
@@ -704,6 +820,7 @@ fn request_error_is_refused(err : HttpError) -> Bool {
   }
 }
 
+///|
 /// A GOAWAY whose last-stream id is below the stream we opened means the
 /// server explicitly did not process that stream. Retrying is safe even for
 /// methods with side effects and even on a freshly opened connection.
@@ -718,6 +835,7 @@ fn request_error_is_unprocessed_goaway(err : HttpError) -> Bool {
   }
 }
 
+///|
 fn request_can_be_retried(verb : HttpMethod) -> Bool {
   match canonical_http_method(verb) {
     GET => true
@@ -730,6 +848,7 @@ fn request_can_be_retried(verb : HttpMethod) -> Bool {
   }
 }
 
+///|
 /// Merge client-wide default headers into a request. A field explicitly set
 /// on the request wins; repeated default values for the same field are all
 /// preserved. Defaults are applied once, before the first request, so a
@@ -741,17 +860,18 @@ fn apply_default_headers(
   let mut request = req
   let applied : Array[String] = []
   for header in defaults.iter() {
-if req.get_header(header.name.to_lower()) is None {
-       request = request.with_header(header.name, header.value)
-       let name = header.name.to_lower()
-       if !applied.contains(name) {
-         applied.push(name)
-       }
-     }
+    if req.get_header(header.name.to_lower()) is None {
+      request = request.with_header(header.name, header.value)
+      let name = header.name.to_lower()
+      if !applied.contains(name) {
+        applied.push(name)
+      }
+    }
   }
   (request, applied)
 }
 
+///|
 /// Whether an HTTP/2 exchange can safely return a lazily-read body. This must
 /// match the fallback conditions in `H2ClientConnection::request_streaming` so
 /// the connector knows whether the lease is handed to the body stream.
@@ -760,13 +880,18 @@ fn h2_request_can_stream(request : Request) -> Bool {
     Some(body) => body.length()
     None => 0
   }
-  body_length == 0 && request.trailers.length() == 0 &&
+  body_length == 0 &&
+  request.trailers.length() == 0 &&
   canonical_http_method(request.verb) != CONNECT &&
   !request_requests_upgrade(request.headers)
 }
 
+///|
 /// Internal request implementation with redirect handling
-fn UnifiedClient::do_request(self : UnifiedClient, req : Request) -> Result[Response, HttpError] {
+fn UnifiedClient::do_request(
+  self : UnifiedClient,
+  req : Request,
+) -> Result[Response, HttpError] {
   let (request, applied_defaults) = apply_default_headers(
     req,
     self.options.default_headers,
@@ -785,14 +910,17 @@ fn UnifiedClient::do_request(self : UnifiedClient, req : Request) -> Result[Resp
     } else {
       response.status >= 200 && response.status < 300
     })
-  if self.options.auto_decompress && verb != CONNECT &&
-    response.status != 101 && !upgrade_tunnel {
+  if self.options.auto_decompress &&
+    verb != CONNECT &&
+    response.status != 101 &&
+    !upgrade_tunnel {
     Ok(response.with_auto_decompress(true))
   } else {
     Ok(response)
   }
 }
 
+///|
 /// On the JavaScript target there is no synchronous socket transport. When the
 /// connector has no usable dialer (the default), the unified client delegates
 /// to the browser implementation. The browser owns TLS, redirects, cookies,
@@ -815,14 +943,16 @@ fn UnifiedClient::do_request_once(
   if request.get_header("User-Agent") is None {
     request = request.with_header("User-Agent", self.options.user_agent)
   }
-  let browser = BrowserFetchClient::new()
-    .with_max_response_body_bytes(self.options.max_response_body_bytes)
+  let browser = BrowserFetchClient::new().with_max_response_body_bytes(
+    self.options.max_response_body_bytes,
+  )
   match browser.request(request) {
     Ok(response) => Ok(response.with_request_url(request.url))
     Err(err) => Err(err)
   }
 }
 
+///|
 #cfg(not(target="js"))
 fn UnifiedClient::do_request_once(
   self : UnifiedClient,
@@ -833,6 +963,7 @@ fn UnifiedClient::do_request_once(
   self.do_request_once_transport(req, allow_retry, applied_defaults)
 }
 
+///|
 fn UnifiedClient::do_request_once_transport(
   self : UnifiedClient,
   req : Request,
@@ -848,10 +979,7 @@ fn UnifiedClient::do_request_once_transport(
     self.options.timeout_ms
   }
   // Connect to the server
-  let (stream, lease) = match self.connector.checkout(
-    req.url,
-    timeout_ms=timeout_ms,
-  ) {
+  let (stream, lease) = match self.connector.checkout(req.url, timeout_ms~) {
     Ok(stream) => stream
     Err(err) => return Err(normalize_http_error(err))
   }
@@ -902,7 +1030,8 @@ fn UnifiedClient::do_request_once_transport(
     request = request.without_header("Host")
     if request.get_header("Proxy-Authorization") is None {
       match self.connector.proxy_authorization_for(request.url) {
-        Some(value) => request = request.with_header("Proxy-Authorization", value)
+        Some(value) =>
+          request = request.with_header("Proxy-Authorization", value)
         None => ()
       }
     }
@@ -912,9 +1041,12 @@ fn UnifiedClient::do_request_once_transport(
 
   let negotiated_protocol = lease.negotiated_protocol()
   if negotiated_protocol is Some(protocol) &&
-    protocol != "h2" && protocol != "http/1.1" {
+    protocol != "h2" &&
+    protocol != "http/1.1" {
     lease.release(false)
-    return Err(ProtocolError("Unsupported negotiated ALPN protocol: " + protocol))
+    return Err(
+      ProtocolError("Unsupported negotiated ALPN protocol: " + protocol),
+    )
   }
   let is_http2 = negotiated_protocol == Some("h2")
   let h2_connection = lease.h2_connection()
@@ -922,10 +1054,14 @@ fn UnifiedClient::do_request_once_transport(
   // protocol upgrade) becomes a streaming tunnel. Keep the lease checked out
   // until the tunnel body is exhausted or closed.
   let h2_tunnel_request = is_http2 &&
-    (canonical_http_method(request.verb) == CONNECT ||
-      request_requests_upgrade(request.headers))
-  let h2_streaming = is_http2 && !h2_tunnel_request &&
-    self.options.http2_streaming && h2_request_can_stream(request)
+    (
+      canonical_http_method(request.verb) == CONNECT ||
+      request_requests_upgrade(request.headers)
+    )
+  let h2_streaming = is_http2 &&
+    !h2_tunnel_request &&
+    self.options.http2_streaming &&
+    h2_request_can_stream(request)
   let stream_completion : (() -> Unit)? = if h2_streaming {
     None
   } else if h2_tunnel_request {
@@ -981,9 +1117,7 @@ fn UnifiedClient::do_request_once_transport(
     )
     match codec.encode_request(request, absolute_form~) {
       Ok(_) =>
-        codec.decode_response(
-          head=canonical_http_method(request.verb) == HEAD,
-        )
+        codec.decode_response(head=canonical_http_method(request.verb) == HEAD)
       // Leave lease handling to the common error path below. A write can fail
       // on a stale keep-alive connection before the peer processes anything,
       // so an idempotent request is safe to retry exactly like a failed read.
@@ -1014,7 +1148,8 @@ fn UnifiedClient::do_request_once_transport(
   }
   let response = response.with_request_url(request.url)
   let h2_tunnel = h2_tunnel_request &&
-    response.status >= 200 && response.status < 300
+    response.status >= 200 &&
+    response.status < 300
   if is_http2 && !h2_tunnel && !h2_streaming {
     // A buffered HTTP/2 exchange is complete here, so the session can be
     // returned to the pool immediately. The lazy body and CONNECT tunnel own
@@ -1028,7 +1163,8 @@ fn UnifiedClient::do_request_once_transport(
   // Handle redirects if enabled. CONNECT is not a resource retrieval: a 3xx
   // must be returned to the caller rather than turning the tunnel into a GET
   // or silently retargeting it to another authority.
-  if self.options.follow_redirects && is_redirect(response.status) &&
+  if self.options.follow_redirects &&
+    is_redirect(response.status) &&
     canonical_http_method(request.verb) != CONNECT {
     let location = response.get_header("Location")
 
@@ -1040,7 +1176,8 @@ fn UnifiedClient::do_request_once_transport(
     }
 
     // Parse redirect URL
-    let parsed_url = match resolve_redirect_url(request.url, location.unwrap()) {
+    let parsed_url = match
+      resolve_redirect_url(request.url, location.unwrap()) {
       Ok(url) => url
       Err(_) => return Ok(response) // Invalid redirect URL
     }
@@ -1049,7 +1186,10 @@ fn UnifiedClient::do_request_once_transport(
     // new request. Returning the redirect response avoids an infinite loop,
     // but only when following it would not change the method or body: a 303
     // or a POST 301/302 pointing at the same path must still issue its GET.
-    let (next_method, keep_body) = redirect_method(response.status, request.verb)
+    let (next_method, keep_body) = redirect_method(
+      response.status,
+      request.verb,
+    )
     if same_request_target(parsed_url, request.url) &&
       next_method == canonical_http_method(request.verb) &&
       (keep_body || request.body is None) {
@@ -1082,7 +1222,7 @@ fn UnifiedClient::do_request_once_transport(
     }
     if parsed_url.scheme.to_lower() != request.url.scheme.to_lower() ||
       lowercase_host_preserving_zone(parsed_url.host) !=
-        lowercase_host_preserving_zone(request.url.host) ||
+      lowercase_host_preserving_zone(request.url.host) ||
       parsed_url.bracketed != request.url.bracketed ||
       parsed_url.port != request.url.port {
       next_headers = next_headers
@@ -1103,8 +1243,16 @@ fn UnifiedClient::do_request_once_transport(
       verb: next_method,
       url: parsed_url,
       headers: next_headers,
-      body: if keep_body { request.body } else { None },
-      trailers: if keep_body { request.trailers } else { Headers::new() },
+      body: if keep_body {
+        request.body
+      } else {
+        None
+      },
+      trailers: if keep_body {
+        request.trailers
+      } else {
+        Headers::new()
+      },
       timeout_ms: request.timeout_ms,
       timeout_explicit: request.timeout_explicit,
     }
@@ -1117,12 +1265,18 @@ fn UnifiedClient::do_request_once_transport(
   Ok(response)
 }
 
+///|
 /// Check if status code indicates a redirect
-fn is_redirect(status : Int) -> Bool {
-  status == 300 || status == 301 || status == 302 || status == 303 ||
-  status == 307 || status == 308
+fn is_redirect(status : Int32) -> Bool {
+  status == 300 ||
+  status == 301 ||
+  status == 302 ||
+  status == 303 ||
+  status == 307 ||
+  status == 308
 }
 
+///|
 /// Send a form-encoded POST request.
 pub fn UnifiedClient::post_form(
   self : UnifiedClient,
@@ -1136,6 +1290,7 @@ pub fn UnifiedClient::post_form(
   self.request(request.with_form(fields))
 }
 
+///|
 /// Send a multipart/form-data POST request.
 pub fn UnifiedClient::post_multipart(
   self : UnifiedClient,
@@ -1150,8 +1305,12 @@ pub fn UnifiedClient::post_multipart(
   self.request(request.with_multipart(fields, files))
 }
 
+///|
 /// Convenience method for GET requests
-pub fn UnifiedClient::get(self : UnifiedClient, url : String) -> Result[Response, HttpError] {
+pub fn UnifiedClient::get(
+  self : UnifiedClient,
+  url : String,
+) -> Result[Response, HttpError] {
   let req = match Request::from_url(GET, url) {
     Ok(req) => req
     Err(err) => return Err(err)
@@ -1161,8 +1320,13 @@ pub fn UnifiedClient::get(self : UnifiedClient, url : String) -> Result[Response
   self.do_request(req)
 }
 
+///|
 /// Convenience method for POST requests
-pub fn UnifiedClient::post(self : UnifiedClient, url : String, body : Bytes) -> Result[Response, HttpError] {
+pub fn UnifiedClient::post(
+  self : UnifiedClient,
+  url : String,
+  body : Bytes,
+) -> Result[Response, HttpError] {
   let req = match Request::from_url(POST, url) {
     Ok(req) => req
     Err(err) => return Err(err)
@@ -1172,8 +1336,13 @@ pub fn UnifiedClient::post(self : UnifiedClient, url : String, body : Bytes) -> 
   self.do_request(req)
 }
 
+///|
 /// Convenience method for PUT requests
-pub fn UnifiedClient::put(self : UnifiedClient, url : String, body : Bytes) -> Result[Response, HttpError] {
+pub fn UnifiedClient::put(
+  self : UnifiedClient,
+  url : String,
+  body : Bytes,
+) -> Result[Response, HttpError] {
   let req = match Request::from_url(PUT, url) {
     Ok(req) => req
     Err(err) => return Err(err)
@@ -1183,8 +1352,12 @@ pub fn UnifiedClient::put(self : UnifiedClient, url : String, body : Bytes) -> R
   self.do_request(req)
 }
 
+///|
 /// Convenience method for DELETE requests
-pub fn UnifiedClient::delete(self : UnifiedClient, url : String) -> Result[Response, HttpError] {
+pub fn UnifiedClient::delete(
+  self : UnifiedClient,
+  url : String,
+) -> Result[Response, HttpError] {
   let req = match Request::from_url(DELETE, url) {
     Ok(req) => req
     Err(err) => return Err(err)
@@ -1194,8 +1367,12 @@ pub fn UnifiedClient::delete(self : UnifiedClient, url : String) -> Result[Respo
   self.do_request(req)
 }
 
+///|
 /// Convenience method for HEAD requests
-pub fn UnifiedClient::head(self : UnifiedClient, url : String) -> Result[Response, HttpError] {
+pub fn UnifiedClient::head(
+  self : UnifiedClient,
+  url : String,
+) -> Result[Response, HttpError] {
   let req = match Request::from_url(HEAD, url) {
     Ok(req) => req
     Err(err) => return Err(err)
@@ -1205,8 +1382,12 @@ pub fn UnifiedClient::head(self : UnifiedClient, url : String) -> Result[Respons
   self.do_request(req)
 }
 
+///|
 /// Convenience method for OPTIONS requests
-pub fn UnifiedClient::options(self : UnifiedClient, url : String) -> Result[Response, HttpError] {
+pub fn UnifiedClient::options(
+  self : UnifiedClient,
+  url : String,
+) -> Result[Response, HttpError] {
   let req = match Request::from_url(OPTIONS, url) {
     Ok(req) => req
     Err(err) => return Err(err)
@@ -1216,8 +1397,13 @@ pub fn UnifiedClient::options(self : UnifiedClient, url : String) -> Result[Resp
   self.do_request(req)
 }
 
+///|
 /// Convenience method for PATCH requests
-pub fn UnifiedClient::patch(self : UnifiedClient, url : String, body : Bytes) -> Result[Response, HttpError] {
+pub fn UnifiedClient::patch(
+  self : UnifiedClient,
+  url : String,
+  body : Bytes,
+) -> Result[Response, HttpError] {
   let req = match Request::from_url(PATCH, url) {
     Ok(req) => req
     Err(err) => return Err(err)
@@ -1227,8 +1413,12 @@ pub fn UnifiedClient::patch(self : UnifiedClient, url : String, body : Bytes) ->
   self.do_request(req)
 }
 
+///|
 /// Convenience method for TRACE requests.
-pub fn UnifiedClient::trace(self : UnifiedClient, url : String) -> Result[Response, HttpError] {
+pub fn UnifiedClient::trace(
+  self : UnifiedClient,
+  url : String,
+) -> Result[Response, HttpError] {
   let req = match Request::from_url(TRACE, url) {
     Ok(req) => req
     Err(err) => return Err(err)
@@ -1238,6 +1428,7 @@ pub fn UnifiedClient::trace(self : UnifiedClient, url : String) -> Result[Respon
   self.do_request(req)
 }
 
+///|
 /// Open a CONNECT tunnel. A successful response exposes the tunnelled bytes as
 /// the response body stream until the peer closes it.
 pub fn UnifiedClient::connect(
@@ -1253,27 +1444,35 @@ pub fn UnifiedClient::connect(
   self.do_request(request)
 }
 
+///|
 /// Close all connections
 pub fn UnifiedClient::close(self : UnifiedClient) -> Result[Unit, HttpError] {
   self.connector.close_all()
 }
 
+///|
 /// Global default client for convenience
 pub fn default_client() -> UnifiedClient {
   UnifiedClient::new()
 }
 
+///|
 struct BufferedStream {
   data : Bytes
-  mut offset : Int
+  mut offset : Int32
   mut is_open : Bool
 }
 
+///|
 fn BufferedStream::new(data : Bytes) -> BufferedStream {
-  BufferedStream::{ data, offset: 0, is_open: true }
+  BufferedStream::{ data, offset: 0, is_open: true, }
 }
 
-pub impl Stream for BufferedStream with fn read(self : BufferedStream, buf : Buffer) -> Result[Int, NetError] {
+///|
+pub impl Stream for BufferedStream with fn read(
+  self : BufferedStream,
+  buf : Buffer,
+) -> Result[Int32, NetError] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
@@ -1282,21 +1481,23 @@ pub impl Stream for BufferedStream with fn read(self : BufferedStream, buf : Buf
     return Ok(0)
   }
   let take = if remaining < 8192 { remaining } else { 8192 }
-  buf.write_bytes(self.data.exact_view(start=self.offset, end=self.offset + take))
+  buf.write_bytes(
+    self.data.exact_view(start=self.offset, end=self.offset + take),
+  )
   self.offset = self.offset + take
   Ok(take)
 }
 
-pub impl Stream for BufferedStream with fn read_ready(
-  self : BufferedStream,
-) -> Bool {
+///|
+pub impl Stream for BufferedStream with fn read_ready(self : BufferedStream) -> Bool {
   // The complete payload is already in memory, including its EOF.
   self.is_open
 }
 
+///|
 pub impl Stream for BufferedStream with fn wait_readable(
   self : BufferedStream,
-  timeout_ms : Int,
+  timeout_ms : Int32,
 ) -> Result[Bool, NetError] {
   let _ = timeout_ms
   if !self.is_open {
@@ -1305,7 +1506,11 @@ pub impl Stream for BufferedStream with fn wait_readable(
   Ok(true)
 }
 
-pub impl Stream for BufferedStream with fn write(self : BufferedStream, buf : Buffer) -> Result[Int, NetError] {
+///|
+pub impl Stream for BufferedStream with fn write(
+  self : BufferedStream,
+  buf : Buffer,
+) -> Result[Int32, NetError] {
   let _ = buf
   if !self.is_open {
     return Err(NetError::Closed)
@@ -1313,19 +1518,31 @@ pub impl Stream for BufferedStream with fn write(self : BufferedStream, buf : Bu
   Err(NetError::WriteError("buffered response is read-only"))
 }
 
-pub impl Stream for BufferedStream with fn flush(self : BufferedStream) -> Result[Unit, NetError] {
+///|
+pub impl Stream for BufferedStream with fn flush(self : BufferedStream) -> Result[
+  Unit,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   Ok(())
 }
 
-pub impl Stream for BufferedStream with fn close(self : BufferedStream) -> Result[Unit, NetError] {
+///|
+pub impl Stream for BufferedStream with fn close(self : BufferedStream) -> Result[
+  Unit,
+  NetError,
+] {
   self.is_open = false
   Ok(())
 }
 
-pub impl Stream for BufferedStream with fn set_timeout(self : BufferedStream, timeout_ms : Int) -> Result[Unit, NetError] {
+///|
+pub impl Stream for BufferedStream with fn set_timeout(
+  self : BufferedStream,
+  timeout_ms : Int32,
+) -> Result[Unit, NetError] {
   let _ = timeout_ms
   if !self.is_open {
     return Err(NetError::Closed)
@@ -1333,20 +1550,29 @@ pub impl Stream for BufferedStream with fn set_timeout(self : BufferedStream, ti
   Ok(())
 }
 
-pub impl Stream for BufferedStream with fn peer_addr(self : BufferedStream) -> Result[String, NetError] {
+///|
+pub impl Stream for BufferedStream with fn peer_addr(self : BufferedStream) -> Result[
+  String,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   Err(NetError::IoError("buffered response has no peer"))
 }
 
-pub impl Stream for BufferedStream with fn local_addr(self : BufferedStream) -> Result[String, NetError] {
+///|
+pub impl Stream for BufferedStream with fn local_addr(self : BufferedStream) -> Result[
+  String,
+  NetError,
+] {
   if !self.is_open {
     return Err(NetError::Closed)
   }
   Err(NetError::IoError("buffered response has no local address"))
 }
 
+///|
 pub fn buffer_one_shot_response(
   client : UnifiedClient,
   result : Result[Response, HttpError],
@@ -1364,20 +1590,27 @@ pub fn buffer_one_shot_response(
   // RFC 8441 extended CONNECT is an interactive byte stream, not a response
   // body. Buffering it would block until the peer closes the tunnel.
   let h1 = response.version.has_prefix("HTTP/1.")
-  let tunnel = (connect.unwrap_or(false) &&
-    response.status >= 200 && response.status < 300) ||
-    (upgrade.unwrap_or(false) &&
+  let tunnel = (
+      connect.unwrap_or(false) &&
+      response.status >= 200 &&
+      response.status < 300
+    ) ||
+    (
+      upgrade.unwrap_or(false) &&
       (if h1 {
         response.status == 101
       } else {
         response.status >= 200 && response.status < 300
-      }))
+      })
+    )
   if tunnel {
     let _ = response.body.close()
     let _ = client.close_all()
-    return Err(ProtocolError(
-      "one-shot request cannot buffer a switched protocol or tunnel",
-    ))
+    return Err(
+      ProtocolError(
+        "one-shot request cannot buffer a switched protocol or tunnel",
+      ),
+    )
   }
   let body = match response.read_body() {
     Ok(body) => body
@@ -1396,12 +1629,13 @@ pub fn buffer_one_shot_response(
       response.headers,
       stream,
     )
-      .with_trailers(response.trailers)
-      .with_early_hints(response.early_hints())
-      .with_max_body_bytes(response.max_body_bytes),
+    .with_trailers(response.trailers)
+    .with_early_hints(response.early_hints())
+    .with_max_body_bytes(response.max_body_bytes),
   )
 }
 
+///|
 fn one_shot_request(
   verb : HttpMethod,
   url : String,
@@ -1418,6 +1652,7 @@ fn one_shot_request(
   one_shot_custom_request(request)
 }
 
+///|
 /// On the JavaScript target the one-shot helpers use the browser transport,
 /// because no synchronous TCP dialer is available. The browser manages TLS,
 /// redirects, cookies, and decompression for these requests.
@@ -1431,6 +1666,7 @@ fn one_shot_custom_request(
   }
 }
 
+///|
 #cfg(not(target="js"))
 fn one_shot_custom_request(
   request : Result[Request, HttpError],
@@ -1448,6 +1684,7 @@ fn one_shot_custom_request(
   buffer_one_shot_response(client, client.request(request), connect~, upgrade~)
 }
 
+///|
 /// Send a request with a one-shot default client, choosing HTTP or HTTPS
 /// automatically from the URL scheme. The response body is buffered before the
 /// client's connections are closed.
@@ -1455,47 +1692,56 @@ pub fn request(request : Request) -> Result[Response, HttpError] {
   one_shot_custom_request(Ok(request))
 }
 
+///|
 /// Send a GET request with a one-shot default client, choosing HTTP or HTTPS
 /// automatically from the URL scheme.
 pub fn get(url : String) -> Result[Response, HttpError] {
   one_shot_request(GET, url, None)
 }
 
+///|
 /// Send a POST request with a one-shot default client.
 pub fn post(url : String, body : Bytes) -> Result[Response, HttpError] {
   one_shot_request(POST, url, Some(body))
 }
 
+///|
 /// Send a PUT request with a one-shot default client.
 pub fn put(url : String, body : Bytes) -> Result[Response, HttpError] {
   one_shot_request(PUT, url, Some(body))
 }
 
+///|
 /// Send a DELETE request with a one-shot default client.
 pub fn delete(url : String) -> Result[Response, HttpError] {
   one_shot_request(DELETE, url, None)
 }
 
+///|
 /// Send a HEAD request with a one-shot default client.
 pub fn head(url : String) -> Result[Response, HttpError] {
   one_shot_request(HEAD, url, None)
 }
 
+///|
 /// Send an OPTIONS request with a one-shot default client.
 pub fn options(url : String) -> Result[Response, HttpError] {
   one_shot_request(OPTIONS, url, None)
 }
 
+///|
 /// Send a PATCH request with a one-shot default client.
 pub fn patch(url : String, body : Bytes) -> Result[Response, HttpError] {
   one_shot_request(PATCH, url, Some(body))
 }
 
+///|
 /// Send a TRACE request with a one-shot default client.
 pub fn trace(url : String) -> Result[Response, HttpError] {
   one_shot_request(TRACE, url, None)
 }
 
+///|
 /// Send a form-encoded POST with a one-shot default client.
 pub fn post_form(
   url : String,
@@ -1508,6 +1754,7 @@ pub fn post_form(
   one_shot_custom_request(request)
 }
 
+///|
 /// Send a multipart/form-data POST with a one-shot default client.
 pub fn post_multipart(
   url : String,
