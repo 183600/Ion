@@ -196,23 +196,13 @@ pub impl Stream for TcpStream with fn peer_addr(self : TcpStream) -> Result[
   if !self.is_open {
     return Err(NetError::Closed)
   }
-   let address = if self.host.contains("[") && self.host.has_suffix("]") {
-     // IPv6 literal
-     let inner = &self.host[1..self.host.length() - 1];
-     if let Some(pos) = self.host.find("]:" ) {
-       // port follows the closing bracket
-       let after = &self.host[pos + 2..];
-       format!("{}:{}", inner, after)
-     } else {
-       format!("{}:{}", inner, self.port)
-     }
-   } else if self.host.contains(":") && !self.host.has_prefix("[") && !self.host.has_suffix("]") {
-     // host:port already present
-     self.host.clone()
-   } else {
-     format!("{}:{}", self.host, self.port)
-   }
-   Ok(address)
+  let host = if self.host.contains(":") &&
+    !(self.host.has_prefix("[") && self.host.has_suffix("]")) {
+    "[" + self.host + "]"
+  } else {
+    self.host
+  }
+  Ok(host + ":" + self.port.to_string())
 }
 
 ///|
