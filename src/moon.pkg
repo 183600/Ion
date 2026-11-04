@@ -19,6 +19,7 @@ options(
     "udp_native_stub.c",
   ],
   targets: {
+    "native_error.mbt": ["native"],
     "native_tcp.mbt": ["native"],
     "native_tls.mbt": ["native"],
     "native_udp.mbt": ["native"],
