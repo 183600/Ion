@@ -118,14 +118,15 @@ pub fn NativeTcpStream::open(
   if self.is_open {
     return Ok(self)
   }
-  if !valid_tcp_host(self.host) {
+  let transformed_host = tcp_dial_host(self.host)
+  if !valid_tcp_host(transformed_host) {
     return Err(NetError::InvalidAddress("Invalid host"))
   }
   if !valid_tcp_port(self.port) {
     return Err(NetError::InvalidAddress("Invalid port"))
   }
   let fd = feather_tcp_connect(
-    @utf8.encode(tcp_dial_host(self.host)),
+    @utf8.encode(transformed_host),
     self.port,
     self.timeout_ms,
   )
