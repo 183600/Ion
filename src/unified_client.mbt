@@ -437,6 +437,7 @@ pub fn UnifiedClient::with_max_connections_per_host(
   self : UnifiedClient,
   max_connections : Int,
 ) -> UnifiedClient {
+   // A value below 1 means unlimited connections per host (the default).
   let connector = self.connector.detached().with_max_connections_per_host(max_connections)
   UnifiedClient::{
     connector,
@@ -451,6 +452,7 @@ pub fn UnifiedClient::with_max_connections_per_host(
 pub fn UnifiedClient::with_max_connections(
   self : UnifiedClient,
   max_connections : Int,
+   // A value below 1 means unlimited connections across all origins (the default).
 ) -> UnifiedClient {
   let connector = self.connector.detached().with_max_connections(max_connections)
   UnifiedClient::{
