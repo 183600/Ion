@@ -664,9 +664,6 @@ fn drain_response(response : Response) -> Result[Unit, HttpError] {
 if count < 0 {
                 return Err(http_error_from_net(NetError::ReadError("invalid read count")))
             }
-if count != buf.length() {
-                    return Err(http_error_from_net(NetError::ReadError("stream returned no data")))
-                }
       }
       Err(err) => return Err(http_error_from_net(err))
     }
