@@ -300,6 +300,61 @@ pub struct DatagramPacket {
 
 type DeflateBitWriter
 
+#derive(Eq, @debug.Debug)
+pub enum DnsError {
+  TransportError(NetError)
+  InvalidName
+  ServerFailure
+  NameError
+  NotImplemented
+  Refused
+  Timeout
+  NoAnswer
+  MalformedResponse
+}
+
+#derive(Eq, @debug.Debug)
+pub struct DnsRecord {
+  name : String
+  typ : DnsRecordType
+  class : Int32
+  ttl : Int32
+  data : Bytes
+}
+
+#derive(Eq, @debug.Debug)
+pub enum DnsRecordType {
+  A
+  AAAA
+}
+pub fn DnsRecordType::code(Self) -> Int32
+
+pub struct DnsResolver {
+  transport : &Datagram
+  server : String
+  port : Int32
+  timeout_ms : Int32
+  retries : Int32
+}
+pub fn DnsResolver::new(&Datagram, String) -> Self
+pub fn DnsResolver::resolve(Self, String) -> Result[@list.List[String], DnsError]
+pub fn DnsResolver::resolve_a(Self, String) -> Result[@list.List[String], DnsError]
+pub fn DnsResolver::resolve_aaaa(Self, String) -> Result[@list.List[String], DnsError]
+pub fn DnsResolver::with_options(&Datagram, String, Int32, Int32) -> Self
+pub fn DnsResolver::with_port(Self, Int32) -> Self
+pub fn DnsResolver::with_retries(Self, Int32) -> Self
+pub fn DnsResolver::with_timeout(Self, Int32) -> Self
+
+#derive(Eq, @debug.Debug)
+pub struct DnsResponse {
+  id : Int32
+  response_code : Int32
+  questions : @list.List[DnsRecord]
+  answers : @list.List[DnsRecord]
+  authorities : @list.List[DnsRecord]
+  additionals : @list.List[DnsRecord]
+}
+
 pub struct H1Codec {
   stream : &Stream
   mut last_is_head : Bool
