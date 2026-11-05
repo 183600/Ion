@@ -80,6 +80,25 @@ pub struct DnsResponse {
 }
 
 ///|
+fn dns_normalize_name(name : String) -> Result[String, DnsError] {
+  if name.length() == 0 {
+    return Err(InvalidName)
+  }
+  let name = name.to_lower()
+  if is_ip_literal(name) {
+    return Err(InvalidName)
+  }
+  if idna_needs_conversion(name) {
+    match idna_host_to_ascii(name) {
+      Some(ascii) => Ok(ascii)
+      None => Err(InvalidName)
+    }
+  } else {
+    Ok(name)
+  }
+}
+
+///|
 fn dns_name_encode(name : String) -> Result[Bytes, DnsError] {
   if name.length() > 255 {
     return Err(InvalidName)
@@ -151,6 +170,10 @@ fn dns_build_question(
   name : String,
   typ : DnsRecordType,
 ) -> Result[Bytes, DnsError] {
+  let name = match dns_normalize_name(name) {
+    Ok(n) => n
+    Err(e) => return Err(e)
+  }
   let encoded = match dns_name_encode(name) {
     Ok(e) => e
     Err(err) => return Err(err)
@@ -327,6 +350,14 @@ pub fn DnsResolver::with_options(
   timeout_ms : Int32,
   retries : Int32,
 ) -> DnsResolver {
+  let server = if is_ip_literal(server) || !idna_needs_conversion(server) {
+    server
+  } else {
+    match idna_host_to_ascii(server) {
+      Some(ascii) => ascii
+      None => server
+    }
+  }
   DnsResolver::{
     transport,
     server,
