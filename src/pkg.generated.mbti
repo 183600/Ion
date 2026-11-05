@@ -835,6 +835,7 @@ pub fn Url::request_target(Self) -> String
 pub fn Url::to_string(Self) -> String
 pub fn Url::with_fragment(Self, String) -> Self
 pub fn Url::with_path(Self, String) -> Self
+pub fn Url::with_port(Self, Int32?) -> Self
 pub fn Url::with_query(Self, String) -> Self
 pub fn Url::with_query_param(Self, String, String) -> Self
 pub fn Url::with_query_params(Self, Array[(String, String)]) -> Self
