@@ -791,8 +791,9 @@ pub fn Url::is_secure(self : Url) -> Bool {
 }
 
 ///|
-/// Returns the default port for this URL's scheme.
-/// Returns None for schemes without a standard default port.
+/// Returns the default port for this URL's scheme following RFC 3986.
+/// Returns `Some(80)` for `http`, `Some(443)` for `https`, and `None`
+/// for schemes without a registered default port.
 pub fn Url::default_port(self : Url) -> Option[Int32] {
   let s = self.scheme.to_lower()
   if s == "http" {
@@ -802,6 +803,19 @@ pub fn Url::default_port(self : Url) -> Option[Int32] {
   } else {
     None
   }
+}
+
+///|
+/// Return a new URL with the given port, preserving all other components.
+/// If `port` is `None`, the scheme's default port is used (per `default_port`).
+pub fn Url::with_port(self : Url, port : Option[Int32]) -> Url {
+  let default = self.default_port()
+  let resolved_port = if port.is_some() {
+    port.unwrap()
+  } else {
+    default.unwrap_or(self.port)
+  }
+  Url::{ ..self, port: resolved_port, }
 }
 
 ///|
