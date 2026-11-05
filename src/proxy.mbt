@@ -317,6 +317,22 @@ pub fn Proxy::is_socks5h(self : Proxy) -> Bool {
 }
 
 ///|
+/// Returns the default port for this proxy's scheme.
+/// HTTP: 80, HTTPS: 443, SOCKS5: 1080, SOCKS5h: 1080, None otherwise.
+pub fn Proxy::default_port(self : Proxy) -> Option[Int32] {
+  let scheme = self.url.scheme.to_lower()
+  if scheme == "http" {
+    Some(80)
+  } else if scheme == "https" {
+    Some(443)
+  } else if scheme == "socks5" || scheme == "socks5h" {
+    Some(1080)
+  } else {
+    None
+  }
+}
+
+///|
 /// SOCKS5 username/password credentials, if configured.
 pub fn Proxy::socks_credentials(self : Proxy) -> (Bytes, Bytes)? {
   match (self.socks_username, self.socks_password) {
