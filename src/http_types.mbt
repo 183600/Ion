@@ -785,8 +785,23 @@ pub fn Url::origin(self : Url) -> String {
 }
 
 ///|
+/// Whether this URL uses a secure scheme (https).
 pub fn Url::is_secure(self : Url) -> Bool {
   self.scheme.to_lower() == "https"
+}
+
+///|
+/// Returns the default port for this URL's scheme.
+/// Returns None for schemes without a standard default port.
+pub fn Url::default_port(self : Url) -> Option[Int32] {
+  let s = self.scheme.to_lower()
+  if s == "http" {
+    Some(80)
+  } else if s == "https" {
+    Some(443)
+  } else {
+    None
+  }
 }
 
 ///|

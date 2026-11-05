@@ -255,5 +255,8 @@ pub fn TlsConfig::validate(self : TlsConfig) -> Result[Unit, TlsError] {
     }
     None => ()
   }
+  if self.min_version != TlsVersion::Tls1_2 && self.min_version != TlsVersion::Tls1_3 {
+    return Err(InvalidConfig("Invalid TLS minimum version"))
+  }
   Ok(())
 }
