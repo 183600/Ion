@@ -54,3 +54,33 @@ test "TlsStream operations" {
     read_result is Ok(_) || read_result.unwrap_err() == NetError::Closed,
   )
 }
+
+///|
+test "MockTlsClientCtx negotiated_alpn returns None by default" {
+  let provider = MockTlsProvider::new("test")
+  let config = TlsConfig::new("example.com")
+  let ctx_result = provider.new_client(config)
+  assert_true(ctx_result is Ok(_))
+
+  let ctx = ctx_result.unwrap()
+  let alpn = ctx.negotiated_alpn()
+  assert_eq(alpn, None)
+}
+
+///|
+test "MockTlsClientCtx connect twice fails" {
+  let provider = MockTlsProvider::new("test")
+  let config = TlsConfig::new("example.com")
+  let ctx_result = provider.new_client(config)
+  assert_true(ctx_result is Ok(_))
+
+  let ctx = ctx_result.unwrap()
+  let stream1 = TcpStream::new("example.com", 443)
+  let _ = stream1.open()
+  let _ = ctx.connect(stream1)
+
+  let stream2 = TcpStream::new("example.com", 443)
+  let _ = stream2.open()
+  let result = ctx.connect(stream2)
+  assert_true(result is Err(ProtocolError(_)))
+}
