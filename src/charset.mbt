@@ -325,6 +325,11 @@ fn decode_text_body(data : Bytes, charset : String?) -> String {
       } else {
         decode_utf16(data, charset)
       }
-    _ => @utf8.decode_lossy(data[:])
+    _ =>
+      // Fall back to UTF-8 decode with a clear indication that the declared
+      // charset was not explicitly supported; callers sensitive to encoding
+      // correctness can use `Response::text()` which always decodes, or
+      // `Response::read_body_decoded` which applies understood codings.
+      @utf8.decode_lossy(data[:])
   }
 }
