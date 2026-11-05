@@ -719,7 +719,7 @@ pub fn TlsConfig::with_root_store(Self, RootStore) -> Self
 pub fn TlsConfig::with_server_name(Self, String) -> Self
 pub fn TlsConfig::with_verify_mode(Self, VerifyMode) -> Self
 
-#derive(Eq, Show, @debug.Debug)
+#derive(Eq, @debug.Debug)
 pub enum TlsError {
   HandshakeFailed(String)
   CertificateValidationFailed(String)
