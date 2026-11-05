@@ -2809,7 +2809,11 @@ fn H2ClientConnection::request_streaming_with_callback(
       return Err(err)
     }
   }
-  self.next_stream_id = stream_id + 2
+  if stream_id == H2_MAX_WINDOW_SIZE {
+    self.next_stream_id = -1
+  } else {
+    self.next_stream_id = stream_id + 2
+  }
   match self.stream.flush() {
     Ok(_) => ()
     Err(err) => {
@@ -3011,7 +3015,11 @@ fn H2ClientConnection::request_with_limit_and_callback(
   }
   // Stream ids are never reused. Advancing here also prevents a failed
   // exchange from sending another HEADERS frame on the same stream.
-  self.next_stream_id = stream_id + 2
+  if stream_id == H2_MAX_WINDOW_SIZE {
+    self.next_stream_id = -1
+  } else {
+    self.next_stream_id = stream_id + 2
+  }
   // Make the request visible to the peer before blocking on the response.
   match self.stream.flush() {
     Ok(_) => ()
