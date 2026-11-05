@@ -1,6 +1,6 @@
 ///|
 /// TLS error types
-#derive(Eq, Debug, Show)
+#derive(Eq, Debug)
 pub enum TlsError {
   HandshakeFailed(String)
   CertificateValidationFailed(String)

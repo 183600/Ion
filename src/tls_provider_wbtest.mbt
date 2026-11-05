@@ -92,7 +92,7 @@ test "UnavailableTlsProvider refuses to create client context" {
   let config = TlsConfig::new("example.com")
   let result = provider.new_client(config)
   assert_true(result is Err(InvalidConfig(_)))
-  assert_true(result.unwrap_err().to_string().contains("unavailable"))
+  assert_true(@debug.to_string(result.unwrap_err()).contains("unavailable"))
 }
 
 ///|
