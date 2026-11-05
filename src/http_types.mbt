@@ -668,10 +668,10 @@ pub fn Url::parse(url_str : String) -> Result[Url, HttpError] {
   if bracketed && !is_ip_literal(host) {
     return Err(InvalidUrl("Invalid IPv6 host"))
   }
-  if host.contains("@") ||
+if host.contains("@") ||
     (!bracketed && !valid_url_host_chars(host) && !idna_needs_conversion(host)) {
-    return Err(InvalidUrl("Invalid host"))
-  }
+    return Err(InvalidUrl("Invalid host: expected a valid hostname or IP address"))
+}
   if !bracketed &&
     (host.contains(":") || host.contains("[") || host.contains("]")) {
     return Err(InvalidUrl("Invalid host"))
