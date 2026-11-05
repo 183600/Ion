@@ -574,6 +574,7 @@ pub struct Proxy {
 }
 pub fn Proxy::authority(Self) -> String
 pub fn Proxy::authorization(Self) -> String?
+pub fn Proxy::default_port(Self) -> Int32?
 pub fn Proxy::from_env(Url) -> Result[Self?, HttpError]
 pub fn Proxy::is_secure(Self) -> Bool
 pub fn Proxy::is_socks5(Self) -> Bool
@@ -821,6 +822,7 @@ pub struct Url {
 }
 pub fn Url::authority(Self) -> String
 pub fn Url::connect_authority(Self) -> String
+pub fn Url::default_port(Self) -> Int32?
 pub fn Url::is_secure(Self) -> Bool
 pub fn Url::join(Self, String) -> Result[Self, HttpError]
 pub fn Url::new(String, String, Int32) -> Self
