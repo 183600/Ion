@@ -276,3 +276,63 @@ pub impl Datagram for NativeUdpDatagram with fn close(self : NativeUdpDatagram) 
   }
   Ok(())
 }
+
+///|
+/// Global datagram instance for convenience.
+#cfg(target="native")
+pub fn default_datagram() -> NativeUdpDatagram {
+  NativeUdpDatagram::with_timeout(5000).unwrap()
+}
+
+///|
+#cfg(not(target="native"))
+const UDP_TRANSPORT_UNAVAILABLE : String = "UDP transport unavailable on this target; build with --target native"
+
+///|
+/// Datagram for targets without a socket transport.
+#cfg(not(target="native"))
+#derive(Eq, Debug)
+pub struct UnavailableDatagram {}
+
+///|
+#cfg(not(target="native"))
+pub fn UnavailableDatagram::new() -> UnavailableDatagram {
+  UnavailableDatagram::{ }
+}
+
+///|
+#cfg(not(target="native"))
+impl Datagram for UnavailableDatagram with fn send_to(
+  self : UnavailableDatagram,
+  _payload : Bytes,
+  _address : String,
+  _port : Int32,
+) -> Result[Unit, NetError] {
+  let _ = self
+  Err(NetError::ConnectionFailed(UDP_TRANSPORT_UNAVAILABLE))
+}
+
+///|
+#cfg(not(target="native"))
+impl Datagram for UnavailableDatagram with fn receive_from(
+  self : UnavailableDatagram,
+  _buffer : Buffer,
+) -> Result[DatagramPacket, NetError] {
+  let _ = self
+  Err(NetError::ConnectionFailed(UDP_TRANSPORT_UNAVAILABLE))
+}
+
+///|
+#cfg(not(target="native"))
+impl Datagram for UnavailableDatagram with fn close(
+  self : UnavailableDatagram,
+) -> Result[Unit, NetError] {
+  let _ = self
+  Err(NetError::ConnectionFailed(UDP_TRANSPORT_UNAVAILABLE))
+}
+
+///|
+#cfg(not(target="native"))
+pub fn default_datagram() -> UnavailableDatagram {
+  UnavailableDatagram::new()
+}

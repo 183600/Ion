@@ -84,3 +84,31 @@ test "MockTlsClientCtx connect twice fails" {
   let result = ctx.connect(stream2)
   assert_true(result is Err(ProtocolError(_)))
 }
+
+///|
+#cfg(not(target="native"))
+test "UnavailableTlsProvider refuses to create client context" {
+  let provider = UnavailableTlsProvider::new()
+  let config = TlsConfig::new("example.com")
+  let result = provider.new_client(config)
+  assert_true(result is Err(InvalidConfig(_)))
+  assert_true(result.unwrap_err().to_string().contains("unavailable"))
+}
+
+///|
+#cfg(not(target="native"))
+test "default_tls_provider returns UnavailableTlsProvider on non-native targets" {
+  let provider = default_tls_provider()
+  let config = TlsConfig::new("example.com")
+  let result = provider.new_client(config)
+  assert_true(result is Err(InvalidConfig(_)))
+}
+
+///|
+#cfg(target="native")
+test "default_tls_provider returns OpenSslTlsProvider on native target" {
+  let provider = default_tls_provider()
+  let config = TlsConfig::new("example.com")
+  let result = provider.new_client(config)
+  assert_true(result is Ok(_))
+}

@@ -50,6 +50,8 @@ pub fn h2_request_streaming_with_limit(&Stream, Request, Int32) -> Result[Respon
 
 pub fn head(String) -> Result[Response, HttpError]
 
+pub fn hex_char_value(Char) -> Int32
+
 pub fn hpack_encode(Array[(String, String)]) -> Bytes
 
 pub fn hpack_encode_header(@buffer.Buffer, String, String) -> Unit
@@ -58,11 +60,39 @@ pub fn inflate(Bytes, Int32) -> Result[Bytes, HttpError]
 
 pub fn inflate_deflate(Bytes, Int32) -> Result[Bytes, HttpError]
 
+pub fn is_decimal_digits(String) -> Bool
+
+pub fn is_hex_char(Char) -> Bool
+
+pub fn is_hex_digits(String) -> Bool
+
+pub fn is_ip_literal(String) -> Bool
+
+pub fn is_ipv4_literal(String) -> Bool
+
+pub fn is_ipv6_literal(String) -> Bool
+
+pub fn is_ipv6_literal_with_zone(String) -> Bool
+
+pub fn is_ipvfuture_literal(String) -> Bool
+
+pub fn is_numeric_dotted_host(String) -> Bool
+
+pub fn is_sub_delim_char(Char) -> Bool
+
+pub fn is_unreserved_char(Char) -> Bool
+
+pub fn is_zone_id(String) -> Bool
+
+pub fn lowercase_host_preserving_zone(String) -> String
+
 pub fn options(String) -> Result[Response, HttpError]
 
 pub fn parse_json(String) -> Result[@json.Json, HttpError]
 
 pub fn patch(String, Bytes) -> Result[Response, HttpError]
+
+pub fn percent_decode_bytes(String) -> Bytes
 
 pub fn post(String, Bytes) -> Result[Response, HttpError]
 
@@ -689,7 +719,7 @@ pub fn TlsConfig::with_root_store(Self, RootStore) -> Self
 pub fn TlsConfig::with_server_name(Self, String) -> Self
 pub fn TlsConfig::with_verify_mode(Self, VerifyMode) -> Self
 
-#derive(Eq, @debug.Debug)
+#derive(Eq, Show, @debug.Debug)
 pub enum TlsError {
   HandshakeFailed(String)
   CertificateValidationFailed(String)
