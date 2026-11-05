@@ -48,3 +48,22 @@ test "dialer rejects malformed hosts and accepts IP literals" {
     assert_true(dialer.dial_tcp(host, 80) is Ok(_))
   }
 }
+
+///|
+test "TcpDialer set_timeout updates timeout" {
+  let dialer = TcpDialer::new()
+  assert_eq(dialer.timeout_ms, 30000)
+  
+  dialer.set_timeout(5000)
+  assert_eq(dialer.timeout_ms, 5000)
+  
+  // Negative timeout is clamped to 0
+  dialer.set_timeout(-100)
+  assert_eq(dialer.timeout_ms, 0)
+}
+
+///|
+test "TcpDialer is_available returns true for placeholder" {
+  let dialer = TcpDialer::new()
+  assert_true(dialer.is_available())
+}
