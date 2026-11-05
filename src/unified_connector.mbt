@@ -1908,7 +1908,8 @@ fn Connector::connect_impl(
   // Refuse to exceed the per-host connection cap before taking an idle
   // connection, otherwise a pool with more idle entries than the cap could
   // hand out enough streams to exceed it. The check is done before dialing so
-  // no socket is wasted.
+  // no socket is wasted. The cap applies to simultaneously checked-out
+  // (active) connections per host.
   if self.max_connections_per_host > 0 &&
     self.pool.val.active_count(conn_key) >= self.max_connections_per_host {
     return Err(
