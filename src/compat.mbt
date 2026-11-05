@@ -278,7 +278,9 @@ pub fn is_ipv6_literal_with_zone(value : String) -> Bool {
         return false
       }
       let zone = value[index + 1:].to_owned()
-      let zone = if zone.has_prefix("25") { zone[2:].to_owned() } else { zone }
+      if zone == "25" {
+        return false
+      }
       if !is_zone_id(zone) {
         return false
       }
