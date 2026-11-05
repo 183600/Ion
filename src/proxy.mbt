@@ -190,7 +190,13 @@ pub fn Proxy::new_socks5(url : String) -> Result[Proxy, HttpError] {
   // An explicit empty port means the scheme default, as in RFC 3986, so only
   // a non-empty port overrides SOCKS5's 1080.
   let port = match port_text {
-    Some(text) => if text.length() > 0 { parsed.port } else { 1080 }
+    Some(text) => if text.length() > 0 {
+      let p = @string.parse_int(text) catch { _ => return Err(InvalidUrl("Invalid proxy port")) }
+      if !valid_tcp_port(p) {
+        return Err(InvalidUrl("Invalid proxy port"))
+      }
+      p
+    } else { 1080 }
     None => 1080
   }
   let (socks_username, socks_password) = match proxy_userinfo(url) {
