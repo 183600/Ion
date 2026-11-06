@@ -85,6 +85,14 @@ fn dns_normalize_name(name : String) -> Result[String, DnsError] {
     return Err(InvalidName)
   }
   let name = name.to_lower()
+  // RFC 3986 §3.2.2 allows a trailing dot on a fully-qualified host
+  // ("example.com."); strip it so wire-format encoding does not see an
+  // empty final label.
+  let name = if name.length() > 1 && name.ends_with(".") {
+    name[0:name.length() - 1].to_owned()
+  } else {
+    name
+  }
   if is_ip_literal(name) {
     return Err(InvalidName)
   }
@@ -147,6 +155,10 @@ fn dns_name_decode(
       if visited.contains(pointer) {
         return Err(MalformedResponse)
       }
+      // Record the pointer before following it, otherwise a malicious
+      // server can return a pointer cycle (A -> B -> A) and spin this
+      // decoder forever.
+      visited.push(pointer)
       pos = pointer
       continue
     }

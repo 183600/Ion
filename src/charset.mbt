@@ -311,7 +311,7 @@ fn decode_text_body(data : Bytes, charset : String?) -> String {
     "utf-16" | "utf16" | "utf-16le" | "utf-16be" =>
       // If there's a BOM, use it. Otherwise, for explicit endianness labels
       // (utf-16le/utf-16be) use the specified endianness; for generic "utf-16"
-      // without BOM, fall through to the default UTF-8 decode below.
+      // without a BOM, RFC 2781 §4.2 says to interpret it as big-endian.
       if utf16le_bom || utf16be_bom {
         decode_utf16(data, charset)
       } else if charset == "utf-16le" || charset == "utf-16be" {

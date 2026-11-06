@@ -1589,8 +1589,14 @@ fn H2LiveBodyStream::pull(self : H2LiveBodyStream) -> Result[Unit, NetError] {
         return Err(self.fail(err))
       }
     }
-    self.pending = self.state.take_body()
-    self.pending_offset = 0
+    // Only stage body bytes when the frame carried any. Control frames
+    // (SETTINGS/PING/WINDOW_UPDATE) reach this point with an empty staging
+    // buffer, and `pending` is always exhausted when `pull` is entered, so
+    // taking it unconditionally would allocate a fresh buffer per frame.
+    if self.state.body.length() > 0 {
+      self.pending = self.state.take_body()
+      self.pending_offset = 0
+    }
     if self.state.ended {
       self.flow.stream_send_window_active = false
       self.trailers.val = self.state.trailers
