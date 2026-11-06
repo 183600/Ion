@@ -1012,9 +1012,17 @@ fn cookie_evict_for_capacity(
       Some(cookie) => cookie
       None => break
     }
-    result = result.filter(fn(cookie) {
-      !cookie_same_identity(cookie, oldest)
-    })
+    // Remove exactly one cookie with same identity as oldest
+    let mut remaining = @list.List([])
+    let mut removed = false
+    for cookie in result {
+      if !removed && cookie_same_identity(cookie, oldest) {
+        removed = true
+        continue
+      }
+      remaining = remaining.prepend(cookie)
+    }
+    result = remaining
     domain_count = domain_count - 1
   }
   while result.length() >= MAX_TOTAL_COOKIES {
@@ -1022,9 +1030,17 @@ fn cookie_evict_for_capacity(
       Some(cookie) => cookie
       None => break
     }
-    result = result.filter(fn(cookie) {
-      !cookie_same_identity(cookie, oldest)
-    })
+    // Remove exactly one cookie with same identity as oldest
+    let mut remaining = @list.List([])
+    let mut removed = false
+    for cookie in result {
+      if !removed && cookie_same_identity(cookie, oldest) {
+        removed = true
+        continue
+      }
+      remaining = remaining.prepend(cookie)
+    }
+    result = remaining
   }
   result
 }
