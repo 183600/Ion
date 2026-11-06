@@ -82,8 +82,10 @@ pub impl TlsClientCtx for MockTlsClientCtx with fn connect(
   }
   // If a key log sink is configured, emit the TLS handshake label for debugging.
   if self.config.key_log is Some(_) {
-    // In a real implementation, the provider would emit the master key here.
-    // For the mock, we simply note that key logging is active.
+    let _ = self.config.key_log.unwrap().log(
+      "mock_tls_handshake",
+      b"mock-master-key",
+    )
   }
   Ok(tls_stream)
 }
