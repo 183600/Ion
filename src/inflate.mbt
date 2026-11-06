@@ -552,15 +552,48 @@ fn inflate_raw(data : BytesView, max_bytes : Int32) -> Result[Bytes, HttpError] 
 
 ///|
 fn adler32(data : Bytes) -> Int32 {
+  // Process in blocks so the per-byte sums are only reduced modulo 65521
+  // once per block (same checksum, fewer divisions). 3854 is the largest
+  // block size that cannot overflow a signed 32-bit accumulator.
   let mut a = 1
   let mut b = 0
   let mut i = 0
-  while i < data.length() {
-    a = (a + data[i].to_int()) % 65521
-    b = (b + a) % 65521
-    i = i + 1
+  let n = data.length()
+  while i < n {
+    let end = if n - i > 3854 { i + 3854 } else { n }
+    while i < end {
+      a = a + data[i].to_int()
+      b = b + a
+      i = i + 1
+    }
+    a = a % 65521
+    b = b % 65521
   }
   (b << 16) | a
+}
+
+///|
+/// Precomputed CRC-32 table (polynomial 0xEDB88320, reflected).
+let crc32_table : Array[Int] = {
+  let table : Array[Int] = Array::make(256, 0)
+  let mut n = 0
+  while n < 256 {
+    let mut c = n
+    let mut bit = 0
+    while bit < 8 {
+      // Mask after shifting to emulate a logical (unsigned) right shift,
+      // since `Int` is signed and `>>` sign-extends.
+      if (c & 1) == 1 {
+        c = ((c >> 1) & 0x7FFFFFFF) ^ 0xEDB88320
+      } else {
+        c = (c >> 1) & 0x7FFFFFFF
+      }
+      bit = bit + 1
+    }
+    table[n] = c
+    n = n + 1
+  }
+  table
 }
 
 ///|
@@ -568,18 +601,7 @@ fn crc32(data : Bytes) -> Int32 {
   let mut crc = 0xFFFFFFFF
   let mut i = 0
   while i < data.length() {
-    crc = crc ^ data[i].to_int()
-    let mut bit = 0
-    while bit < 8 {
-      // Mask after shifting to emulate a logical (unsigned) right shift,
-      // since `Int` is signed and `>>` sign-extends.
-      if (crc & 1) == 1 {
-        crc = ((crc >> 1) & 0x7FFFFFFF) ^ 0xEDB88320
-      } else {
-        crc = (crc >> 1) & 0x7FFFFFFF
-      }
-      bit = bit + 1
-    }
+    crc = ((crc >> 8) & 0x00FFFFFF) ^ crc32_table[(crc ^ data[i].to_int()) & 0xFF]
     i = i + 1
   }
   crc ^ 0xFFFFFFFF

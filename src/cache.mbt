@@ -579,12 +579,15 @@ fn cache_evict(state : CacheState) -> Unit {
     }
     let _ = state.entries.remove(index)
   }
-  while cache_total_size(state) > state.max_total_bytes &&
-        state.entries.length() > 0 {
+  // Track the running total instead of rescanning every entry after each
+  // removal (avoids O(n^2) recomputation when evicting many entries).
+  let mut total = cache_total_size(state)
+  while total > state.max_total_bytes && state.entries.length() > 0 {
     let index = cache_oldest_index(state)
     if index < 0 {
       return
     }
+    total = total - cache_entry_size(state.entries[index])
     let _ = state.entries.remove(index)
   }
 }

@@ -157,7 +157,9 @@ fn h2_read_frame(reader : StreamReader) -> Result[H2Frame, HttpError] {
     Ok(_) => ()
     Err(err) => return Err(http_error_from_net(err))
   }
-  let payload = Bytes::from_array(payload_bytes[:])
+  // `read_exact` appended exactly `length` bytes, so the array is already
+  // sized; converting it directly skips an intermediate full-array copy.
+  let payload = Bytes::from_array(payload_bytes)
   if frame_type == H2_FRAME_DATA && stream_id == 0 {
     return Err(ProtocolError("HTTP/2 DATA on stream 0"))
   }

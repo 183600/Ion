@@ -207,11 +207,9 @@ fn StreamReader::read_some(
   if self.pending_offset < self.pending.length() {
     let available = self.pending.length() - self.pending_offset
     let take = if available < max_bytes { available } else { max_bytes }
-    let mut i = 0
-    while i < take {
-      output.write_byte(self.pending[self.pending_offset + i])
-      i = i + 1
-    }
+    output.write_bytes(
+      self.pending.exact_view(start=self.pending_offset, end=self.pending_offset + take),
+    )
     self.pending_offset = self.pending_offset + take
     return Ok(take)
   }
@@ -247,8 +245,11 @@ fn StreamReader::read_some(
 fn write_all(stream : &Stream, data : Bytes) -> Result[Unit, NetError] {
   let total = data.length()
   let mut offset = 0
+  // Cap each copy so partial writes do not re-copy the entire remaining
+  // body on every retry (avoids O(n^2) copy amplification).
   while offset < total {
-    let chunk = @buffer.from_bytes(data.exact_view(start=offset))
+    let end = if total - offset > 65536 { offset + 65536 } else { total }
+    let chunk = @buffer.from_bytes(data.exact_view(start=offset, end=end))
     let result = stream.write(chunk)
     match result {
       Ok(written) => {
@@ -788,13 +789,15 @@ pub fn H1Codec::encode_request(
     None => ()
   }
 
-  // Build headers
-  let mut headers_str = ""
+  // Build headers into a Buffer to avoid rebuilding the whole string on
+  // every appended field line.
+  let headers_buf = Buffer(size_hint=256)
+  headers_buf.write_bytes(@utf8.encode(req_line))
 
   // Add Host header if not present. CONNECT uses its authority-form target so
   // the port is always present, matching RFC 9110 §9.3.6.
   if !req.headers.contains("Host") {
-    headers_str += "Host: " + host_header_value + "\r\n"
+    headers_buf.write_bytes(@utf8.encode("Host: " + host_header_value + "\r\n"))
   }
 
   // Add Content-Length when the caller did not choose a framing mode. Methods
@@ -803,21 +806,25 @@ pub fn H1Codec::encode_request(
   if (req.body is Some(_) || method_defines_body(resolved_method)) &&
     content_length is None &&
     !chunked {
-    headers_str += "Content-Length: " + body_length.to_string() + "\r\n"
+    headers_buf.write_bytes(
+      @utf8.encode("Content-Length: " + body_length.to_string() + "\r\n"),
+    )
   }
 
   // Request trailers require chunked framing. Advertise both the framing and
   // the trailer names when the caller did not provide them explicitly.
   if synthesize_chunked {
-    headers_str += "Transfer-Encoding: chunked\r\n"
+    headers_buf.write_bytes(@utf8.encode("Transfer-Encoding: chunked\r\n"))
   }
   if has_trailers && !req.headers.contains("Trailer") {
-    headers_str += "Trailer: " + request_trailer_names(req.trailers) + "\r\n"
+    headers_buf.write_bytes(
+      @utf8.encode("Trailer: " + request_trailer_names(req.trailers) + "\r\n"),
+    )
   }
 
   // Add User-Agent if not present
   if !req.headers.contains("User-Agent") {
-    headers_str += "User-Agent: Feather/0.1.0\r\n"
+    headers_buf.write_bytes(@utf8.encode("User-Agent: Feather/0.1.0\r\n"))
   }
 
   // RFC 9110 §10.1.1: a client must not send a 100-continue expectation for a
@@ -831,34 +838,43 @@ pub fn H1Codec::encode_request(
   // the position of the first one instead of emitting several field lines.
   let mut cookie_written = false
   for header in req.headers.iter() {
-    if header.name.to_lower() == "expect" &&
+    let lower_name = header.name.to_lower()
+    if lower_name == "expect" &&
       headers_have_token(req.headers, "Expect", "100-continue") &&
       !defer_body {
       let filtered = without_expect_continue(header.value)
       if filtered.length() > 0 {
-        headers_str += header.name + ": " + filtered + "\r\n"
+        headers_buf.write_bytes(
+          @utf8.encode(header.name + ": " + filtered + "\r\n"),
+        )
       }
       continue
     }
-    if header.name.to_lower() == "cookie" {
+    if lower_name == "cookie" {
       if cookie_written {
         continue
       }
       cookie_written = true
-      headers_str += header.name +
-        ": " +
-        req.headers.get_all("Cookie").to_array().join("; ") +
-        "\r\n"
+      headers_buf.write_bytes(
+        @utf8.encode(
+          header.name +
+          ": " +
+          req.headers.get_all("Cookie").to_array().join("; ") +
+          "\r\n",
+        ),
+      )
       continue
     }
-    headers_str += header.name + ": " + header.value + "\r\n"
+    headers_buf.write_bytes(
+      @utf8.encode(header.name + ": " + header.value + "\r\n"),
+    )
   }
 
   // End headers
-  headers_str += "\r\n"
+  headers_buf.write_bytes(@utf8.encode("\r\n"))
 
   // Write request line and headers
-  let header_data = @utf8.encode(req_line + headers_str)
+  let header_data = headers_buf.to_bytes()
   match write_all(self.stream, header_data) {
     Ok(_) => ()
     Err(err) => return Err(http_error_from_net(err))
