@@ -138,19 +138,44 @@ fn cookie_octet(ch : Char) -> Bool {
 ///|
 fn cookie_valid_value(value : String) -> Bool {
   // RFC 6265 §4.1.1 allows `*cookie-octet` or a double-quoted
-  // `*cookie-octet`. Whitespace, commas, backslashes and non-ASCII bytes are
-  // not cookie-octets and would make the resulting Cookie header ambiguous.
-  let body = if value.length() >= 2 &&
+  // `*cookie-octet`. Whitespace, commas and non-ASCII bytes are not
+  // cookie-octets and would make the resulting Cookie header ambiguous.
+  // Backslash-escaping is allowed inside double-quoted strings only.
+  let is_quoted = value.length() >= 2 &&
     value.get_char(0) == Some('"') &&
-    value.get_char(value.length() - 1) == Some('"') {
+    value.get_char(value.length() - 1) == Some('"')
+  let body = if is_quoted {
     value[1:value.length() - 1]
   } else {
     value
   }
-  for ch in body {
-    if !cookie_octet(ch) {
-      return false
+  let mut i = 0
+  while i < body.length() {
+    let ch_opt = body.get_char(i)
+    match ch_opt {
+      Some('\\') => {
+        // Backslash escape: only allowed inside double-quoted strings,
+        // the next character must be a VCHAR or another backslash
+        if !is_quoted || i + 1 >= body.length() {
+          return false
+        }
+        let next = body.get_char(i + 1)
+        match next {
+          Some(ch) if (ch >= ' ' && ch <= '~') => {
+            i = i + 2
+            continue
+          }
+          _ => return false
+        }
+      }
+      None => return false
+      Some(ch) => {
+        if !cookie_octet(ch) {
+          return false
+        }
+      }
     }
+    i = i + 1
   }
   true
 }
