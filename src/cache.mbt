@@ -48,7 +48,7 @@ fn cache_index_of_char(value : String, target : Char) -> Int32? {
 ///|
 fn cache_split_directives(value : String) -> Array[String] {
   let parts : Array[Bytes] = []
-  let buffer = @buffer.new(size_hint=value.length())
+  let buffer = Buffer(size_hint=value.length())
   let mut quoted = false
   let mut escaped = false
   for ch in value {
