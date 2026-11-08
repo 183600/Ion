@@ -1548,7 +1548,7 @@ fn Connector::proxy_tls_config(self : Connector, proxy : Proxy) -> TlsConfig {
 /// past it. The terminator is searched for rather than only inspected at the
 /// end of the buffer because a single read may deliver the whole CONNECT
 /// response plus tunnel data that belongs to the peer's next protocol.
-fn find_head_end(data : Bytes) -> Int32? {
+fn find_head_end(data : BytesView) -> Int32? {
   let length = data.length()
   let mut index = 0
   while index + 3 < length {
@@ -1688,9 +1688,9 @@ fn read_connect_response(stream : &Stream) -> Result[Bytes, HttpError] {
     let mut progressed = true
     while progressed {
       progressed = false
-      let remaining = data
-        .exact_view(start=offset, end=data.length())
-        .to_owned()
+      // `find_head_end` only reads the bytes, so pass the view directly
+      // instead of materialising a copy of the unparsed head on every pass.
+      let remaining = data.exact_view(start=offset, end=data.length())
       match find_head_end(remaining) {
         Some(relative_end) => {
           let head_end = offset + relative_end

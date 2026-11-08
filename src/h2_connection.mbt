@@ -1894,9 +1894,10 @@ fn H2TunnelBody::drain_buffered(
   self.state.tunnel_unacked_bytes = self.state.tunnel_unacked_bytes -
     acknowledge
   buf.write_bytes(data.exact_view(start=0, end=take))
-  let remaining = data.exact_view(start=take, end=data.length()).to_owned()
-  let next = Buffer(size_hint=remaining.length())
-  next.write_bytes(remaining)
+  // `write_bytes` accepts a view, so staging the unread tail as a fresh Bytes
+  // first only added a full copy of the remaining tunnel payload.
+  let next = Buffer(size_hint=data.length() - take)
+  next.write_bytes(data.exact_view(start=take, end=data.length()))
   self.state.body = next
   if self.state.body.length() == 0 && self.state.ended {
     self.finish()

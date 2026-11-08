@@ -451,8 +451,9 @@ fn DnsResolver::query_one(
   header.write_byte(0)
   header.write_byte(0)
   header.write_byte(0)
-  let query = Buffer(size_hint=header.to_bytes().length() + question.length())
-  query.write_bytes(header.to_bytes())
+  let header_bytes = header.to_bytes()
+  let query = Buffer(size_hint=header_bytes.length() + question.length())
+  query.write_bytes(header_bytes)
   query.write_bytes(question)
   let query_bytes = query.to_bytes()
   let mut attempt = 0

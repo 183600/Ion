@@ -167,8 +167,10 @@ fn hpack_static_name(name : String) -> Int32? {
 }
 
 ///|
+// The decode trie is binary: each edge is selected by a single bit
+// (`(code >> bit) & 1`), so a node only ever needs two child slots.
 fn hpack_huffman_table() -> (Array[Array[Int32]], Array[Int32]) {
-  let children : Array[Array[Int32]] = [Array::make(256, -1)]
+  let children : Array[Array[Int32]] = [Array::make(2, -1)]
   let symbols : Array[Int32] = [-1]
   let mut symbol = 0
   while symbol < 256 {
@@ -181,7 +183,7 @@ fn hpack_huffman_table() -> (Array[Array[Int32]], Array[Int32]) {
       let mut next = children[node][direction]
       if next < 0 {
         next = children.length()
-        children.push(Array::make(256, -1))
+        children.push(Array::make(2, -1))
         symbols.push(-1)
         children[node][direction] = next
       }

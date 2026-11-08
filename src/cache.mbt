@@ -374,8 +374,12 @@ fn cache_current_age_ms(entry : CacheEntry, now_ms : UInt64) -> UInt64 {
 }
 
 ///|
-fn cache_entry_matches(entry : CacheEntry, request : Request) -> Bool {
-  if cache_key(entry.url) != cache_key(request.url) {
+fn cache_entry_matches(
+  entry : CacheEntry,
+  request : Request,
+  request_key : String,
+) -> Bool {
+  if cache_key(entry.url) != request_key {
     return false
   }
   if entry.vary_names.length() != entry.vary_values.length() {
@@ -608,9 +612,12 @@ pub fn HttpCache::invalidate(self : HttpCache, url : Url) -> Unit {
 
 ///|
 fn cache_find_index(state : CacheState, request : Request) -> Int32? {
+  // The request URL is shared by every comparison; build its cache key once
+  // instead of re-serialising it for each stored entry.
+  let request_key = cache_key(request.url)
   let mut i = state.entries.length() - 1
   while i >= 0 {
-    if cache_entry_matches(state.entries[i], request) {
+    if cache_entry_matches(state.entries[i], request, request_key) {
       return Some(i)
     }
     i = i - 1
@@ -847,9 +854,10 @@ pub fn HttpCache::store(
       ),
     )
   }
+  let request_key = cache_key(request.url)
   let mut i = 0
   while i < state.entries.length() {
-    if cache_entry_matches(state.entries[i], request) {
+    if cache_entry_matches(state.entries[i], request, request_key) {
       let _ = state.entries.remove(i)
     } else {
       i = i + 1
