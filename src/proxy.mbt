@@ -360,10 +360,12 @@ fn proxy_env_value(
 ) -> String? {
   for name in names {
     match lookup(name) {
-      Some(value) =>
-        if value.trim().length() > 0 {
-          return Some(value.trim().to_owned())
+      Some(value) => {
+        let trimmed = value.trim()
+        if trimmed.length() > 0 {
+          return Some(trimmed.to_owned())
         }
+      }
       None => ()
     }
   }

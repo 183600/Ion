@@ -545,12 +545,13 @@ fn decode_host_utf8_escapes(host : String) -> String? {
             encoded.write_byte(next.to_byte())
             index = index + 3
           }
+          let encoded_bytes = encoded.to_bytes()
           try {
-            let _ = @utf8.decode(encoded.to_bytes()[:])
+            let _ = @utf8.decode(encoded_bytes[:])
           } catch {
             _ => return None
           }
-          output.write_bytes(encoded.to_bytes())
+          output.write_bytes(encoded_bytes)
           continue
         }
       }
