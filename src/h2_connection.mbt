@@ -1601,7 +1601,11 @@ fn H2LiveBodyStream::pull(self : H2LiveBodyStream) -> Result[Unit, NetError] {
       self.flow.stream_send_window_active = false
       self.trailers.val = self.state.trailers
     }
-    if self.pending.length() > 0 || self.state.ended {
+    // Only unread bytes count as available: after a control frame `pending`
+    // still holds the previous, fully consumed buffer, so its total length
+    // alone is not proof that body data is ready. Returning here would break
+    // the pull contract and push frame reads back onto the caller's loop.
+    if self.pending_offset < self.pending.length() || self.state.ended {
       return Ok(())
     }
   }

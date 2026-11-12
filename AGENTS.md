@@ -26,6 +26,17 @@ All sources live flat under `src/`:
 - `websocket.mbt` — RFC 6455 WebSocket handshake, framing, and messages.
 - `compat.mbt` — shared validation helpers (digits, charset checks, `List` alias).
 - `unified_connector.mbt`, `unified_client.mbt` — pooling connector + client.
+- `dns.mbt`, `net_datagram.mbt`, `native_udp.mbt`, `udp_native_stub.c` —
+  DNS resolver (RFC 1035) plus the portable datagram interface and its
+  native UDP transport.
+- `idna.mbt`, `idna_lowercase.mbt` — IDNA/punycode host conversion and the
+  Unicode lowercase table it uses.
+- `cache.mbt` — RFC 9111 response cache: freshness, validation, eviction.
+- `deflate.mbt` — minimal DEFLATE compressor for WebSocket permessage-deflate.
+- `http_json.mbt` — JSON request/response body helpers.
+- `native_error.mbt` — shared POSIX errno mapping for native transports.
+- `browser_fetch.mbt` — JS-target XHR-backed client transport
+  (`#cfg(target="js")`, host-provided `XMLHttpRequest`).
 - `main.mbt` — CLI entry point.
 
 ## Gates
