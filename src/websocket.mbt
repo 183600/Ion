@@ -509,9 +509,14 @@ pub fn websocket_connect(
     true
   } else if selected.length() == 1 {
     let parts = split_header_list(selected.nth(0).unwrap())
-    parts.length() == 1 &&
-    parts[0].trim().length() > 0 &&
-    protocols.contains(parts[0].trim().to_owned())
+    if parts.length() == 1 {
+      // Trim once: the same token is checked for emptiness and looked up in
+      // the offered protocols.
+      let protocol = parts[0].trim()
+      protocol.length() > 0 && protocols.contains(protocol.to_owned())
+    } else {
+      false
+    }
   } else {
     false
   }

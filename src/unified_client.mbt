@@ -860,9 +860,11 @@ fn apply_default_headers(
   let mut request = req
   let applied : Array[String] = []
   for header in defaults.iter() {
-    if req.get_header(header.name.to_lower()) is None {
+    // Compute the case-folded name once: it is used both for the
+    // already-present lookup and for de-duplicating applied defaults.
+    let name = header.name.to_lower()
+    if req.get_header(name) is None {
       request = request.with_header(header.name, header.value)
-      let name = header.name.to_lower()
       if !applied.contains(name) {
         applied.push(name)
       }
