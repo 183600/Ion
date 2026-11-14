@@ -328,13 +328,9 @@ fn punycode_encode(input : String) -> String? {
         let mut q = delta
         let mut k = 36
         while true {
-          let threshold = if k <= bias {
-            1
-          } else if k >= bias + 26 {
-            26
-          } else {
-            k - bias
-          }
+          // Reuse the same threshold rule as the decoder so encoder and
+          // decoder cannot drift apart on bias handling.
+          let threshold = punycode_threshold(k, bias)
           if q < threshold {
             break
           }

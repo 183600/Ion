@@ -556,12 +556,11 @@ fn hpack_write_integer(
 }
 
 ///|
-/// Huffman-encode the UTF-8 octets of a string using the RFC 7541 code table.
+/// Huffman-encode the given UTF-8 octets using the RFC 7541 code table.
 /// The final partial byte is padded with the most significant bits set to one,
 /// as required by §5.2. The encoder appends one bit at a time so it never has
 /// to hold more than a single output octet in an integer accumulator.
-fn hpack_huffman_encode(value : String) -> Bytes {
-  let encoded = @utf8.encode(value)
+fn hpack_huffman_encode_bytes(encoded : Bytes) -> Bytes {
   let output = Buffer(size_hint=encoded.length())
   let mut current = 0
   let mut used = 0
@@ -590,12 +589,21 @@ fn hpack_huffman_encode(value : String) -> Bytes {
 }
 
 ///|
+// Kept as a `String` entry point for white-box tests; production encoding
+// calls the byte-based helper directly with already-encoded octets.
+#warnings("-unused_value")
+fn hpack_huffman_encode(value : String) -> Bytes {
+  hpack_huffman_encode_bytes(@utf8.encode(value))
+}
+
+///|
 fn hpack_write_string(output : Buffer, value : String) -> Unit {
   let encoded = @utf8.encode(value)
   // The H bit distinguishes a Huffman-coded literal from raw octets. Use the
   // shorter representation; for very short values the raw form often wins.
+  // Reuse `encoded` so each field is UTF-8 encoded only once.
   let huffman = if encoded.length() <= HPACK_HUFFMAN_INPUT_LIMIT {
-    hpack_huffman_encode(value)
+    hpack_huffman_encode_bytes(encoded)
   } else {
     b""
   }
