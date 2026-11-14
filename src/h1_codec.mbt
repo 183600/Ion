@@ -559,9 +559,11 @@ fn validate_request_trailers(trailers : Headers) -> Result[Unit, HttpError] {
 ///|
 fn request_trailer_names(trailers : Headers) -> String {
   let names = Buffer(size_hint=64)
+  // The separator is constant; encode it once rather than for every trailer.
+  let separator = @utf8.encode(", ")
   for trailer in trailers.iter() {
     if names.length() > 0 {
-      names.write_bytes(@utf8.encode(", "))
+      names.write_bytes(separator)
     }
     names.write_bytes(@utf8.encode(trailer.name))
   }
@@ -830,8 +832,11 @@ pub fn H1Codec::encode_request(
   // RFC 9110 §10.1.1: a client must not send a 100-continue expectation for a
   // request that has no content. Trailers still count as content because they
   // require the deferred chunked terminator to be sent.
-  let defer_body = headers_have_token(req.headers, "Expect", "100-continue") &&
-    (body_length > 0 || has_trailers)
+  // Compute the 100-continue expectation once: `req.headers` is not mutated
+  // while the header lines are built, so re-scanning every Expect field for
+  // each individual header only repeats the same work.
+  let expect_continue = headers_have_token(req.headers, "Expect", "100-continue")
+  let defer_body = expect_continue && (body_length > 0 || has_trailers)
 
   // Add other headers. RFC 6265 §5.4 requires a request to carry at most one
   // Cookie field, so combine repeated caller-supplied fragments with "; " at
@@ -839,9 +844,7 @@ pub fn H1Codec::encode_request(
   let mut cookie_written = false
   for header in req.headers.iter() {
     let lower_name = header.name.to_lower()
-    if lower_name == "expect" &&
-      headers_have_token(req.headers, "Expect", "100-continue") &&
-      !defer_body {
+    if lower_name == "expect" && expect_continue && !defer_body {
       let filtered = without_expect_continue(header.value)
       if filtered.length() > 0 {
         headers_buf.write_bytes(
