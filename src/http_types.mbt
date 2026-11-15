@@ -1458,19 +1458,23 @@ fn multipart_header_value(value : String) -> String {
 
 ///|
 fn multipart_contains_bytes(haystack : Bytes, needle : Bytes) -> Bool {
-  if needle.length() == 0 {
+  // Both lengths are constant for the whole search; hoist them out of the
+  // nested loops so they are computed once instead of on every comparison.
+  let needle_len = needle.length()
+  let haystack_len = haystack.length()
+  if needle_len == 0 {
     return true
   }
-  if needle.length() > haystack.length() {
+  if needle_len > haystack_len {
     return false
   }
   let mut index = 0
-  while index + needle.length() <= haystack.length() {
+  while index + needle_len <= haystack_len {
     let mut offset = 0
-    while offset < needle.length() && haystack[index + offset] == needle[offset] {
+    while offset < needle_len && haystack[index + offset] == needle[offset] {
       offset = offset + 1
     }
-    if offset == needle.length() {
+    if offset == needle_len {
       return true
     }
     index = index + 1

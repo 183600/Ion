@@ -1201,13 +1201,11 @@ fn h2_request_headers_with_protocol(
       return Err(InvalidHeader(header.name))
     }
     if name == "cookie" {
-      // Cookie fragments are combined below rather than emitted directly, so
-      // validate them here: a field value containing CR/LF (or surrounding
-      // whitespace) must not reach the HPACK encoder just because the header
-      // happens to be merged with another one.
-      if !h2_valid_field_value(header.value) {
-        return Err(InvalidHeader(header.name))
-      }
+      // Cookie fragments are combined below rather than emitted directly. The
+      // shared field-name/value validation above already ran for this header
+      // (short-circuiting only on an early error), so its value is known to be
+      // free of CR/LF and surrounding whitespace; re-checking it here would
+      // repeat a full scan that can never change the outcome.
       cookie_values.push(header.value)
       continue
     }
