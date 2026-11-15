@@ -1214,9 +1214,11 @@ pub fn CookieJar::cookie_header_at(
     }
   })
   let result = Buffer(size_hint=64)
+  // The separator is constant; encode it once rather than for every cookie.
+  let separator = @utf8.encode("; ")
   for cookie in candidates {
     if result.length() > 0 {
-      result.write_bytes(@utf8.encode("; "))
+      result.write_bytes(separator)
     }
     result.write_bytes(@utf8.encode(cookie.name + "=" + cookie.value))
   }

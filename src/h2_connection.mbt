@@ -361,9 +361,11 @@ fn h2_request_trailer_fields(
 ///|
 fn h2_trailer_names(trailers : Headers) -> String {
   let names = Buffer(size_hint=64)
+  // The separator is constant; encode it once rather than for every trailer.
+  let separator = @utf8.encode(", ")
   for trailer in trailers.iter() {
     if names.length() > 0 {
-      names.write_bytes(@utf8.encode(", "))
+      names.write_bytes(separator)
     }
     names.write_bytes(@utf8.encode(trailer.name.to_lower()))
   }

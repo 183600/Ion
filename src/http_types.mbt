@@ -1530,6 +1530,8 @@ fn multipart_body(
   boundary : String,
 ) -> Bytes {
   let body = Buffer(size_hint=512)
+  // The CRLF between parts is constant; encode it once for both loops.
+  let crlf = @utf8.encode("\r\n")
   for field in fields {
     let (name, value) = field
     body.write_bytes(
@@ -1542,7 +1544,7 @@ fn multipart_body(
       ),
     )
     body.write_bytes(@utf8.encode(value))
-    body.write_bytes(@utf8.encode("\r\n"))
+    body.write_bytes(crlf)
   }
   for file in files {
     body.write_bytes(
@@ -1559,7 +1561,7 @@ fn multipart_body(
       ),
     )
     body.write_bytes(file.data)
-    body.write_bytes(@utf8.encode("\r\n"))
+    body.write_bytes(crlf)
   }
   body.write_bytes(@utf8.encode("--" + boundary + "--\r\n"))
   body.to_bytes()
