@@ -1,0 +1,128 @@
+/// HTTP/1.1 codec implementation
+/// Based on RFC 9110 and RFC 9112
+
+pub fn encode_request(req : Request) -> Bytes {
+  let mut output = Bytes::new()
+  
+  // Request line: METHOD SP path[?query] SP HTTP/1.1 CRLF
+  let path = extract_path(req.url)
+  let request_line = req.method.to_string() + " " + path + " HTTP/1.1\r\n"
+  output.append(request_line.as_bytes())
+  
+  // Host header (required for HTTP/1.1)
+  let host = extract_host(req.url)
+  output.append("Host: " + host + "\r\n")
+  
+  // User-Agent header
+  output.append("User-Agent: Feather/0.1.0\r\n")
+  
+  // Content-Length if body present
+  match req.body {
+    Some(body) => {
+      output.append("Content-Length: " + body.length().to_string() + "\r\n")
+    }
+    None => ()
+  }
+  
+  // Other headers
+  for (key, value) in req.headers.iter() {
+    if key != "Host" { // Skip Host as we already set it
+      output.append(key + ": " + value + "\r\n")
+    }
+  }
+  
+  // Empty line to end headers
+  output.append("\r\n")
+  
+  // Body if present
+  match req.body {
+    Some(body) => {
+      output.append(body)
+    }
+    None => ()
+  }
+  
+  output
+}
+
+pub fn parse_response_line(line : String) -> Result[(Int, String), String] {
+  // Format: HTTP/1.1 200 OK
+  let parts = line.split(' ')
+  if parts.length() < 3 {
+    return Err("Invalid response line: " + line)
+  }
+  
+  // Check HTTP version
+  if not(parts[0].starts_with("HTTP/")) {
+    return Err("Invalid HTTP version: " + parts[0])
+  }
+  
+  // Parse status code
+  match parts[1].parse_int() {
+    Ok(status) => Ok((status, parts[2]))
+    Err(_) => Err("Invalid status code: " + parts[1])
+  }
+}
+
+pub fn parse_headers(header_lines : Array[String]) -> HttpHeaders {
+  let headers = HttpHeaders::new()
+  for line in header_lines {
+    // Format: Key: Value
+    let colon_pos = line.index_of(':')
+    if colon_pos > 0 {
+      let key = line.substring(0, colon_pos).trim()
+      let value = line.substring(colon_pos + 1).trim()
+      headers.set(key, value)
+    }
+  }
+  headers
+}
+
+/// Helper functions
+
+fn extract_path(url : String) -> String {
+  // Simple URL parser - extract path from URL
+  // Format: scheme://host[:port]/path[?query]
+  
+  // Find start of path (after authority)
+  let start = url.index_of("://")
+  if start < 0 {
+    return "/" // Default path
+  }
+  
+  let after_scheme = start + 3
+  let path_start = url.index_of('/', after_scheme)
+  
+  if path_start < 0 {
+    return "/" // Default path
+  }
+  
+  // Extract path (including query if present)
+  url.substring(path_start)
+}
+
+fn extract_host(url : String) -> String {
+  // Extract host from URL
+  let start = url.index_of("://")
+  if start < 0 {
+    return url
+  }
+  
+  let after_scheme = start + 3
+  let path_start = url.index_of('/', after_scheme)
+  
+  if path_start < 0 {
+    return url.substring(after_scheme)
+  }
+  
+  url.substring(after_scheme, path_start)
+}
+
+fn extract_scheme(url : String) -> String {
+  // Extract scheme (http or https)
+  let end = url.index_of("://")
+  if end < 0 {
+    return "http" // Default
+  }
+  url.substring(0, end)
+}

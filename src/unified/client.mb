@@ -1,0 +1,86 @@
+/// Unified HTTP/HTTPS client
+/// This is the main entry point for the Feather library
+
+pub struct UnifiedClient {
+  dialer : Dialer
+  tls_provider : TlsProvider
+  http_client : HttpClient
+  timeout_ms : Int
+  follow_redirects : Bool
+  max_redirects : Int
+}
+
+pub fn UnifiedClient::new(dialer : Dialer, tls_provider : TlsProvider) -> UnifiedClient {
+  let http_client = HttpClient::new(dialer, tls_provider)
+  {
+    dialer,
+    tls_provider,
+    http_client,
+    timeout_ms: 30000,
+    follow_redirects: true,
+    max_redirects: 10
+  }
+}
+
+pub fn UnifiedClient::set_timeout(self : UnifiedClient, timeout_ms : Int) -> UnifiedClient {
+  self.timeout_ms = timeout_ms
+  self.http_client.set_timeout(timeout_ms)
+  self
+}
+
+pub fn UnifiedClient::set_follow_redirects(self : UnifiedClient, follow : Bool) -> UnifiedClient {
+  self.follow_redirects = follow
+  self
+}
+
+pub fn UnifiedClient::set_max_redirects(self : UnifiedClient, max_redirects : Int) -> UnifiedClient {
+  self.max_redirects = max_redirects
+  self.http_client.set_max_redirects(max_redirects)
+  self
+}
+
+pub fn UnifiedClient::request(self : UnifiedClient, req : Request) -> Result[Response, HttpError] {
+  self.http_client.execute(req)
+}
+
+/// Convenience methods for common HTTP operations
+
+pub fn UnifiedClient::get(self : UnifiedClient, url : String) -> Result[Response, HttpError] {
+  let req = Request::get(url).set_timeout(self.timeout_ms)
+  self.request(req)
+}
+
+pub fn UnifiedClient::post(self : UnifiedClient, url : String, body : Bytes) -> Result[Response, HttpError] {
+  let req = Request::post(url, body).set_timeout(self.timeout_ms)
+  self.request(req)
+}
+
+pub fn UnifiedClient::put(self : UnifiedClient, url : String, body : Bytes) -> Result[Response, HttpError] {
+  let req = Request::new(PUT, url).set_timeout(self.timeout_ms)
+  req.body = Some(body)
+  self.request(req)
+}
+
+pub fn UnifiedClient::delete(self : UnifiedClient, url : String) -> Result[Response, HttpError] {
+  let req = Request::new(DELETE, url).set_timeout(self.timeout_ms)
+  self.request(req)
+}
+
+pub fn UnifiedClient::head(self : UnifiedClient, url : String) -> Result[Response, HttpError] {
+  let req = Request::new(HEAD, url).set_timeout(self.timeout_ms)
+  self.request(req)
+}
+
+/// Factory functions for common configurations
+
+pub fn UnifiedClient::with_mock() -> UnifiedClient {
+  let dialer = MockDialer::new()
+  let tls_provider = MockTlsProvider::new()
+  UnifiedClient::new(dialer, tls_provider)
+}
+
+pub fn UnifiedClient::with_defaults() -> UnifiedClient {
+  let dialer = MockDialer::new()
+  let tls_provider = MockTlsProvider::new()
+  UnifiedClient::new(dialer, tls_provider)
+}

@@ -1,0 +1,166 @@
+/// TLS configuration
+pub struct TlsConfig {
+  server_name : String
+  alpn : Array[String]
+  verify : TlsVerifyMode
+  min_version : TlsVersion
+  max_version : Option[TlsVersion]
+  root_store : Option[RootStore]
+  client_auth : Option[ClientCert]
+  key_log : Option[String]
+}
+
+pub fn TlsConfig::new(server_name : String) -> TlsConfig {
+  {
+    server_name,
+    alpn: ["http/1.1"],
+    verify: Strict,
+    min_version: Tls12,
+    max_version: Some(Tls13),
+    root_store: None,
+    client_auth: None,
+    key_log: None
+  }
+}
+
+/// TLS verification mode
+pub enum TlsVerifyMode {
+  Strict
+  NoVerify // Only for testing, not recommended for production
+}
+
+/// TLS version
+pub enum TlsVersion {
+  Tls10
+  Tls11
+  Tls12
+  Tls13
+}
+
+/// Root certificate store
+pub struct RootStore {
+  certs : Array[Bytes]
+}
+
+pub fn RootStore::new() -> RootStore {
+  { certs: [] }
+}
+
+pub fn RootStore::add_cert(self : RootStore, cert : Bytes) -> Unit {
+  self.certs.push(cert)
+}
+
+/// Client certificate for mutual TLS
+pub struct ClientCert {
+  cert : Bytes
+  key : Bytes
+}
+
+/// TLS error types
+pub enum TlsError {
+  HandshakeFailed(String)
+  CertificateVerifyFailed(String)
+  ProtocolError(String)
+  InvalidConfig(String)
+  IoError(String)
+}
+
+pub fn to_string(self : TlsError) -> String {
+  match self {
+    HandshakeFailed(msg) => "HandshakeFailed: " + msg
+    CertificateVerifyFailed(msg) => "CertificateVerifyFailed: " + msg
+    ProtocolError(msg) => "ProtocolError: " + msg
+    InvalidConfig(msg) => "InvalidConfig: " + msg
+    IoError(msg) => "IoError: " + msg
+  }
+}
+
+/// TLS provider interface
+pub trait TlsProvider {
+  new_client(config : TlsConfig) -> Result[TlsClientCtx, TlsError]
+}
+
+/// TLS client context for establishing TLS connections
+pub trait TlsClientCtx {
+  // Perform TLS handshake on underlying stream, returning TLS-wrapped stream
+  connect(underlying : Stream) -> Result[Stream, TlsError]
+}
+
+/// Mock TLS provider for testing
+pub struct MockTlsProvider {
+  
+}
+
+pub fn MockTlsProvider::new() -> MockTlsProvider {
+  {}
+}
+
+pub impl TlsProvider for MockTlsProvider {
+  fn new_client(
+    self : MockTlsProvider,
+    config : TlsConfig
+  ) -> Result[TlsClientCtx, TlsError] {
+    Ok(MockTlsClientCtx::new(config))
+  }
+}
+
+pub struct MockTlsClientCtx {
+  config : TlsConfig
+}
+
+pub fn MockTlsClientCtx::new(config : TlsConfig) -> MockTlsClientCtx {
+  { config }
+}
+
+pub impl TlsClientCtx for MockTlsClientCtx {
+  fn connect(self : MockTlsClientCtx, underlying : Stream) -> Result[Stream, NetError] {
+    // In a real implementation, this would perform TLS handshake
+    // For mock, just return the underlying stream with TLS wrapper
+    Ok(MockTlsStream::new(underlying, self.config))
+  }
+}
+
+/// Mock TLS stream wrapper
+pub struct MockTlsStream {
+  underlying : Stream
+  config : TlsConfig
+  handshake_completed : Bool
+}
+
+pub fn MockTlsStream::new(underlying : Stream, config : TlsConfig) -> MockTlsStream {
+  { underlying, config, handshake_completed: false }
+}
+
+pub impl Stream for MockTlsStream {
+  fn read(self : MockTlsStream, buf : Bytes) -> Result[Int, NetError] {
+    if not(self.handshake_completed) {
+      // Simulate handshake
+      self.handshake_completed = true
+    }
+    self.underlying.read(buf)
+  }
+  
+  fn write(self : MockTlsStream, buf : Bytes) -> Result[Int, NetError] {
+    self.underlying.write(buf)
+  }
+  
+  fn flush(self : MockTlsStream) -> Result[Unit, NetError] {
+    self.underlying.flush()
+  }
+  
+  fn close(self : MockTlsStream) -> Result[Unit, NetError] {
+    self.underlying.close()
+  }
+  
+  fn set_timeout_ms(self : MockTlsStream, timeout_ms : Int) -> Result[Unit, NetError] {
+    self.underlying.set_timeout_ms(timeout_ms)
+  }
+  
+  fn peer_addr(self : MockTlsStream) -> Result[String, NetError] {
+    self.underlying.peer_addr()
+  }
+  
+  fn local_addr(self : MockTlsStream) -> Result[String, NetError] {
+    self.underlying.local_addr()
+  }
+}
